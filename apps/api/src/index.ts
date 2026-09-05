@@ -68,6 +68,7 @@ export function createApiServer(registry = new GuestSessionRegistry(), model: Mo
       if (!requestLimiter.allow(principalKey, requestsPerWindow, requestWindowMs)) return respond(response, 429, { error: "request rate limit exceeded" }, requestId);
       const match = request.url?.match(/^\/v1\/boards\/([^/]+)\/updates$/);
       const shareLinksMatch = request.url?.match(/^\/v1\/boards\/([^/]+)\/share-links$/);
+      const revokeShareMatch = request.url?.match(/^\/v1\/boards\/([^/]+)\/share-links\/revoke$/);
       const snapshotMatch = request.url?.match(/^\/v1\/boards\/([^/]+)\/snapshot$/);
       const boardMatch = request.url?.match(/^\/v1\/boards\/([^/]+)$/);
       const workspaceMatch = request.url?.match(/^\/v1\/workspaces\/([^/]+)$/);
@@ -128,6 +129,15 @@ export function createApiServer(registry = new GuestSessionRegistry(), model: Mo
         if ((scope !== "view" && scope !== "edit") || typeof ttlSeconds !== "number" || !Number.isInteger(ttlSeconds) || ttlSeconds < 1 || ttlSeconds > 24 * 60 * 60 || typeof writeQuota !== "number" || !Number.isInteger(writeQuota) || writeQuota < 0) return respond(response, 400, { error: "scope, ttlSeconds, and non-negative integer writeQuota required" }, requestId);
         const token = registry.issue(boardId, scope, ttlSeconds, writeQuota);
         return respond(response, 201, { token, boardId, scope, expiresInSeconds: ttlSeconds }, requestId);
+      }
+      if (request.method === "POST" && revokeShareMatch) {
+        const boardId = revokeShareMatch[1];
+        if (!registry.authorize(capability, boardId, "edit")) return respond(response, 403, { error: "edit capability required" }, requestId);
+        const input = await body(request);
+        if (typeof input.token !== "string" || !input.token) return respond(response, 400, { error: "token required" }, requestId);
+        if (!registry.authorize(input.token, boardId, "view")) return respond(response, 404, { error: "share link not found" }, requestId);
+        registry.revoke(input.token);
+        return respond(response, 204, undefined, requestId);
       }
       if (request.method === "POST" && match) {
         if (!registry.authorize(capability, match[1], "edit")) return respond(response, 403, { error: "edit capability required" }, requestId);

@@ -205,6 +205,22 @@ test("API issues scoped expiring share links behind edit authorization", async (
   server.close();
 });
 
+test("API lets an editor revoke a share link for the same board", async () => {
+  const registry = new GuestSessionRegistry();
+  const ownerToken = registry.issue("b1", "edit", 60, 10);
+  const server = createApiServer(registry);
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("server did not bind");
+  const base = `http://127.0.0.1:${address.port}`;
+  const issued = await fetch(`${base}/v1/boards/b1/share-links`, { method: "POST", headers: { "content-type": "application/json", "x-capability": ownerToken }, body: JSON.stringify({ scope: "edit", ttlSeconds: 60, writeQuota: 1 }) });
+  const token = (await issued.json() as { token: string }).token;
+  const revoked = await fetch(`${base}/v1/boards/b1/share-links/revoke`, { method: "POST", headers: { "content-type": "application/json", "x-capability": ownerToken }, body: JSON.stringify({ token }) });
+  assert.equal(revoked.status, 204);
+  assert.equal(registry.authorize(token, "b1", "view"), false);
+  await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+});
+
 test("API idempotency lookup survives snapshots without consuming quota", async () => {
   const registry = new GuestSessionRegistry();
   const token = registry.issue("b1", "edit", 60, 0);
