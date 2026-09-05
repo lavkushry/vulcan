@@ -64,6 +64,19 @@ test("API makes workspace and board creation idempotent", async () => {
   await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
 });
 
+test("API reports model and adapter failures as retryable server errors", async () => {
+  const registry = new GuestSessionRegistry();
+  const token = registry.issue("b1", "edit", 60, 2);
+  const server = createApiServer(registry, async () => { throw new Error("provider unavailable"); });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("server did not bind");
+  const response = await fetch(`http://127.0.0.1:${address.port}/v1/generations`, { method: "POST", headers: { "content-type": "application/json", "x-capability": token, "x-board-id": "b1" }, body: JSON.stringify({ generationId: "g-fail", context: "ctx", prompt: "draw" }) });
+  assert.equal(response.status, 500);
+  assert.equal((await response.json() as { error: { retryable: boolean } }).error.retryable, true);
+  await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+});
+
 test("API persists authorized updates before acknowledging and is idempotent", async () => {
   const server = createApiServer();
   await new Promise<void>((resolve) => server.listen(0, resolve));
