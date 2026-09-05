@@ -13,9 +13,19 @@ export type ApiLimitOptions = {
   tracer?: Tracer;
 };
 
+const MAX_BODY_BYTES = 1024 * 1024;
+class RequestBodyTooLarge extends Error {}
+
 async function body(request: IncomingMessage): Promise<Record<string, unknown>> {
+  const declaredLength = Number(request.headers["content-length"] || 0);
+  if (declaredLength > MAX_BODY_BYTES) throw new RequestBodyTooLarge();
   const chunks: Buffer[] = [];
-  for await (const chunk of request) chunks.push(Buffer.from(chunk));
+  let total = 0;
+  for await (const chunk of request) {
+    total += Buffer.byteLength(chunk);
+    if (total > MAX_BODY_BYTES) throw new RequestBodyTooLarge();
+    chunks.push(Buffer.from(chunk));
+  }
   return JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
 }
 
@@ -164,7 +174,8 @@ export function createApiServer(registry = new GuestSessionRegistry(), model: Mo
         catch (error) { if (String(error).includes("already accepted")) return respond(response, 409, { error: "generation already accepted" }, requestId); throw error; }
       }
       respond(response, 404, { error: "not found" }, requestId);
-    } catch {
+    } catch (error) {
+      if (error instanceof RequestBodyTooLarge) return respond(response, 413, { error: "request body too large" }, requestId);
       respond(response, 400, { error: "invalid request" }, requestId);
     }
   });
