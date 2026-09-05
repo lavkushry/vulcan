@@ -37,6 +37,8 @@ function decodePayload(payload: Buffer): unknown {
 
 export function createApiServer(registry = new GuestSessionRegistry(), model: Model = async () => ({ elements: [] }), store: BoardStore = new InMemoryBoardStore(), limits: ApiLimitOptions = {}): Server {
   const generationBoards = new Map<string, string>();
+  const workspaces = new Map<string, { id: string; name: string; owners: Set<string> }>();
+  const boards = new Map<string, { id: string; workspaceId: string; title: string }>();
   const generations = new AiGenerationService(model);
   const clock = limits.clock ?? (() => Date.now());
   const sourceLimiter = new FixedWindowLimiter(clock);
@@ -60,6 +62,7 @@ export function createApiServer(registry = new GuestSessionRegistry(), model: Mo
       const shareLinksMatch = request.url?.match(/^\/v1\/boards\/([^/]+)\/share-links$/);
       const snapshotMatch = request.url?.match(/^\/v1\/boards\/([^/]+)\/snapshot$/);
       const boardMatch = request.url?.match(/^\/v1\/boards\/([^/]+)$/);
+      const workspaceMatch = request.url?.match(/^\/v1\/workspaces\/([^/]+)$/);
       const generationGet = request.url?.match(/^\/v1\/generations\/([^/]+)$/);
       const accept = request.url?.match(/^\/v1\/generations\/([^/]+)\/accept$/);
       limits.tracer?.record("http.request", {
@@ -67,6 +70,35 @@ export function createApiServer(registry = new GuestSessionRegistry(), model: Mo
         boardId: match?.[1] || request.headers["x-board-id"]?.toString(),
         generationId: accept?.[1],
       });
+      if (request.method === "POST" && request.url === "/v1/workspaces") {
+        const userId = request.headers["x-user-id"]?.toString();
+        if (!userId) return respond(response, 401, { error: "x-user-id required" }, requestId);
+        const input = await body(request);
+        if (typeof input.name !== "string" || !input.name.trim()) return respond(response, 400, { error: "name required" }, requestId);
+        const id = randomUUID();
+        workspaces.set(id, { id, name: input.name.trim(), owners: new Set([userId]) });
+        return respond(response, 201, { id, name: input.name.trim(), role: "owner" }, requestId);
+      }
+      if (request.method === "POST" && request.url === "/v1/boards") {
+        const userId = request.headers["x-user-id"]?.toString();
+        const input = await body(request);
+        const workspaceId = typeof input.workspaceId === "string" ? input.workspaceId : "";
+        const workspace = workspaces.get(workspaceId);
+        if (!userId || !workspace) return respond(response, 404, { error: "workspace not found" }, requestId);
+        if (!workspace.owners.has(userId)) return respond(response, 403, { error: "workspace membership required" }, requestId);
+        if (typeof input.title !== "string" || !input.title.trim()) return respond(response, 400, { error: "title required" }, requestId);
+        const id = randomUUID();
+        boards.set(id, { id, workspaceId, title: input.title.trim() });
+        const token = registry.issue(id, "edit", 24 * 60 * 60, 10_000);
+        return respond(response, 201, { id, workspaceId, title: input.title.trim(), capability: token, role: "owner" }, requestId);
+      }
+      if (request.method === "GET" && workspaceMatch) {
+        const workspace = workspaces.get(workspaceMatch[1]);
+        if (!workspace) return respond(response, 404, { error: "workspace not found" }, requestId);
+        const userId = request.headers["x-user-id"]?.toString();
+        if (!userId || !workspace.owners.has(userId)) return respond(response, 403, { error: "workspace membership required" }, requestId);
+        return respond(response, 200, { id: workspace.id, name: workspace.name, role: "owner" }, requestId);
+      }
       if (request.method === "GET" && (snapshotMatch || boardMatch)) {
         const boardId = (snapshotMatch || boardMatch)?.[1] as string;
         if (!registry.authorize(capability, boardId, "view")) return respond(response, 403, { error: "view capability required" }, requestId);
