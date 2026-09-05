@@ -39,6 +39,7 @@ export function createApiServer(registry = new GuestSessionRegistry(), model: Mo
   const generationBoards = new Map<string, string>();
   const generations = new AiGenerationService(model);
   const clock = limits.clock ?? (() => Date.now());
+  const sourceLimiter = new FixedWindowLimiter(clock);
   const requestLimiter = new FixedWindowLimiter(clock);
   const writeLimiter = new FixedWindowLimiter(clock);
   const requestsPerWindow = limits.requestsPerWindow ?? 60;
@@ -51,6 +52,8 @@ export function createApiServer(registry = new GuestSessionRegistry(), model: Mo
       if (request.method === "GET" && request.url === "/healthz") return respond(response, 200, { status: "ok" }, requestId);
       if (request.method === "GET" && request.url === "/readyz") return respond(response, 200, { status: "ready" }, requestId);
       const capability = request.headers["x-capability"]?.toString() || "";
+      const sourceKey = `ip:${request.socket.remoteAddress || "anonymous"}`;
+      if (!sourceLimiter.allow(sourceKey, requestsPerWindow, requestWindowMs)) return respond(response, 429, { error: "request rate limit exceeded" }, requestId);
       const principalKey = capability ? `cap:${hashShareSecret(capability)}` : `ip:${request.socket.remoteAddress || "anonymous"}`;
       if (!requestLimiter.allow(principalKey, requestsPerWindow, requestWindowMs)) return respond(response, 429, { error: "request rate limit exceeded" }, requestId);
       const match = request.url?.match(/^\/v1\/boards\/([^/]+)\/updates$/);
