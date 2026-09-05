@@ -206,7 +206,8 @@ export function createApiServer(registry = new GuestSessionRegistry(), model: Mo
       respond(response, 404, { error: "not found" }, requestId);
     } catch (error) {
       if (error instanceof RequestBodyTooLarge) return respond(response, 413, { error: "request body too large" }, requestId);
-      respond(response, 400, { error: "invalid request" }, requestId);
+      if (error instanceof SyntaxError) return respond(response, 400, { error: "invalid request" }, requestId);
+      respond(response, 500, { error: "internal server error" }, requestId);
     }
   });
 }
