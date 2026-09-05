@@ -62,4 +62,9 @@ jobs:
         working-directory: frontend
       - run: npm run build
         working-directory: frontend
+      - run: npm run start -- -p 3100 > /tmp/vulcan-frontend.log 2>&1 &
+        working-directory: frontend
+      - run: node scripts/frontend-smoke.mjs
+        env:
+          FRONTEND_URL: http://127.0.0.1:3100
       - run: npm run smoke:compose
