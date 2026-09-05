@@ -15,6 +15,27 @@ test("API exposes health and rejects unauthorized board writes", async () => {
   server.close();
 });
 
+test("API creates workspaces and server-authorized boards", async () => {
+  const server = createApiServer();
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+  const address = server.address();
+  assert.equal(typeof address === "object" && address ? true : false, true);
+  const base = `http://127.0.0.1:${(address as { port: number }).port}`;
+  const headers = { "content-type": "application/json", "x-user-id": "user-1" };
+  const createdWorkspace = await fetch(`${base}/v1/workspaces`, { method: "POST", headers, body: JSON.stringify({ name: "Design" }) });
+  assert.equal(createdWorkspace.status, 201);
+  const workspace = await createdWorkspace.json() as { id: string };
+  const denied = await fetch(`${base}/v1/boards`, { method: "POST", headers: { ...headers, "x-user-id": "user-2" }, body: JSON.stringify({ workspaceId: workspace.id, title: "Roadmap" }) });
+  assert.equal(denied.status, 403);
+  const createdBoard = await fetch(`${base}/v1/boards`, { method: "POST", headers, body: JSON.stringify({ workspaceId: workspace.id, title: "Roadmap" }) });
+  assert.equal(createdBoard.status, 201);
+  const board = await createdBoard.json() as { id: string; capability: string };
+  assert.equal(typeof board.capability, "string");
+  const loaded = await fetch(`${base}/v1/boards/${board.id}`, { headers: { "x-capability": board.capability } });
+  assert.equal(loaded.status, 200);
+  await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+});
+
 test("API persists authorized updates before acknowledging and is idempotent", async () => {
   const server = createApiServer();
   await new Promise<void>((resolve) => server.listen(0, resolve));
