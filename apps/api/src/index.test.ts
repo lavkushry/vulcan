@@ -97,6 +97,25 @@ test("API enforces injectable request and board-write rate limits", async () => 
   server.close();
 });
 
+test("API applies request limits to the source even when capabilities rotate", async () => {
+  let now = 0;
+  const registry = new GuestSessionRegistry();
+  const first = registry.issue("b1", "view", 60, 0);
+  const second = registry.issue("b1", "view", 60, 0);
+  const server = createApiServer(registry, undefined, undefined, { clock: () => now, requestsPerWindow: 2, requestWindowMs: 1_000 });
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("server did not bind");
+  const url = `http://127.0.0.1:${address.port}/v1/boards/b1`;
+  const read = (token: string) => fetch(url, { headers: { "x-capability": token } });
+  assert.equal((await read(first)).status, 200);
+  assert.equal((await read(second)).status, 200);
+  assert.equal((await read(first)).status, 429);
+  now = 1_000;
+  assert.equal((await read(second)).status, 200);
+  server.close();
+});
+
 test("API records correlated request, board, operation, and generation IDs", async () => {
   const tracer = new InMemoryTracer();
   const registry = new GuestSessionRegistry();
