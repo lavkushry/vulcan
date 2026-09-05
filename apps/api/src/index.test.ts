@@ -46,6 +46,24 @@ test("API creates workspaces and server-authorized boards", async () => {
   await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
 });
 
+test("API makes workspace and board creation idempotent", async () => {
+  const server = createApiServer();
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("server did not bind");
+  const base = `http://127.0.0.1:${address.port}`;
+  const workspaceHeaders = { "content-type": "application/json", "x-user-id": "u1", "idempotency-key": "workspace-key" };
+  const firstWorkspace = await fetch(`${base}/v1/workspaces`, { method: "POST", headers: workspaceHeaders, body: JSON.stringify({ name: "Design" }) });
+  const secondWorkspace = await fetch(`${base}/v1/workspaces`, { method: "POST", headers: workspaceHeaders, body: JSON.stringify({ name: "Design" }) });
+  assert.equal(firstWorkspace.status, 201); assert.equal(secondWorkspace.status, 200);
+  const workspace = await firstWorkspace.json() as { id: string };
+  const boardHeaders = { "content-type": "application/json", "x-user-id": "u1", "idempotency-key": "board-key" };
+  const firstBoard = await fetch(`${base}/v1/boards`, { method: "POST", headers: boardHeaders, body: JSON.stringify({ workspaceId: workspace.id, title: "Roadmap" }) });
+  const secondBoard = await fetch(`${base}/v1/boards`, { method: "POST", headers: boardHeaders, body: JSON.stringify({ workspaceId: workspace.id, title: "Roadmap" }) });
+  assert.equal(firstBoard.status, 201); assert.equal(secondBoard.status, 200);
+  await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+});
+
 test("API persists authorized updates before acknowledging and is idempotent", async () => {
   const server = createApiServer();
   await new Promise<void>((resolve) => server.listen(0, resolve));

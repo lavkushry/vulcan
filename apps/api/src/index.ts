@@ -47,6 +47,7 @@ function decodePayload(payload: Buffer): unknown {
 
 export function createApiServer(registry = new GuestSessionRegistry(), model: Model = async () => ({ elements: [] }), store: BoardStore = new InMemoryBoardStore(), limits: ApiLimitOptions = {}, identityStore: IdentityStore = new InMemoryIdentityStore()): Server {
   const generationBoards = new Map<string, string>();
+  const creationIdempotency = new Map<string, { fingerprint: string; value: unknown }>();
   const generations = new AiGenerationService(model);
   const clock = limits.clock ?? (() => Date.now());
   const sourceLimiter = new FixedWindowLimiter(clock);
@@ -84,8 +85,17 @@ export function createApiServer(registry = new GuestSessionRegistry(), model: Mo
         if (!userId) return respond(response, 401, { error: "x-user-id required" }, requestId);
         const input = await body(request);
         if (typeof input.name !== "string" || !input.name.trim()) return respond(response, 400, { error: "name required" }, requestId);
+        const idempotencyKey = request.headers["idempotency-key"]?.toString();
+        const fingerprint = JSON.stringify({ userId, name: input.name.trim() });
+        if (idempotencyKey) {
+          const prior = creationIdempotency.get(`workspace:${idempotencyKey}`);
+          if (prior && prior.fingerprint !== fingerprint) return respond(response, 409, { error: "idempotency conflict" }, requestId);
+          if (prior) return respond(response, 200, prior.value, requestId);
+        }
         const workspace = await identityStore.createWorkspace(input.name.trim(), userId);
-        return respond(response, 201, { ...workspace, role: "owner" }, requestId);
+        const value = { ...workspace, role: "owner" };
+        if (idempotencyKey) creationIdempotency.set(`workspace:${idempotencyKey}`, { fingerprint, value });
+        return respond(response, 201, value, requestId);
       }
       if (request.method === "POST" && request.url === "/v1/boards") {
         const userId = request.headers["x-user-id"]?.toString();
@@ -93,10 +103,19 @@ export function createApiServer(registry = new GuestSessionRegistry(), model: Mo
         const workspaceId = typeof input.workspaceId === "string" ? input.workspaceId : "";
         if (!userId) return respond(response, 401, { error: "x-user-id required" }, requestId);
         if (typeof input.title !== "string" || !input.title.trim()) return respond(response, 400, { error: "title required" }, requestId);
+        const idempotencyKey = request.headers["idempotency-key"]?.toString();
+        const fingerprint = JSON.stringify({ userId, workspaceId, title: input.title.trim() });
+        if (idempotencyKey) {
+          const prior = creationIdempotency.get(`board:${idempotencyKey}`);
+          if (prior && prior.fingerprint !== fingerprint) return respond(response, 409, { error: "idempotency conflict" }, requestId);
+          if (prior) return respond(response, 200, prior.value, requestId);
+        }
         const board = await identityStore.createBoard(workspaceId, input.title.trim(), userId);
         if (!board) return respond(response, 403, { error: "workspace membership required" }, requestId);
         const token = registry.issue(board.id, "edit", 24 * 60 * 60, 10_000);
-        return respond(response, 201, { ...board, capability: token, role: "owner" }, requestId);
+        const value = { ...board, capability: token, role: "owner" };
+        if (idempotencyKey) creationIdempotency.set(`board:${idempotencyKey}`, { fingerprint, value });
+        return respond(response, 201, value, requestId);
       }
       if (request.method === "GET" && workspaceMatch) {
         const userId = request.headers["x-user-id"]?.toString();
