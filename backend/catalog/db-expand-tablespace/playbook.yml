@@ -1,0 +1,21 @@
+---
+# Project Vulcan: Seed Playbook - Database Tablespace Expansion
+- name: Expand Oracle/PostgreSQL Tablespace Disk
+  hosts: "{{ target_host | default('all') }}"
+  gather_facts: true
+  tasks:
+    - name: Verify available storage pool capacity
+      ansible.builtin.command:
+        cmd: "vgs --noheadings -o vg_free {{ vg_name | default('vg_data') }}"
+      register: vg_free
+
+    - name: Extend LVM logical volume online
+      community.general.lvextend:
+        lv: "lv_{{ tablespace_name | lower }}"
+        vg: "{{ vg_name | default('vg_data') }}"
+        size: "+{{ expand_gb }}G"
+        resizefs: true
+
+    - name: Resize underlying filesystem
+      ansible.builtin.command:
+        cmd: "xfs_growfs /u01/app/oracle/oradata"

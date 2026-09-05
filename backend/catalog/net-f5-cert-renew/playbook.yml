@@ -1,0 +1,30 @@
+---
+# Project Vulcan: Seed Playbook - F5 BIG-IP SSL Certificate Renewal
+- name: Renew F5 SSL Certificate
+  hosts: "{{ target_host | default('all') }}"
+  gather_facts: true
+  tasks:
+    - name: Validate existing certificate expiration
+      f5networks.f5_modules.bigip_ssl_certificate_info:
+        name: "{{ hostname }}"
+      register: cert_info
+
+    - name: Generate 4096-bit RSA Private Key
+      community.crypto.openssl_privatekey:
+        path: "/dev/shm/{{ hostname }}.key"
+        size: 4096
+        type: RSA
+
+    - name: Generate Certificate Signing Request (CSR)
+      community.crypto.openssl_csr:
+        path: "/dev/shm/{{ hostname }}.csr"
+        privatekey_path: "/dev/shm/{{ hostname }}.key"
+        common_name: "{{ hostname }}"
+
+    - name: Bind new SSL certificate to Client Profile
+      f5networks.f5_modules.bigip_profile_client_ssl:
+        name: "clientssl-{{ hostname }}"
+        cert_key_chain:
+          - cert: "{{ hostname }}.crt"
+            key: "{{ hostname }}.key"
+        state: present

@@ -1,0 +1,30 @@
+---
+# Project Vulcan: Seed Playbook - 10GB OS Kernel Patching & Hardening
+- name: Apply Enterprise Linux Kernel Patching with 10GB Artifact
+  hosts: "{{ target_host | default('all') }}"
+  gather_facts: true
+  tasks:
+    - name: Verify 10GB Local Golden ISO Checksum
+      ansible.builtin.stat:
+        path: "/var/cache/vulcan/rhel-9-hardened.iso"
+        checksum_algorithm: sha256
+      register: iso_stat
+      failed_when: iso_stat.stat.checksum != expected_sha256
+
+    - name: Mount ISO image loopback
+      ansible.posix.mount:
+        path: "/mnt/iso_repo"
+        src: "/var/cache/vulcan/rhel-9-hardened.iso"
+        fstype: iso9660
+        opts: ro,loop
+        state: mounted
+
+    - name: Update kernel packages from mounted repository
+      ansible.builtin.dnf:
+        name:
+          - kernel
+          - kernel-core
+          - kernel-modules
+        state: latest
+        disablerepo: "*"
+        enablerepo: "iso-local-repo"
