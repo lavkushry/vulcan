@@ -8,6 +8,7 @@ export function createSyncServer(registry: GuestSessionRegistry, stream: BoardSt
   const wss = new WebSocketServer({ server });
   const peers = new Map<string, Set<WebSocket>>();
   const operations = new Map<string, Map<string, { payload: string; sequence: number }>>();
+  const boardTails = new Map<string, Promise<void>>();
   wss.on("connection", (socket: WebSocket, request) => {
     const url = new URL(request.url || "/", "http://localhost");
     const boardId = url.pathname.match(/^\/boards\/([^/]+)$/)?.[1] || "";
@@ -17,8 +18,9 @@ export function createSyncServer(registry: GuestSessionRegistry, stream: BoardSt
     boardPeers.add(socket);
     peers.set(boardId, boardPeers);
     socket.on("close", () => { boardPeers.delete(socket); if (boardPeers.size === 0) peers.delete(boardId); });
-    const after = Number(url.searchParams.get("after") || 0);
-    if (Number.isInteger(after) && after >= 0) {
+    const afterParam = url.searchParams.get("after") || "0";
+    const after = /^\d+(?:-\d+)?$/.test(afterParam) ? (afterParam.includes("-") ? afterParam : Number(afterParam)) : 0;
+    if (after === 0 || typeof after === "number" || typeof after === "string") {
       void stream.replay(boardId, after).then((events) => {
         for (const event of events) {
           if (socket.readyState !== socket.OPEN) break;
@@ -27,9 +29,10 @@ export function createSyncServer(registry: GuestSessionRegistry, stream: BoardSt
             socket.send(JSON.stringify({ type: "op", sequence: event.id, operationId: operation.operationId, payload: operation.payload }));
           } catch { socket.send(JSON.stringify({ type: "error", code: "corrupt_replay" })); }
         }
-      });
+      }).catch(() => { if (socket.readyState === socket.OPEN) socket.send(JSON.stringify({ type: "error", code: "replay_unavailable" })); });
     }
-    socket.on("message", async (raw) => {
+    socket.on("message", (raw) => {
+      const processMessage = async (): Promise<void> => {
       try {
         const input = JSON.parse(raw.toString()) as { type?: string; operationId?: string; payload?: unknown };
         if (input.type !== "op" || !input.operationId) { socket.send(JSON.stringify({ type: "error", code: "invalid_operation" })); return; }
@@ -52,6 +55,11 @@ export function createSyncServer(registry: GuestSessionRegistry, stream: BoardSt
         const message = JSON.stringify({ type: "op", sequence: event.id, operationId: input.operationId, payload: input.payload });
         for (const peer of boardPeers) if (peer !== socket && peer.readyState === peer.OPEN) peer.send(message);
       } catch { socket.send(JSON.stringify({ type: "error", code: "invalid_message" })); }
+      };
+      const previous = boardTails.get(boardId) ?? Promise.resolve();
+      const current = previous.then(processMessage, processMessage);
+      boardTails.set(boardId, current);
+      void current.finally(() => { if (boardTails.get(boardId) === current) boardTails.delete(boardId); }).catch(() => undefined);
     });
   });
   return server;
