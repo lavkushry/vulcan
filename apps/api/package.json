@@ -1,0 +1,7 @@
+{
+  "name": "@vulcan/api",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": { "build": "tsc -p tsconfig.json", "typecheck": "tsc -p tsconfig.json --noEmit", "test": "npm run build && node --test dist/index.test.js", "start": "node dist/main.js" },
+  "dependencies": { "@vulcan/domain": "0.1.0", "@vulcan/contracts": "0.1.0" }
+}

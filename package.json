@@ -1,0 +1,26 @@
+{
+  "name": "vulcan-whiteboard",
+  "private": true,
+  "packageManager": "npm@10.9.8",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "test": "npm run build -w @vulcan/domain && npm run build -w @vulcan/sync && npm run build -w @vulcan/api && npm run build -w @vulcan/worker && node --test packages/domain/dist/*.test.js apps/sync/dist/index.test.js apps/api/dist/index.test.js apps/worker/dist/index.test.js",
+    "typecheck": "npm run typecheck --workspaces",
+    "lint": "npm run typecheck",
+    "smoke:compose": "docker compose -f deploy/docker-compose.yml config --quiet && docker compose -f deploy/whiteboard-compose.yml config --quiet",
+    "smoke:postgres": "npm run build -w @vulcan/domain && node scripts/postgres-smoke.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.2",
+    "yjs": "^13.6.20",
+    "zod": "^3.24.1"
+  },
+  "dependencies": {
+    "pg": "^8.16.3"
+  }
+}
