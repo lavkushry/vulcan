@@ -3,9 +3,18 @@ import test from "node:test";
 import { performance } from "node:perf_hooks";
 import * as Y from "yjs";
 import { BoardSession, InMemoryBoardStream, RedisBoardStream, type BoardStream } from "./index.js";
-import { createSyncServer } from "./server.js";
+import { createSyncServer, sendBounded } from "./server.js";
 import { GuestSessionRegistry } from "@vulcan/domain";
 import WebSocket from "ws";
+
+test("sync outbound sends enforce the 5 MiB queue bound", () => {
+  const sent: string[] = []; let closed: [number, string] | undefined;
+  const socket = { bufferedAmount: 5 * 1024 * 1024, send: (message: string) => sent.push(message), close: (code: number, reason: string) => { closed = [code, reason]; } };
+  assert.equal(sendBounded(socket, "x", "presence"), false);
+  assert.equal(sent.length, 0);
+  assert.equal(sendBounded(socket, "x", "ops"), false);
+  assert.deepEqual(closed, [1013, "backpressure"]);
+});
 
 test("board sessions converge Yjs updates and expose ordinary elements", () => {
   const first = new BoardSession("b1");
