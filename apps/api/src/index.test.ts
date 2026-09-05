@@ -15,6 +15,16 @@ test("API exposes health and rejects unauthorized board writes", async () => {
   server.close();
 });
 
+test("API rejects request bodies larger than 1 MiB", async () => {
+  const server = createApiServer();
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("server did not bind");
+  const response = await fetch(`http://127.0.0.1:${address.port}/v1/workspaces`, { method: "POST", headers: { "content-type": "application/json", "x-user-id": "u1" }, body: JSON.stringify({ name: "x".repeat(1_048_577) }) });
+  assert.equal(response.status, 413);
+  await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+});
+
 test("API creates workspaces and server-authorized boards", async () => {
   const server = createApiServer();
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
