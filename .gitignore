@@ -99,3 +99,5 @@ backend/data/tfplan/*
 *.tmp
 *.log
 backend/data/*.jsonl
+data/
+*.jsonl
