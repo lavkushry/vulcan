@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { GenerationQueue, RedisGenerationJobTransport } from "./index.js";
+import { GenerationQueue, RedisGenerationJobTransport, RedisGenerationWorker } from "./index.js";
 
 test("worker queue is idempotent and delegates validated generation", async () => {
   let calls = 0;
@@ -42,4 +42,20 @@ test("Redis generation transport releases a claim when stream enqueue fails", as
   await assert.rejects(() => transport.enqueue(job), /redis unavailable/);
   assert.deepEqual(await transport.enqueue(job), { status: "queued", id: "10-0", duplicate: false });
   assert.deepEqual(calls, ["del:vulcan:generation:g2", "hset"]);
+});
+
+test("Redis generation worker consumes jobs, updates status, and acknowledges", async () => {
+  const states: Array<[string, Record<string, string>]> = [];
+  const acks: string[] = [];
+  const client = {
+    async set() { return "OK" as const; }, async xAdd() { return "1-0"; }, async del() { return 1; },
+    async hSet(key: string, fields: Record<string, string>) { states.push([key, fields]); },
+    async xRead() { return [{ messages: [{ id: "1-0", message: { data: JSON.stringify({ generationId: "g1", context: "ctx", prompt: "draw" }) } }] }]; },
+    async xAck(_key: string, _group: string, id: string) { acks.push(id); return 1; },
+  };
+  const queue = new GenerationQueue(async () => ({ elements: [{ id: "e1", kind: "text" }] }));
+  const worker = new RedisGenerationWorker(client, queue);
+  assert.equal(await worker.processOnce(), 1);
+  assert.deepEqual(states.map(([, fields]) => fields.status), ["streaming", "ready"]);
+  assert.deepEqual(acks, ["1-0"]);
 });
