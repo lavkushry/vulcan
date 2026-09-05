@@ -27,6 +27,7 @@ services:
       dockerfile: apps/api/Dockerfile
     environment:
       PORT: 8080
+      DATABASE_URL: postgres://vulcan:vulcan_local_only@postgres:5432/vulcan
     ports: ["8080:8080"]
     depends_on:
       postgres: { condition: service_healthy }
