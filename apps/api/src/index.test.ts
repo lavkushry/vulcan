@@ -81,7 +81,9 @@ test("API persists authorized updates before acknowledging and is idempotent", a
   const authorizedUrl = `http://127.0.0.1:${bound.port}/v1/boards/b1/updates`;
   assert.equal((await fetch(authorizedUrl, init)).status, 201);
   assert.equal((await fetch(authorizedUrl, init)).status, 200);
-  assert.equal((await fetch(authorizedUrl, { ...init, body: JSON.stringify({ operationId: "o2", payload: { id: "e2", kind: "text" } }) })).status, 429);
+  const limited = await fetch(authorizedUrl, { ...init, body: JSON.stringify({ operationId: "o2", payload: { id: "e2", kind: "text" } }) });
+  assert.equal(limited.status, 429);
+  assert.equal(limited.headers.get("retry-after"), "1");
   authorizedServer.close();
 });
 

@@ -33,6 +33,7 @@ function respond(response: ServerResponse, status: number, value: unknown, reque
   response.statusCode = status;
   response.setHeader("content-type", "application/json");
   response.setHeader("x-request-id", requestId);
+  if (status === 429) response.setHeader("retry-after", "1");
   if (status >= 400 && value && typeof value === "object" && typeof (value as { error?: unknown }).error === "string") {
     const message = (value as { error: string }).error;
     value = { error: { code: `http_${status}`, message, requestId, retryable: status >= 500 } };
