@@ -1,6 +1,6 @@
 import { createApiServer } from "./index.js";
 import pg from "pg";
-import { PostgresBoardStore } from "@vulcan/domain";
+import { PostgresBoardStore, PostgresIdentityStore } from "@vulcan/domain";
 import { readFile } from "node:fs/promises";
 
 const port = Number(process.env.PORT || 8080);
@@ -12,5 +12,5 @@ if (client) {
     await client.query(await readFile(migration, "utf8"));
   }
 }
-const server = createApiServer(undefined, undefined, client ? new PostgresBoardStore(client) : undefined);
+const server = createApiServer(undefined, undefined, client ? new PostgresBoardStore(client) : undefined, {}, client ? new PostgresIdentityStore(client) : undefined);
 server.listen(port, "0.0.0.0", () => process.stdout.write(`vulcan-api listening on ${port}${client ? " with PostgreSQL" : " with in-memory storage"}\n`));
