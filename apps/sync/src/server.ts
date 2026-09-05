@@ -3,6 +3,17 @@ import { WebSocketServer, type WebSocket } from "ws";
 import { GuestSessionRegistry } from "@vulcan/domain";
 import type { BoardStream } from "./index.js";
 
+const MAX_SOCKET_QUEUE_BYTES = 5 * 1024 * 1024;
+export function sendBounded(socket: Pick<WebSocket, "send" | "close"> & { bufferedAmount: number }, message: string, channel: "ops" | "presence"): boolean {
+  if (socket.bufferedAmount + Buffer.byteLength(message) > MAX_SOCKET_QUEUE_BYTES) {
+    if (channel === "presence") return false;
+    socket.close(1013, "backpressure");
+    return false;
+  }
+  socket.send(message);
+  return true;
+}
+
 export function createSyncServer(registry: GuestSessionRegistry, stream: BoardStream): Server {
   const server = createServer((_request, response) => { response.statusCode = 404; response.end(); });
   const wss = new WebSocketServer({ server });
@@ -26,16 +37,16 @@ export function createSyncServer(registry: GuestSessionRegistry, stream: BoardSt
           if (socket.readyState !== socket.OPEN) break;
           try {
             const operation = JSON.parse(event.data.toString()) as { operationId?: string; payload?: unknown };
-            socket.send(JSON.stringify({ type: "op", sequence: event.id, operationId: operation.operationId, payload: operation.payload }));
-          } catch { socket.send(JSON.stringify({ type: "error", code: "corrupt_replay" })); }
+            sendBounded(socket, JSON.stringify({ type: "op", sequence: event.id, operationId: operation.operationId, payload: operation.payload }), "ops");
+          } catch { sendBounded(socket, JSON.stringify({ type: "error", code: "corrupt_replay" }), "ops"); }
         }
-      }).catch(() => { if (socket.readyState === socket.OPEN) socket.send(JSON.stringify({ type: "error", code: "replay_unavailable" })); });
+      }).catch(() => { if (socket.readyState === socket.OPEN) sendBounded(socket, JSON.stringify({ type: "error", code: "replay_unavailable" }), "ops"); });
     }
     socket.on("message", (raw) => {
       const processMessage = async (): Promise<void> => {
       try {
         const input = JSON.parse(raw.toString()) as { type?: string; operationId?: string; payload?: unknown };
-        if (input.type !== "op" || !input.operationId) { socket.send(JSON.stringify({ type: "error", code: "invalid_operation" })); return; }
+        if (input.type !== "op" || !input.operationId) { sendBounded(socket, JSON.stringify({ type: "error", code: "invalid_operation" }), "ops"); return; }
         const boardOperations = operations.get(boardId) ?? new Map<string, { payload: string; sequence: number }>();
         operations.set(boardId, boardOperations);
         const payload = JSON.stringify(input.payload);
@@ -43,18 +54,18 @@ export function createSyncServer(registry: GuestSessionRegistry, stream: BoardSt
         const persisted = prior ? undefined : await stream.findOperation(boardId, input.operationId);
         const existing = prior ?? (persisted ? { payload: JSON.stringify((JSON.parse(persisted.data.toString()) as { payload?: unknown }).payload), sequence: persisted.id } : undefined);
         if (existing) {
-          if (existing.payload !== payload) { socket.send(JSON.stringify({ type: "error", code: "idempotency_conflict" })); return; }
+          if (existing.payload !== payload) { sendBounded(socket, JSON.stringify({ type: "error", code: "idempotency_conflict" }), "ops"); return; }
           boardOperations.set(input.operationId, existing);
-          socket.send(JSON.stringify({ type: "ack", sequence: existing.sequence, operationId: input.operationId }));
+          sendBounded(socket, JSON.stringify({ type: "ack", sequence: existing.sequence, operationId: input.operationId }), "ops");
           return;
         }
-        if (!registry.consumeWrite(capability)) { socket.send(JSON.stringify({ type: "error", code: "quota_exceeded" })); return; }
+        if (!registry.consumeWrite(capability)) { sendBounded(socket, JSON.stringify({ type: "error", code: "quota_exceeded" }), "ops"); return; }
         const event = await stream.append(boardId, Buffer.from(JSON.stringify({ operationId: input.operationId, payload: input.payload })));
         boardOperations.set(input.operationId, { payload, sequence: event.id });
-        socket.send(JSON.stringify({ type: "ack", sequence: event.id, operationId: input.operationId }));
+        sendBounded(socket, JSON.stringify({ type: "ack", sequence: event.id, operationId: input.operationId }), "ops");
         const message = JSON.stringify({ type: "op", sequence: event.id, operationId: input.operationId, payload: input.payload });
-        for (const peer of boardPeers) if (peer !== socket && peer.readyState === peer.OPEN) peer.send(message);
-      } catch { socket.send(JSON.stringify({ type: "error", code: "invalid_message" })); }
+        for (const peer of boardPeers) if (peer !== socket && peer.readyState === peer.OPEN) sendBounded(peer, message, "ops");
+      } catch { sendBounded(socket, JSON.stringify({ type: "error", code: "invalid_message" }), "ops"); }
       };
       const previous = boardTails.get(boardId) ?? Promise.resolve();
       const current = previous.then(processMessage, processMessage);
