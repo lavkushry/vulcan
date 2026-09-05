@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { performance } from "node:perf_hooks";
 import * as Y from "yjs";
-import { BoardSession, InMemoryBoardStream, RedisBoardStream } from "./index.js";
+import { BoardSession, InMemoryBoardStream, RedisBoardStream, type BoardStream } from "./index.js";
 import { createSyncServer } from "./server.js";
 import { GuestSessionRegistry } from "@vulcan/domain";
 import WebSocket from "ws";
@@ -51,6 +51,24 @@ test("Redis stream adapter uses a board-scoped key and replays after IDs", async
   assert.equal((await stream.append("b1", Buffer.from("x"))).id, 7);
   assert.equal((await stream.replay("b1", 7))[0].id, 8);
   assert.deepEqual(calls, ["board:b1:ops", "board:b1:ops"]);
+});
+
+test("Redis stream replay preserves entries sharing a millisecond ID", async () => {
+  const client = {
+    async xAdd() { return "7-0"; },
+    async xRange(_key: string, start: string) {
+      assert.equal(start, "7-0");
+      return [
+        { id: "7-0", message: { data: Buffer.from("first").toString("base64") } },
+        { id: "7-1", message: { data: Buffer.from("second").toString("base64") } },
+        { id: "8-0", message: { data: Buffer.from("third").toString("base64") } },
+      ];
+    },
+  };
+  const stream = new RedisBoardStream(client);
+  const replay = await stream.replay("b1", "7-0");
+  assert.deepEqual(replay.map((event) => event.data.toString()), ["second", "third"]);
+  assert.equal(replay[0].streamId, "7-1");
 });
 
 test("WebSocket gateway authorizes, appends before ack, and broadcasts board operations", async () => {
@@ -108,6 +126,53 @@ test("WebSocket gateway makes operation IDs idempotent without consuming duplica
   const conflicting = JSON.parse(await send({ id: "different" })) as { type: string; code?: string };
   assert.equal(conflicting.type, "error");
   assert.equal(conflicting.code, "idempotency_conflict");
+  socket.close();
+  server.close();
+});
+
+test("WebSocket gateway serializes concurrent duplicate operations per board", async () => {
+  const registry = new GuestSessionRegistry();
+  const token = registry.issue("b1", "edit", 60, 2);
+  let appends = 0;
+  const stream: BoardStream = {
+    async append(boardId, data) { appends += 1; await new Promise((resolve) => setTimeout(resolve, 15)); return { id: appends, boardId, data }; },
+    async replay() { return []; },
+    async findOperation() { return undefined; },
+  };
+  const server = createSyncServer(registry, stream);
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("server did not bind");
+  const socket = new WebSocket(`ws://127.0.0.1:${address.port}/boards/b1?capability=${encodeURIComponent(token)}`);
+  await new Promise<void>((resolve) => socket.on("open", () => resolve()));
+  const messages: string[] = [];
+  socket.on("message", (data) => messages.push(data.toString()));
+  const operation = JSON.stringify({ type: "op", operationId: "same", payload: { id: "e1" } });
+  socket.send(operation);
+  socket.send(operation);
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  assert.equal(appends, 1);
+  assert.equal(messages.filter((message) => message.includes('"type":"ack"')).length, 2);
+  socket.close();
+  server.close();
+});
+
+test("WebSocket gateway reports replay backend failures to the connection", async () => {
+  const registry = new GuestSessionRegistry();
+  const token = registry.issue("b1", "edit", 60, 1);
+  const stream: BoardStream = {
+    async append(boardId, data) { return { id: 1, boardId, data }; },
+    async replay() { throw new Error("redis unavailable"); },
+    async findOperation() { return undefined; },
+  };
+  const server = createSyncServer(registry, stream);
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("server did not bind");
+  const socket = new WebSocket(`ws://127.0.0.1:${address.port}/boards/b1?capability=${encodeURIComponent(token)}&after=1`);
+  const message = new Promise<string>((resolve) => socket.on("message", (data) => resolve(data.toString())));
+  await new Promise<void>((resolve) => socket.on("open", () => resolve()));
+  assert.match(await message, /replay_unavailable/);
   socket.close();
   server.close();
 });

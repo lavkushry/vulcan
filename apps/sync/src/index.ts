@@ -16,8 +16,8 @@ export class BoardSession {
   elements(): BoardElement[] { return Array.from(this.elementsMap.values()).sort((a, b) => a.id.localeCompare(b.id)); }
 }
 
-export type StreamEvent = { id: number; boardId: string; data: Buffer };
-export interface BoardStream { append(boardId: string, data: Buffer): Promise<StreamEvent>; replay(boardId: string, afterId: number): Promise<StreamEvent[]>; findOperation(boardId: string, operationId: string): Promise<StreamEvent | undefined>; }
+export type StreamEvent = { id: number; streamId?: string; boardId: string; data: Buffer };
+export interface BoardStream { append(boardId: string, data: Buffer): Promise<StreamEvent>; replay(boardId: string, afterId: number | string): Promise<StreamEvent[]>; findOperation(boardId: string, operationId: string): Promise<StreamEvent | undefined>; }
 
 export class InMemoryBoardStream implements BoardStream {
   private readonly events: StreamEvent[] = [];
@@ -26,8 +26,9 @@ export class InMemoryBoardStream implements BoardStream {
     this.events.push(event);
     return event;
   }
-  async replay(boardId: string, afterId: number): Promise<StreamEvent[]> {
-    return this.events.filter((event) => event.boardId === boardId && event.id > afterId);
+  async replay(boardId: string, afterId: number | string): Promise<StreamEvent[]> {
+    const afterSequence = typeof afterId === "number" ? afterId : Number(afterId.split("-")[0]);
+    return this.events.filter((event) => event.boardId === boardId && event.id > afterSequence);
   }
   async findOperation(boardId: string, operationId: string): Promise<StreamEvent | undefined> {
     return this.events.find((event) => {
@@ -47,20 +48,27 @@ export class RedisBoardStream implements BoardStream {
   constructor(private readonly client: RedisClient) {}
   async append(boardId: string, data: Buffer): Promise<StreamEvent> {
     const id = await this.client.xAdd(`board:${boardId}:ops`, "*", { data: data.toString("base64") });
-    return { id: Number(id.split("-")[0]), boardId, data: Buffer.from(data) };
+    return { id: Number(id.split("-")[0]), streamId: id, boardId, data: Buffer.from(data) };
   }
-  async replay(boardId: string, afterId: number): Promise<StreamEvent[]> {
-    const rows = await this.client.xRange(`board:${boardId}:ops`, `${afterId + 1}-0`, "+");
-    return rows.map((row) => ({ id: Number(row.id.split("-")[0]), boardId, data: Buffer.from(row.message.data, "base64") }));
+  async replay(boardId: string, afterId: number | string): Promise<StreamEvent[]> {
+    const cursor = typeof afterId === "string" ? afterId : `${afterId}-0`;
+    const rows = await this.client.xRange(`board:${boardId}:ops`, cursor, "+");
+    return rows.filter((row) => compareRedisIds(row.id, cursor) > 0).map((row) => ({ id: Number(row.id.split("-")[0]), streamId: row.id, boardId, data: Buffer.from(row.message.data, "base64") }));
   }
   async findOperation(boardId: string, operationId: string): Promise<StreamEvent | undefined> {
     const rows = await this.client.xRange(`board:${boardId}:ops`, "-", "+");
     for (const row of rows) {
       const data = Buffer.from(row.message.data, "base64");
       try {
-        if ((JSON.parse(data.toString()) as { operationId?: string }).operationId === operationId) return { id: Number(row.id.split("-")[0]), boardId, data };
+        if ((JSON.parse(data.toString()) as { operationId?: string }).operationId === operationId) return { id: Number(row.id.split("-")[0]), streamId: row.id, boardId, data };
       } catch { /* corrupt entries are reported during replay */ }
     }
     return undefined;
   }
+}
+
+function compareRedisIds(left: string, right: string): number {
+  const [leftMs, leftSeq] = left.split("-").map(Number);
+  const [rightMs, rightSeq] = right.split("-").map(Number);
+  return leftMs - rightMs || leftSeq - rightSeq;
 }
