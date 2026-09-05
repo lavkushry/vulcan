@@ -48,6 +48,7 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
       - run: npm ci
+      - run: npm run build -w @vulcan/domain
       - run: npm run typecheck
       - run: npm run lint
       - run: npm test
