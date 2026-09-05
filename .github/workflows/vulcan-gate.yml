@@ -1,0 +1,65 @@
+name: Vulcan gate
+
+on:
+  push:
+    paths:
+      - 'apps/**'
+      - 'packages/**'
+      - 'frontend/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'migrations/**'
+      - 'deploy/**'
+      - 'scripts/**'
+      - '.github/workflows/vulcan-gate.yml'
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: vulcan
+          POSTGRES_USER: vulcan
+          POSTGRES_PASSWORD: vulcan_local_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U vulcan -d vulcan"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - run: npm run build -w @vulcan/domain
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+      - run: npm run smoke:postgres
+        env:
+          DATABASE_URL: postgres://vulcan:vulcan_local_only@127.0.0.1:5432/vulcan
+      - run: npm ci
+        working-directory: frontend
+      - run: npm run typecheck
+        working-directory: frontend
+      - run: npm run build
+        working-directory: frontend
+      - run: npm run smoke:compose

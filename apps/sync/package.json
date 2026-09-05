@@ -1,0 +1,8 @@
+{
+  "name": "@vulcan/sync",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": { "build": "tsc -p tsconfig.json", "typecheck": "tsc -p tsconfig.json --noEmit", "test": "node --test dist/index.test.js", "start": "node dist/main.js" },
+  "dependencies": { "@vulcan/domain": "0.1.0", "yjs": "^13.6.20", "ws": "^8.18.0" },
+  "devDependencies": { "@types/ws": "^8.5.13" }
+}

@@ -73,6 +73,7 @@ out/
 build/
 dist/
 .turbo/
+*.tsbuildinfo
 
 # Security & Secrets (Strict Zero-Leak Invariant)
 .env
