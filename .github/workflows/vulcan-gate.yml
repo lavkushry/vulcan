@@ -56,6 +56,8 @@ jobs:
       - run: npm run smoke:postgres
         env:
           DATABASE_URL: postgres://vulcan:vulcan_local_only@127.0.0.1:5432/vulcan
+      - run: npm ci
+        working-directory: frontend
       - run: npm run typecheck
         working-directory: frontend
       - run: npm run build
