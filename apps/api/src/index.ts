@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
-import { AiGenerationService, FixedWindowLimiter, GuestSessionRegistry, hashShareSecret, InMemoryBoardStore, type BoardStore, type Tracer } from "@vulcan/domain";
+import { AiGenerationService, FixedWindowLimiter, GuestSessionRegistry, hashShareSecret, InMemoryBoardStore, InMemoryIdentityStore, type BoardStore, type IdentityStore, type Tracer } from "@vulcan/domain";
 
 export const serviceName = "vulcan-api";
 type Model = (context: string, prompt: string, repair: boolean) => Promise<unknown>;
@@ -35,10 +35,8 @@ function decodePayload(payload: Buffer): unknown {
   catch { return { encoding: "base64", value: payload.toString("base64") }; }
 }
 
-export function createApiServer(registry = new GuestSessionRegistry(), model: Model = async () => ({ elements: [] }), store: BoardStore = new InMemoryBoardStore(), limits: ApiLimitOptions = {}): Server {
+export function createApiServer(registry = new GuestSessionRegistry(), model: Model = async () => ({ elements: [] }), store: BoardStore = new InMemoryBoardStore(), limits: ApiLimitOptions = {}, identityStore: IdentityStore = new InMemoryIdentityStore()): Server {
   const generationBoards = new Map<string, string>();
-  const workspaces = new Map<string, { id: string; name: string; owners: Set<string> }>();
-  const boards = new Map<string, { id: string; workspaceId: string; title: string }>();
   const generations = new AiGenerationService(model);
   const clock = limits.clock ?? (() => Date.now());
   const sourceLimiter = new FixedWindowLimiter(clock);
@@ -75,29 +73,26 @@ export function createApiServer(registry = new GuestSessionRegistry(), model: Mo
         if (!userId) return respond(response, 401, { error: "x-user-id required" }, requestId);
         const input = await body(request);
         if (typeof input.name !== "string" || !input.name.trim()) return respond(response, 400, { error: "name required" }, requestId);
-        const id = randomUUID();
-        workspaces.set(id, { id, name: input.name.trim(), owners: new Set([userId]) });
-        return respond(response, 201, { id, name: input.name.trim(), role: "owner" }, requestId);
+        const workspace = await identityStore.createWorkspace(input.name.trim(), userId);
+        return respond(response, 201, { ...workspace, role: "owner" }, requestId);
       }
       if (request.method === "POST" && request.url === "/v1/boards") {
         const userId = request.headers["x-user-id"]?.toString();
         const input = await body(request);
         const workspaceId = typeof input.workspaceId === "string" ? input.workspaceId : "";
-        const workspace = workspaces.get(workspaceId);
-        if (!userId || !workspace) return respond(response, 404, { error: "workspace not found" }, requestId);
-        if (!workspace.owners.has(userId)) return respond(response, 403, { error: "workspace membership required" }, requestId);
+        if (!userId) return respond(response, 401, { error: "x-user-id required" }, requestId);
         if (typeof input.title !== "string" || !input.title.trim()) return respond(response, 400, { error: "title required" }, requestId);
-        const id = randomUUID();
-        boards.set(id, { id, workspaceId, title: input.title.trim() });
-        const token = registry.issue(id, "edit", 24 * 60 * 60, 10_000);
-        return respond(response, 201, { id, workspaceId, title: input.title.trim(), capability: token, role: "owner" }, requestId);
+        const board = await identityStore.createBoard(workspaceId, input.title.trim(), userId);
+        if (!board) return respond(response, 403, { error: "workspace membership required" }, requestId);
+        const token = registry.issue(board.id, "edit", 24 * 60 * 60, 10_000);
+        return respond(response, 201, { ...board, capability: token, role: "owner" }, requestId);
       }
       if (request.method === "GET" && workspaceMatch) {
-        const workspace = workspaces.get(workspaceMatch[1]);
-        if (!workspace) return respond(response, 404, { error: "workspace not found" }, requestId);
         const userId = request.headers["x-user-id"]?.toString();
-        if (!userId || !workspace.owners.has(userId)) return respond(response, 403, { error: "workspace membership required" }, requestId);
-        return respond(response, 200, { id: workspace.id, name: workspace.name, role: "owner" }, requestId);
+        if (!userId) return respond(response, 401, { error: "x-user-id required" }, requestId);
+        const workspace = await identityStore.getWorkspace(workspaceMatch[1], userId);
+        if (!workspace) return respond(response, 403, { error: "workspace membership required" }, requestId);
+        return respond(response, 200, { ...workspace, role: "owner" }, requestId);
       }
       if (request.method === "GET" && (snapshotMatch || boardMatch)) {
         const boardId = (snapshotMatch || boardMatch)?.[1] as string;

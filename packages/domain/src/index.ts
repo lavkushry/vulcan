@@ -1,4 +1,5 @@
 export * from "./board.js";
+export * from "./identity.js";
 export * from "./security.js";
 export * from "./guest-session.js";
 export * from "./persistence.js";
