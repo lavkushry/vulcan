@@ -9,7 +9,7 @@ type Model = (context: string, prompt: string, repair: boolean) => Promise<unkno
 type Commit = (proposal: z.infer<typeof proposalSchema>, generationId: string) => Promise<void>;
 
 export function sanitizeContext(context: string): string {
-  return context.split(/\r?\n/).filter((line) => !/(ignore\s+previous|system\s*:|assistant\s*:)/i.test(line)).join("\n").replace(/(?:sk-[A-Za-z0-9_-]{8,}|Bearer\s+[A-Za-z0-9._-]{8,}|-----BEGIN[^-]+-----[\s\S]*?-----END[^-]+-----)/gi, "[REDACTED]");
+  return context.split(/\r?\n/).filter((line) => !/^\s*(?:ignore\s+previous|system\s*:|assistant\s*:)/i.test(line)).join("\n").replace(/(?:sk-[A-Za-z0-9_-]{8,}|Bearer\s+[A-Za-z0-9._-]{8,}|-----BEGIN[^-]+-----[\s\S]*?-----END[^-]+-----)/gi, "[REDACTED]");
 }
 
 export class AiGenerationService {

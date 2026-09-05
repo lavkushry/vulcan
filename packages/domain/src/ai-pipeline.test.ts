@@ -7,6 +7,7 @@ test("sanitizes untrusted board context and redacts credential-shaped values", (
   assert.equal(clean.includes("ignore previous"), false);
   assert.equal(clean.includes("sk-secret123"), false);
   assert.equal(clean.includes("visible note"), true);
+  assert.equal(sanitizeContext("ecosystem: valid board text").includes("ecosystem"), true);
 });
 
 test("deduplicates generation jobs and returns a validated preview", async () => {

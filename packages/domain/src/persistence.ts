@@ -3,6 +3,7 @@ export type StoredSnapshot = { boardId: string; sequence: number; payload: Buffe
 
 export interface BoardStore {
   append(boardId: string, operationId: string, payload: Buffer): Promise<StoredUpdate>;
+  findOperation(boardId: string, operationId: string): Promise<StoredUpdate | undefined>;
   saveSnapshot(boardId: string, sequence: number, payload: Buffer): Promise<StoredSnapshot>;
   load(boardId: string): Promise<{ snapshot?: StoredSnapshot; updates: StoredUpdate[] }>;
 }
@@ -23,6 +24,9 @@ export class InMemoryBoardStore implements BoardStore {
     list.push(update);
     this.updates.set(boardId, list);
     return update;
+  }
+  async findOperation(boardId: string, operationId: string): Promise<StoredUpdate | undefined> {
+    return (this.updates.get(boardId) ?? []).find((update) => update.operationId === operationId);
   }
   async saveSnapshot(boardId: string, sequence: number, payload: Buffer): Promise<StoredSnapshot> {
     const snapshot = { boardId, sequence, payload: Buffer.from(payload), checksum: createHash("sha256").update(payload).digest("hex") };
@@ -57,6 +61,11 @@ export class PostgresBoardStore implements BoardStore {
       await this.client.query("ROLLBACK");
       throw error;
     }
+  }
+  async findOperation(boardId: string, operationId: string): Promise<StoredUpdate | undefined> {
+    const result = await this.client.query("SELECT sequence, operation_id, payload FROM board_updates WHERE board_id = $1 AND operation_id = $2", [boardId, operationId]);
+    const row = result.rows[0];
+    return row ? { boardId, operationId: String(row.operation_id), sequence: Number(row.sequence), payload: Buffer.from(row.payload as Uint8Array) } : undefined;
   }
   async saveSnapshot(boardId: string, sequence: number, payload: Buffer): Promise<StoredSnapshot> {
     const checksum = createHash("sha256").update(payload).digest("hex");

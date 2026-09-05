@@ -154,3 +154,33 @@ test("API issues scoped expiring share links behind edit authorization", async (
   assert.equal((await fetch(`${base}/v1/boards/b1/share-links`, { method: "POST", headers: { "content-type": "application/json", "x-capability": ownerToken }, body: JSON.stringify({ scope: "view", ttlSeconds: 86_401, writeQuota: 0 }) })).status, 400);
   server.close();
 });
+
+test("API idempotency lookup survives snapshots without consuming quota", async () => {
+  const registry = new GuestSessionRegistry();
+  const token = registry.issue("b1", "edit", 60, 0);
+  const store = new InMemoryBoardStore();
+  await store.append("b1", "o1", Buffer.from(JSON.stringify({ id: "e1" })));
+  await store.saveSnapshot("b1", 1, Buffer.from("snapshot"));
+  const server = createApiServer(registry, undefined, store);
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("server did not bind");
+  const response = await fetch(`http://127.0.0.1:${address.port}/v1/boards/b1/updates`, { method: "POST", headers: { "content-type": "application/json", "x-capability": token }, body: JSON.stringify({ operationId: "o1", payload: { id: "e1" } }) });
+  assert.equal(response.status, 200);
+  server.close();
+});
+
+test("API keeps a generation ID bound to its original board", async () => {
+  const registry = new GuestSessionRegistry();
+  const tokenA = registry.issue("a", "edit", 60, 2);
+  const tokenB = registry.issue("b", "edit", 60, 2);
+  const server = createApiServer(registry, async () => ({ elements: [] }));
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("server did not bind");
+  const base = `http://127.0.0.1:${address.port}/v1/generations`;
+  const make = (token: string, boardId: string) => fetch(base, { method: "POST", headers: { "content-type": "application/json", "x-capability": token, "x-board-id": boardId }, body: JSON.stringify({ generationId: "same", context: "ctx", prompt: "draw" }) });
+  assert.equal((await make(tokenA, "a")).status, 200);
+  assert.equal((await make(tokenB, "b")).status, 409);
+  server.close();
+});

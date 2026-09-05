@@ -23,6 +23,10 @@ function respond(response: ServerResponse, status: number, value: unknown, reque
   response.statusCode = status;
   response.setHeader("content-type", "application/json");
   response.setHeader("x-request-id", requestId);
+  if (status >= 400 && value && typeof value === "object" && typeof (value as { error?: unknown }).error === "string") {
+    const message = (value as { error: string }).error;
+    value = { error: { code: `http_${status}`, message, requestId, retryable: status >= 500 } };
+  }
   response.end(JSON.stringify(value));
 }
 
@@ -58,7 +62,6 @@ export function createApiServer(registry = new GuestSessionRegistry(), model: Mo
       limits.tracer?.record("http.request", {
         requestId,
         boardId: match?.[1] || request.headers["x-board-id"]?.toString(),
-        operationId: match ? undefined : undefined,
         generationId: accept?.[1],
       });
       if (request.method === "GET" && (snapshotMatch || boardMatch)) {
@@ -92,8 +95,7 @@ export function createApiServer(registry = new GuestSessionRegistry(), model: Mo
         if (typeof input.operationId !== "string" || !input.operationId) return respond(response, 400, { error: "operationId required" }, requestId);
         limits.tracer?.record("board.update", { requestId, boardId: match[1], operationId: input.operationId });
         const payload = Buffer.from(JSON.stringify(input.payload));
-        const current = await store.load(match[1]);
-        const existing = current.updates.find((update) => update.operationId === input.operationId);
+        const existing = await store.findOperation(match[1], input.operationId);
         if (existing) {
           if (!existing.payload.equals(payload)) return respond(response, 409, { error: "idempotency conflict" }, requestId);
           return respond(response, 200, { operationId: existing.operationId, payload: JSON.parse(existing.payload.toString()), sequence: existing.sequence }, requestId);
@@ -111,6 +113,8 @@ export function createApiServer(registry = new GuestSessionRegistry(), model: Mo
         const input = await body(request) as { generationId?: string; context?: string; prompt?: string };
         if (typeof input.generationId !== "string" || !input.generationId || typeof input.prompt !== "string" || typeof input.context !== "string") return respond(response, 400, { error: "generationId, context, and prompt required" }, requestId);
         limits.tracer?.record("generation.request", { requestId, boardId, generationId: input.generationId });
+        const priorBoard = generationBoards.get(input.generationId);
+        if (priorBoard && priorBoard !== boardId) return respond(response, 409, { error: "generation ID already belongs to another board" }, requestId);
         generationBoards.set(input.generationId, boardId);
         return respond(response, 200, await generations.generate(input.generationId, input.context, input.prompt), requestId);
       }
