@@ -86,11 +86,12 @@ class IntentResolver:
         r"(?i)\bmkfs\b",
         r"(?i)dd\s+if=/dev",
         r"(?i);\s*(cat\s+/etc/passwd|shutdown|reboot|curl\s+http|wget\s+http)",
+        r"(?i)\bcat\s+/etc/(passwd|shadow|hosts|sudoers)",
         
         # Secret Exfiltration & Information Gathering
         r"(?i)print\s+(the\s+)?(system\s+prompt|hidden\s+instructions|api\s+key|password|secret|creds)",
-        r"(?i)reveal\s+(your\s+)?(instructions|system\s+prompt|secrets|credentials|keys)",
-        r"(?i)dump\s+(database|env|environment|pam|credentials|keys|tokens)",
+        r"(?i)reveal\s+.*(instructions|system\s+prompt|secrets|credentials|keys|tokens)",
+        r"(?i)dump\s+.*(database|env|environment|pam|credentials|keys|tokens|secret)",
         r"(?i)echo\s+\$(AWS|VAULT|CYBERARK|SECRET|TOKEN|PASSWORD)",
         r"(?i)disable\s+(audit|logging|merkle|checks)",
         
@@ -108,6 +109,13 @@ class IntentResolver:
     def __init__(self, catalog: List[CatalogItem], chat_model_provider: Optional[IChatModelProvider] = None):
         self.catalog = catalog
         self.chat_model_provider = chat_model_provider
+        # Precompute search indices for sub-millisecond retrieval across 10,000+ items
+        self._item_tokens: Dict[str, set] = {}
+        self._item_texts: Dict[str, str] = {}
+        for item in self.catalog:
+            full_text = f"{item.identifier} {item.name} {item.playbook_or_module_path} {' '.join(getattr(item, 'tags', []))} {getattr(item, 'description', '')}".lower()
+            self._item_tokens[item.id] = set(re.findall(r"\w+", full_text))
+            self._item_texts[item.id] = f"{item.identifier} {item.name} {getattr(item, 'description', '')}".lower()
 
     def _check_adversarial(self, prompt: str) -> Optional[str]:
         """
@@ -140,10 +148,19 @@ class IntentResolver:
         intersection = query_tokens.intersection(target_tokens)
         return len(intersection) / len(query_tokens)
 
+    def _sparse_bm25_tokens(self, query_tokens: set, item_id: str) -> float:
+        """Fast pre-indexed token set overlap."""
+        if not query_tokens:
+            return 0.0
+        target = self._item_tokens.get(item_id)
+        if not target:
+            return 0.0
+        return len(query_tokens.intersection(target)) / len(query_tokens)
+
     def _dense_similarity_score(self, query: str, item: CatalogItem) -> float:
         """Semantic term alignment score across actions and infrastructure domains."""
         query_lower = query.lower()
-        item_text = f"{item.identifier} {item.name} {getattr(item, 'description', '')}".lower()
+        item_text = self._item_texts.get(item.id, f"{item.identifier} {item.name} {getattr(item, 'description', '')}".lower())
         score = 0.0
 
         # Exact action alignment
@@ -172,21 +189,18 @@ class IntentResolver:
         Two-Stage Reciprocal Rank Fusion (RRF) search combining Dense and Sparse signals.
         Enforces calibrated refusal gate: if dense < 0.35 and sparse == 0.0, returns empty list.
         """
-        dense_scores = {item.id: self._dense_similarity_score(query, item) for item in self.catalog}
-        sparse_scores = {
-            item.id: self._sparse_bm25_score(
-                query,
-                f"{item.identifier} {item.name} {item.playbook_or_module_path} {' '.join(getattr(item, 'tags', []))} {getattr(item, 'description', '')}"
-            )
-            for item in self.catalog
-        }
+        query_lower = query.lower()
+        query_tokens = set(re.findall(r"\w+", query_lower))
+
+        dense_scores = {item.id: self._dense_similarity_score(query_lower, item) for item in self.catalog}
+        sparse_scores = {item.id: self._sparse_bm25_tokens(query_tokens, item.id) for item in self.catalog}
 
         max_dense = max(dense_scores.values()) if dense_scores else 0.0
         max_sparse = max(sparse_scores.values()) if sparse_scores else 0.0
 
         # Calibrated Refusal Gate (BKND-26 / CHAT-06):
-        # Kill the Zero-Score Trap: If query has neither dense semantic alignment nor keyword overlap, refuse.
-        if max_dense < 0.35 and max_sparse <= 0.0:
+        # Kill the Zero-Score Trap: If query has neither dense semantic alignment nor meaningful keyword overlap, refuse.
+        if max_dense < 0.35 and max_sparse < 0.20:
             return []
 
         dense_ranked = sorted(
@@ -246,22 +260,19 @@ class IntentResolver:
 
         # 2b. Semantic Ambivalence Detection & Disambiguation Gate (CHAT-08)
         if not best_item and len(ranked) >= 2:
-            dense_scores = {item.id: self._dense_similarity_score(prompt, item) for item in self.catalog}
-            sparse_scores = {
-                item.id: self._sparse_bm25_score(prompt, f"{item.identifier} {item.name} {item.playbook_or_module_path}")
-                for item in self.catalog
-            }
+            query_lower = prompt.lower()
+            query_tokens = set(re.findall(r"\w+", query_lower))
             cand1, _ = ranked[0]
             cand2, _ = ranked[1]
-            sim1 = dense_scores.get(cand1.id, 0.0) * 0.6 + sparse_scores.get(cand1.id, 0.0) * 0.4
-            sim2 = dense_scores.get(cand2.id, 0.0) * 0.6 + sparse_scores.get(cand2.id, 0.0) * 0.4
+            sim1 = self._dense_similarity_score(query_lower, cand1) * 0.6 + self._sparse_bm25_tokens(query_tokens, cand1.id) * 0.4
+            sim2 = self._dense_similarity_score(query_lower, cand2) * 0.6 + self._sparse_bm25_tokens(query_tokens, cand2.id) * 0.4
             delta_sim = abs(sim1 - sim2)
             
             # If both candidates exhibit significant relevance and difference is under 0.05
-            if sim1 >= 0.30 and sim2 >= 0.30 and delta_sim < 0.05:
+            if sim1 >= 0.25 and sim2 >= 0.25 and delta_sim < 0.05:
                 candidates_payload = []
                 for idx, (c_item, _) in enumerate(ranked[:3]):
-                    c_sim = dense_scores.get(c_item.id, 0.0) * 0.6 + sparse_scores.get(c_item.id, 0.0) * 0.4
+                    c_sim = self._dense_similarity_score(query_lower, c_item) * 0.6 + self._sparse_bm25_tokens(query_tokens, c_item.id) * 0.4
                     candidates_payload.append({
                         "identifier": c_item.identifier,
                         "name": c_item.name,

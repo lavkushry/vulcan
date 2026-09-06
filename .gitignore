@@ -101,5 +101,6 @@ backend/data/tfplan/*
 *.tmp
 *.log
 backend/data/*.jsonl
+backend/data/galaxy_catalog_10000.json
 data/
 *.jsonl
