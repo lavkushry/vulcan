@@ -28,6 +28,8 @@ import {
   User,
   Zap
 } from 'lucide-react';
+import { TokenomicsHUD } from './TokenomicsHUD';
+
 
 export interface ChatLaunchPayload {
   catalog_identifier: string;
@@ -390,15 +392,31 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
                       {openThoughts[msg.id] ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                     </button>
                     {openThoughts[msg.id] && (
-                      <div className="px-3.5 pb-3 pt-1 border-t border-glass-border/40 text-[11px] text-slate-400 space-y-1 bg-canvas-void/40">
-                        {msg.thoughtProcess.steps.map((step, idx) => (
-                          <div key={idx} className="flex items-start gap-2">
-                            <span className="text-cyan-400">✓</span>
-                            <span>{step}</span>
-                          </div>
-                        ))}
+                      <div className="px-3.5 pb-3 pt-2 border-t border-glass-border/40 text-[11px] text-slate-400 space-y-3 bg-canvas-void/40">
+                        <div className="space-y-1">
+                          {msg.thoughtProcess.steps.map((step, idx) => (
+                            <div key={idx} className="flex items-start gap-2">
+                              <span className="text-cyan-400">✓</span>
+                              <span>{step}</span>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Andrej Karpathy's LLM OS Working Memory Tokenomics HUD */}
+                        <TokenomicsHUD
+                          maxTokens={2500}
+                          promptTokens={840}
+                          completionTokens={180}
+                          latencyMs={Math.round(parseFloat(msg.thoughtProcess.time || "0.8") * 1000)}
+                          ttftMs={48}
+                          decodeSpeedTokPerSec={122}
+                          intentConfidencePercent={msg.cardData ? Math.round(msg.cardData.confidence * 100) : 99}
+                          cosineDistance={0.082}
+                          matchedCatalogItem={msg.cardData?.identifier || 'net-f5-cert-renew'}
+                        />
                       </div>
                     )}
+
                   </div>
                 )}
 
