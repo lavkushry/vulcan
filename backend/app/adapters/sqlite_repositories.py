@@ -117,6 +117,9 @@ class SQLiteJobRepository(IJobRepository):
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     status=excluded.status,
+                    parameters=excluded.parameters,
+                    servicenow_chg=excluded.servicenow_chg,
+                    target_resource_id=excluded.target_resource_id,
                     approver_id=excluded.approver_id,
                     dispatched_by=excluded.dispatched_by,
                     approval_requested_at=excluded.approval_requested_at,

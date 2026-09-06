@@ -32,6 +32,9 @@
           - fail2ban
         state: present
         update_cache: yes
+      # NOTE: ignore_errors is strictly permitted here only for ephemeral unprivileged sandbox
+      # container targets where systemd/sysvinit service starts are restricted. Must NEVER
+      # be migrated to bare-metal or production VMs without strict error enforcement.
       ignore_errors: true
 
     - name: Configure legal SSH pre-login warning banner

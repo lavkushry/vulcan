@@ -102,10 +102,14 @@ class BaseJobRunner(abc.ABC):
                     }, actor=exec_actor)
                 except Exception as audit_err:
                     logger.critical("Audit ledger write failed for EXEC_BLOCKED (MAINTENANCE_WINDOW_CLOSED) on job %s: %s", job.id, audit_err)
-                raise MaintenanceWindowClosedError(
+                if job.status not in (JobStatus.FAILED, JobStatus.REVERTED):
+                    job.transition_to(JobStatus.FAILED, "Maintenance window closed")
+                job.completed_at = current_time
+                job.error_message = (
                     f"Execution blocked: Current time [{current_time.isoformat()}] is outside the approved "
                     f"ServiceNow maintenance window for CHG [{job.servicenow_chg}]."
                 )
+                raise MaintenanceWindowClosedError(job.error_message)
 
         # 3. 10GB S3 Payload Integrity Checksum Verification
         if job.storage_artifact_uri and job.storage_artifact_sha256 and self.storage:

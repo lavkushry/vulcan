@@ -167,6 +167,49 @@ class TestPolicyEngine(unittest.TestCase):
         # Expired ticket maintenance window must be False
         self.assertFalse(snow.is_within_maintenance_window("CHG-EXPIRED", now))
 
+    def test_pre_dispatch_maintenance_window_blocked_transitions_to_failed(self):
+        """Pre-dispatch invariant: Execution blocked by closed maintenance window fails closed to FAILED."""
+        from fastapi.testclient import TestClient
+        from app.api.server import create_app
+        from app.config import container
+        from app.domain.entities import ExecutionJob, JobStatus
+
+        app = create_app()
+        client = TestClient(app)
+
+        cat_item = next(c for c in container.catalog if c.identifier == "sec-system-hardening")
+        job = ExecutionJob(
+            job_id="job-window-test-01",
+            correlation_id="EXEC-WINDOW-FAIL-01",
+            catalog_item=cat_item,
+            requester_id="eng.alice",
+            target_resource_id="f5-vip-01",
+            parameters={"port": 22, "auto_updates": True},
+            servicenow_chg="CHG-EXPIRED"
+        )
+        job.status = JobStatus.QUEUED
+        container.job_repo.save(job)
+        container.jobs[job.correlation_id] = job
+
+        bob_headers = {"Authorization": "Bearer vlc_test_bob"}
+        res = client.post(f"/api/v1/jobs/{job.correlation_id}/execute", headers=bob_headers)
+        self.assertEqual(res.status_code, 409)
+        detail = res.json().get("detail", {})
+        err_code = detail.get("error_code") if isinstance(detail, dict) else str(detail)
+        self.assertIn("ERR_VULCAN_MAINTENANCE_WINDOW_CLOSED", err_code)
+
+        # Verify job is strictly in FAILED status, NOT QUEUED, and NEVER reached RUNNING
+        saved_job = container.job_repo.get_by_correlation_id(job.correlation_id)
+        self.assertIsNotNone(saved_job)
+        self.assertEqual(saved_job.status, JobStatus.FAILED)
+        self.assertIn("Outside approved maintenance window", saved_job.error_message)
+
+        # Verify EXEC_BLOCKED audit record
+        records = [r for r in container.audit_logger.ledger if r.correlation_id == job.correlation_id]
+        blocked = [r for r in records if r.action == "EXEC_BLOCKED"]
+        self.assertGreaterEqual(len(blocked), 1)
+        self.assertEqual(blocked[0].payload.get("reason"), "MAINTENANCE_WINDOW_CLOSED")
+
 
 if __name__ == "__main__":
     unittest.main()

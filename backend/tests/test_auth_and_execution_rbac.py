@@ -104,7 +104,7 @@ class TestAuthAndExecutionRBAC(unittest.TestCase):
             requester_id="eng.alice",
             target_resource_id="f5-vip-01",
             parameters={"hostname": "f5-edge-01.pnc.com", "vip_ip": "10.200.1.50", "cert_valid_days": 90},
-            servicenow_chg="CHG-2026-001"
+            servicenow_chg="CHG-2026-0001"
         )
         job.status = JobStatus.QUEUED
         container.job_repo.save(job)

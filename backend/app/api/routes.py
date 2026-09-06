@@ -487,6 +487,8 @@ def _lookup_job(key: str) -> Optional[ExecutionJob]:
         if j.id == key or j.correlation_id == key:
             return j
     job = container.job_repo.get_by_id(key)
+    if not job:
+        job = container.job_repo.get_by_correlation_id(key)
     if job:
         container.jobs[job.correlation_id] = job
         return job
@@ -928,6 +930,38 @@ def trigger_execution(correlation_id: str, request: Request):
             detail=f"Job cannot execute in status [{job.status.value}]. Must be QUEUED or PARSED."
         )
 
+    # Pre-dispatch Invariant: Hard Maintenance Window Verification
+    current_time = datetime.now(timezone.utc)
+    if job.catalog_item.risk_tier in (RiskTier.HIGH, RiskTier.MEDIUM) and job.servicenow_chg:
+        if container.snow_gateway and not container.snow_gateway.is_within_maintenance_window(job.servicenow_chg, current_time):
+            job.transition_to(JobStatus.FAILED, f"Execution blocked: Current time [{current_time.isoformat()}] is outside approved ServiceNow maintenance window for CHG [{job.servicenow_chg}].")
+            job.completed_at = current_time
+            job.error_message = f"Execution blocked: Outside approved maintenance window for CHG [{job.servicenow_chg}]."
+            container.job_repo.save(job)
+            container.audit_logger.record(
+                job,
+                "EXEC_BLOCKED",
+                {
+                    "reason": "MAINTENANCE_WINDOW_CLOSED",
+                    "resource": job.target_resource_id,
+                    "chg": job.servicenow_chg,
+                    "details": f"Current time [{current_time.isoformat()}] is outside approved window."
+                },
+                actor=actor
+            )
+            ws_hub.publish(job.correlation_id, "status", {
+                "status": "FAILED",
+                "message": job.error_message
+            })
+            ws_hub.emit_log(job.correlation_id, f"\033[1;31m[EXEC_BLOCKED]\033[0m {job.error_message}", "stderr")
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error_code": "ERR_VULCAN_MAINTENANCE_WINDOW_CLOSED",
+                    "message": job.error_message
+                }
+            )
+
     job.dispatched_by = actor
     container.job_repo.save(job)
 
@@ -948,6 +982,10 @@ def trigger_execution(correlation_id: str, request: Request):
             container.job_repo.save(job)
             ws_hub.publish(job.correlation_id, "status", {"status": job.status.value, "message": "Execution complete"})
         except Exception as e:
+            if job.status not in (JobStatus.FAILED, JobStatus.REVERTED, JobStatus.DEGRADED):
+                job.transition_to(JobStatus.FAILED, str(e))
+            job.completed_at = datetime.now(timezone.utc)
+            job.error_message = str(e)
             container.job_repo.save(job)
             ws_hub.emit_log(job.correlation_id, f"\033[1;31m[EXECUTION ERROR]\033[0m {str(e)}", "stderr")
             ws_hub.publish(job.correlation_id, "status", {"status": job.status.value, "message": str(e)})
@@ -955,6 +993,7 @@ def trigger_execution(correlation_id: str, request: Request):
                 diag = container.diagnostic_engine.diagnose(str(e), job.catalog_item.identifier)
                 ws_hub.publish(job.correlation_id, "diagnostic", {"root_cause": diag.root_cause})
                 job.diagnostic = diag.root_cause
+                container.job_repo.save(job)
             except Exception:
                 pass
 
