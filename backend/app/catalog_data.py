@@ -1210,7 +1210,25 @@ def find_matching_playbook(user_query: str, ambient_params: Optional[Dict[str, A
         scored_candidates.append((item, score))
         
     scored_candidates.sort(key=lambda x: x[1], reverse=True)
-    best_item, top_score = scored_candidates[0] if scored_candidates else (_MATERIALIZED_ITEMS[0], 1.0)
+    if not scored_candidates or scored_candidates[0][1] < 4.0:
+        return {
+            "matched": False,
+            "status": "REFUSED",
+            "confidence": 0.0,
+            "refusal_reason": "No catalog automation playbook matches your intent. Please refine your query or consult the catalog.",
+            "catalog_id": None,
+            "identifier": None,
+            "name": None,
+            "engine": None,
+            "category": "unknown",
+            "risk_tier": "LOW",
+            "requires_maker_checker": False,
+            "requires_chg": False,
+            "detected_environment": "PROD",
+            "suggested_parameters": {},
+            "reasoning": "Zero-score refusal gate: query did not match any operational keywords or catalog attributes."
+        }
+    best_item, top_score = scored_candidates[0]
     
     # Slot extraction for dynamic UI inputs
     extracted_params: Dict[str, Any] = dict(ambient_params or {})

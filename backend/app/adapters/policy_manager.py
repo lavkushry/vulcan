@@ -88,6 +88,41 @@ class PolicyManager:
     def list_demo_users(self) -> List[Dict[str, Any]]:
         return self.demo_users
 
+    def check_user_permission(self, user_id: str, permission: Permission) -> bool:
+        """
+        Evaluates whether a given user identity possesses a specific granular permission.
+        Matches against demo users or evaluates user_id as a role directly.
+        """
+        user = next((u for u in self.demo_users if u["id"] == user_id), None)
+        if user:
+            role = UserRole(user["role"])
+            if role == UserRole.PLATFORM_ADMIN:
+                return True
+            return permission in ROLE_PERMISSIONS.get(role, [])
+
+        # Role aliases / demo user fallback
+        role_map = {
+            "lead.bob": UserRole.APPROVING_LEAD,
+            "eng.alice": UserRole.OPERATOR,
+            "engineer.alice": UserRole.OPERATOR,
+            "sec.carol": UserRole.SECURITY_ADMIN,
+            "admin.dave": UserRole.PLATFORM_ADMIN,
+            "audit.emma": UserRole.AUDITOR
+        }
+        mapped_role = role_map.get(user_id)
+        if mapped_role:
+            if mapped_role == UserRole.PLATFORM_ADMIN:
+                return True
+            return permission in ROLE_PERMISSIONS.get(mapped_role, [])
+
+        try:
+            role = UserRole(user_id)
+            if role == UserRole.PLATFORM_ADMIN:
+                return True
+            return permission in ROLE_PERMISSIONS.get(role, [])
+        except ValueError:
+            return False
+
     def list_policies(self) -> List[Dict[str, Any]]:
         return [p.to_dict() for p in self.engine.policies.values()]
 

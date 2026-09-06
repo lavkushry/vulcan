@@ -40,6 +40,54 @@ class ServiceNowGateway(IServiceNowGateway):
                 "end_time": "2027-01-01T00:00:00Z",
                 "ci": "pnc-core-db01",
                 "work_notes": []
+            },
+            "CHG-DEMO-001": {
+                "state": "Scheduled",
+                "risk": "High",
+                "start_time": "2026-01-01T00:00:00Z",
+                "end_time": "2027-01-01T00:00:00Z",
+                "ci": "f5-edge-01.pnc.com",
+                "work_notes": []
+            },
+            "CHG-DEMO-002": {
+                "state": "Scheduled",
+                "risk": "High",
+                "start_time": "2026-01-01T00:00:00Z",
+                "end_time": "2027-01-01T00:00:00Z",
+                "ci": "pnc-core-db01",
+                "work_notes": []
+            },
+            "CHG-991122": {
+                "state": "Scheduled",
+                "risk": "High",
+                "start_time": "2026-01-01T00:00:00Z",
+                "end_time": "2027-01-01T00:00:00Z",
+                "ci": "f5-vip-api-01",
+                "work_notes": []
+            },
+            "CHG-2026-0001": {
+                "state": "Scheduled",
+                "risk": "High",
+                "start_time": "2026-01-01T00:00:00Z",
+                "end_time": "2027-01-01T00:00:00Z",
+                "ci": "pnc-prod-infra",
+                "work_notes": []
+            },
+            "CHG-2026-9901": {
+                "state": "Scheduled",
+                "risk": "High",
+                "start_time": "2026-01-01T00:00:00Z",
+                "end_time": "2027-01-01T00:00:00Z",
+                "ci": "f5-edge-01.internal",
+                "work_notes": []
+            },
+            "CHG-EXPIRED": {
+                "state": "Scheduled",
+                "risk": "High",
+                "start_time": "2020-01-01T00:00:00Z",
+                "end_time": "2020-01-02T00:00:00Z",
+                "ci": "pnc-prod-infra",
+                "work_notes": []
             }
         }
 
@@ -47,14 +95,17 @@ class ServiceNowGateway(IServiceNowGateway):
         if self.mock_mode:
             ticket = self._mock_tickets.get(chg_number)
             if not ticket:
-                # Default synthetic valid ticket
+                # Fail-Closed (BKND-16 / CHAT-16): Eradicate synthetic governance illusion.
+                # Unknown tickets MUST NOT be fabricated as CAB-approved.
                 return {
                     "chg_number": chg_number,
-                    "state": "Scheduled",
-                    "ci_item": "pnc-prod-infra",
-                    "approved_by": "CAB_COMMITTEE"
+                    "state": "Invalid",
+                    "ci_item": None,
+                    "approved_by": None,
+                    "is_valid": False,
+                    "error": f"Change Request [{chg_number}] not found in ServiceNow CMDB."
                 }
-            return {"chg_number": chg_number, **ticket}
+            return {"chg_number": chg_number, "is_valid": True, **ticket}
 
         # Real HTTP client to ServiceNow Table API
         raise NotImplementedError("Production ServiceNow credentials not configured.")
@@ -62,19 +113,20 @@ class ServiceNowGateway(IServiceNowGateway):
     def is_within_maintenance_window(self, chg_number: str, check_time: datetime) -> bool:
         """
         Verifies if check_time falls within scheduled change maintenance window.
+        Fail-Closed: Unknown tickets or unparseable windows return False.
         """
         if self.mock_mode:
             ticket = self._mock_tickets.get(chg_number)
-            if ticket and "start_time" in ticket and "end_time" in ticket:
-                try:
-                    start = datetime.fromisoformat(ticket["start_time"].replace("Z", "+00:00"))
-                    end = datetime.fromisoformat(ticket["end_time"].replace("Z", "+00:00"))
-                    return start <= check_time <= end
-                except Exception:
-                    return True
-            return True
+            if not ticket or "start_time" not in ticket or "end_time" not in ticket:
+                return False
+            try:
+                start = datetime.fromisoformat(ticket["start_time"].replace("Z", "+00:00"))
+                end = datetime.fromisoformat(ticket["end_time"].replace("Z", "+00:00"))
+                return start <= check_time <= end
+            except Exception:
+                return False
 
-        return True
+        return False
 
     def update_work_notes(self, chg_number: str, notes: str, new_state: Optional[str] = None) -> None:
         if self.mock_mode:

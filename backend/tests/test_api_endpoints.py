@@ -79,6 +79,16 @@ class TestAPIEndpoints(unittest.TestCase):
         self.assertEqual(self_res.status_code, 403)
         self.assertIn("Separation of Duties Violation", self_res.json()["detail"])
 
+        # 2b. RBAC Unauthorized Checker Verification (Unprivileged user lacks Permission.JOB_APPROVE)
+        unauth_payload = {
+            "approver_id": "operator.charlie",
+            "decision": "APPROVE",
+            "reason": "Unprivileged approval attempt"
+        }
+        unauth_res = self.client.post(f"/api/v1/jobs/{corr_id}/approve", json=unauth_payload)
+        self.assertEqual(unauth_res.status_code, 403)
+        self.assertIn("RBAC Policy Violation", unauth_res.json()["detail"])
+
         # 3. Checker Signs Off (Bob approves Alice)
         bob_approval_payload = {
             "approver_id": "lead.bob",

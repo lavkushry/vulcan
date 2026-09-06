@@ -4,7 +4,8 @@ Pure abstract base classes defining outer boundaries.
 """
 import abc
 from datetime import datetime
-from typing import Any, Callable, Dict, Optional
+from typing import Any, AsyncIterator, Callable, Dict, List, Optional
+from pydantic import BaseModel, Field
 from app.domain.entities import (
     AuditRecord,
     EngineExecutionResult,
@@ -111,3 +112,35 @@ class IExecutionEngine(abc.ABC):
     ) -> EngineExecutionResult:
         """Execute the automation script or playbook."""
         pass
+
+
+class ChatCompletionRequest(BaseModel):
+    system_prompt: str
+    user_prompt: str
+    conversation_history: List[Dict[str, str]] = Field(default_factory=list)
+    grammar_json_schema: Optional[Dict[str, Any]] = None
+    max_tokens: int = 500
+    temperature: float = 0.0
+
+
+class ChatCompletionResponse(BaseModel):
+    content: str
+    parsed_json: Optional[Dict[str, Any]] = None
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    latency_ms: float = 0.0
+    model_version: str = "deterministic-fake-v1"
+
+
+class IChatModelProvider(abc.ABC):
+    """Port for conversational AI planning and schema-constrained decoding (LLM Boundary)."""
+    @abc.abstractmethod
+    def complete_structured(self, request: ChatCompletionRequest) -> ChatCompletionResponse:
+        """Executes a schema-constrained completion call."""
+        pass
+
+    @abc.abstractmethod
+    def stream_structured(self, request: ChatCompletionRequest) -> AsyncIterator[str]:
+        """Streams completion tokens over Server-Sent Events or WebSocket."""
+        pass
+

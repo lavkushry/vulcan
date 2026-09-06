@@ -97,16 +97,30 @@ class IntentResolver:
     def hybrid_search(self, query: str, k: int = 60) -> List[Tuple[CatalogItem, float]]:
         """
         Two-Stage Reciprocal Rank Fusion (RRF) search combining Dense and Sparse signals.
-        RRF = 0.6 / (60 + r_dense) + 0.4 / (60 + r_sparse)
+        Enforces calibrated refusal gate: if dense < 0.35 and sparse == 0.0, returns empty list.
         """
+        dense_scores = {item.id: self._dense_similarity_score(query, item) for item in self.catalog}
+        sparse_scores = {
+            item.id: self._sparse_bm25_score(query, f"{item.identifier} {item.name} {item.playbook_or_module_path}")
+            for item in self.catalog
+        }
+
+        max_dense = max(dense_scores.values()) if dense_scores else 0.0
+        max_sparse = max(sparse_scores.values()) if sparse_scores else 0.0
+
+        # Calibrated Refusal Gate (BKND-26 / CHAT-06):
+        # Kill the Zero-Score Trap: If query has neither dense semantic alignment nor keyword overlap, refuse.
+        if max_dense < 0.35 and max_sparse <= 0.0:
+            return []
+
         dense_ranked = sorted(
-            self.catalog,
-            key=lambda item: self._dense_similarity_score(query, item),
+            [item for item in self.catalog if dense_scores[item.id] > 0.0],
+            key=lambda item: dense_scores[item.id],
             reverse=True
         )
         sparse_ranked = sorted(
-            self.catalog,
-            key=lambda item: self._sparse_bm25_score(query, f"{item.identifier} {item.name} {item.playbook_or_module_path}"),
+            [item for item in self.catalog if sparse_scores[item.id] > 0.0],
+            key=lambda item: sparse_scores[item.id],
             reverse=True
         )
 
@@ -118,7 +132,8 @@ class IntentResolver:
 
         results = []
         for item in self.catalog:
-            results.append((item, rrf_scores.get(item.id, 0.0)))
+            if item.id in rrf_scores:
+                results.append((item, rrf_scores[item.id]))
         results.sort(key=lambda x: x[1], reverse=True)
         return results
 
@@ -140,7 +155,7 @@ class IntentResolver:
         if not ranked:
             return IntentResolutionResult(
                 status="REFUSED",
-                refusal_reason="No matching playbook found in catalog.",
+                refusal_reason="Out-of-catalog intent: No suitable automation playbook matches the provided query.",
                 tokens_used=120
             )
 
@@ -195,10 +210,18 @@ class IntentResolver:
         # Check missing required fields
         missing = [req for req in required if req not in extracted]
 
-        # Token usage calculation (simulated 2,500 token budget compliance)
+        # Token usage calculation (BKND-28: honest token budgeting without tautological clamping)
         prompt_tokens = len(prompt.split()) * 2
         schema_tokens = len(str(schema).split())
-        total_tokens = min(400 + prompt_tokens + schema_tokens + 150, 2500)
+        total_tokens = 400 + prompt_tokens + schema_tokens + 150
+
+        if total_tokens > 2500:
+            return IntentResolutionResult(
+                status="REFUSED",
+                catalog_item=best_item,
+                refusal_reason=f"Working memory budget exceeded: Context required {total_tokens} tokens, exceeding the 2,500 token limit.",
+                tokens_used=total_tokens
+            )
 
         if missing:
             return IntentResolutionResult(

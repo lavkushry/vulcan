@@ -12,7 +12,7 @@
 
 ### EXECUTIVE MANDATE & CURRENT-STATE BASELINE
 
-Project Vulcan is an enterprise automation control plane governing the execution of Ansible playbooks and Terraform stacks across Tier-1 financial infrastructure (core transaction databases, F5 BIG-IP edge routing, AWS cloud landing zones, and enterprise Linux fleets). The system operates under strict regulatory mandates (Sarbanes-Oxley §404, OCC 2013-29, NIST SP 800-53 dual-control standards) where unverified or unauthorized changes represent catastrophic operational and compliance risk.
+Project Vulcan is an enterprise automation control plane governing the execution of Ansible playbooks and Terraform stacks across Tier-1 financial ianfrastructure (core transaction databases, F5 BIG-IP edge routing, AWS cloud landing zones, and enterprise Linux fleets). The system operates under strict regulatory mandates (Sarbanes-Oxley §404, OCC 2013-29, NIST SP 800-53 dual-control standards) where unverified or unauthorized changes represent catastrophic operational and compliance risk.
 
 The focus of this war room debate is the **AI Chat Subsystem**—the conversational planning and intent compilation layer of the operator console. 
 

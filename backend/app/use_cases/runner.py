@@ -3,8 +3,11 @@ Project Vulcan: Template Method Master Execution Pipeline (BaseJobRunner)
 Clean Architecture Standard: Uncle Bob. Injected abstract ports, zero framework dependencies.
 """
 import abc
+import logging
 from datetime import datetime, timezone
 from typing import Callable, Dict, Optional
+
+logger = logging.getLogger(__name__)
 
 from app.domain.entities import (
     EngineExecutionResult,
@@ -77,8 +80,8 @@ class BaseJobRunner(abc.ABC):
                         "chg": job.servicenow_chg,
                         "details": f"Current time [{current_time.isoformat()}] is outside the approved window."
                     })
-                except Exception:
-                    pass
+                except Exception as audit_err:
+                    logger.critical("Audit ledger write failed for EXEC_BLOCKED (MAINTENANCE_WINDOW_CLOSED) on job %s: %s", job.id, audit_err)
                 raise MaintenanceWindowClosedError(
                     f"Execution blocked: Current time [{current_time.isoformat()}] is outside the approved "
                     f"ServiceNow maintenance window for CHG [{job.servicenow_chg}]."
@@ -93,8 +96,8 @@ class BaseJobRunner(abc.ABC):
                         "resource": job.target_resource_id,
                         "uri": job.storage_artifact_uri
                     })
-                except Exception:
-                    pass
+                except Exception as audit_err:
+                    logger.critical("Audit ledger write failed for EXEC_BLOCKED (CHECKSUM_MISMATCH) on job %s: %s", job.id, audit_err)
                 raise ParameterValidationError(
                     f"Storage artifact checksum mismatch on {job.storage_artifact_uri}"
                 )
@@ -108,8 +111,8 @@ class BaseJobRunner(abc.ABC):
                     "resource": job.target_resource_id,
                     "details": f"Distributed target resource [{job.target_resource_id}] is locked by an active change."
                 })
-            except Exception:
-                pass
+            except Exception as audit_err:
+                logger.critical("Audit ledger write failed for EXEC_BLOCKED (RESOURCE_LOCKED) on job %s: %s", job.id, audit_err)
             raise ResourceLockedError(
                 f"Distributed target resource [{job.target_resource_id}] is locked by an active change."
             )
@@ -202,8 +205,8 @@ class BaseJobRunner(abc.ABC):
             try:
                 if job.status != JobStatus.REVERTED:
                     self.audit.record(job, "EXEC_FAILED", {"error": str(exc), "status": job.status.value})
-            except Exception:
-                pass
+            except Exception as audit_err:
+                logger.critical("Audit ledger write failed for EXEC_FAILED on job %s: %s", job.id, audit_err)
 
             if job.servicenow_chg and self.snow:
                 notes = f"Execution degraded & reverted: {str(exc)}" if job.status == JobStatus.REVERTED else f"Execution failed: {str(exc)}"

@@ -97,6 +97,7 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
     targetHost: string;
     environment: string;
     dryRun: boolean;
+    servicenow_chg?: string;
     parameters: Record<string, any>;
     isSubmitting: boolean;
   }>>({});
@@ -169,6 +170,7 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
           targetHost: cardData.suggested_parameters?.hostname || cardData.suggested_parameters?.target_host || 'f5-edge-01.internal',
           environment: cardData.detected_environment || 'PROD',
           dryRun: false,
+          servicenow_chg: cardData.servicenow_chg || (cardData.requires_chg || cardData.requires_maker_checker ? 'CHG001' : ''),
           parameters: { ...(cardData.suggested_parameters || {}) },
           isSubmitting: false
         }
@@ -220,6 +222,7 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
           targetHost: 'f5-edge-01.internal',
           environment: 'PROD',
           dryRun: false,
+          servicenow_chg: 'CHG001',
           parameters: { hostname: 'f5-edge-01.internal', vip_ip: '10.200.1.50', cert_valid_days: 90 },
           isSubmitting: false
         }
@@ -256,7 +259,9 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
         environment: form.environment,
         dry_run: form.dryRun,
         requester_id: currentUser,
-        servicenow_chg: cardData.requires_chg || cardData.requires_maker_checker ? (cardData.servicenow_chg || `CHG-${Math.floor(100000 + Math.random() * 900000)}`) : undefined
+        servicenow_chg: (cardData.requires_chg || cardData.requires_maker_checker)
+          ? (form.servicenow_chg || cardData.servicenow_chg || 'CHG001')
+          : undefined
       };
 
       const result = await onDispatchTask(payload);
@@ -541,6 +546,32 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
                           </div>
                         );
                       })}
+
+                      {/* ServiceNow Change Governance Ticket (CHG) */}
+                      {(msg.cardData.requires_chg || msg.cardData.requires_maker_checker) && (
+                        <div>
+                          <label className="text-[10px] font-mono text-slate-400 flex items-center justify-between mb-1">
+                            <span>SERVICENOW CHANGE REQUEST (CHG)</span>
+                            <span className="text-[9px] text-amber-400 font-semibold uppercase tracking-wider">Mandatory Dual-Control</span>
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="CHG001"
+                            value={cardForms[msg.id]?.servicenow_chg ?? 'CHG001'}
+                            onChange={(e) => {
+                              const newVal = e.target.value;
+                              setCardForms(prev => ({
+                                ...prev,
+                                [msg.id]: {
+                                  ...prev[msg.id],
+                                  servicenow_chg: newVal
+                                }
+                              }));
+                            }}
+                            className="w-full bg-canvas-void/80 border border-amber-500/30 focus:border-amber-400 text-amber-200 text-xs rounded-xl px-3 py-2 font-mono outline-none transition-all focus:ring-1 focus:ring-amber-400/40 placeholder:text-slate-600"
+                          />
+                        </div>
+                      )}
                     </div>
 
                     {/* Footer: Dry Run Toggle & Action Button */}

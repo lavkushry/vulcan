@@ -716,6 +716,21 @@ def approve_job(correlation_id: str, req: ApproveJobRequest):
     if not job:
         raise HTTPException(status_code=404, detail="Job not found.")
 
+    # 1. Maker-Checker Domain Invariant: Requester cannot self-approve
+    if req.approver_id == job.requester_id:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Separation of Duties Violation: Requester [{job.requester_id}] cannot approve their own job (Maker-Checker Dual Control)."
+        )
+
+    # 2. RBAC Enforcement (BKND-21 / CHAT-10): Approver must possess Permission.JOB_APPROVE
+    from app.domain.roles_and_policies import Permission
+    if not policy_manager.check_user_permission(req.approver_id, Permission.JOB_APPROVE):
+        raise HTTPException(
+            status_code=403,
+            detail=f"RBAC Policy Violation: User [{req.approver_id}] lacks required permission [job:approve] to approve jobs."
+        )
+
     from app.domain.entities import ApprovalDecision
 
     decision = ApprovalDecision(

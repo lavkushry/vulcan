@@ -123,6 +123,45 @@ class TestAIReasoningSubsystem(unittest.TestCase):
         windowed_line_count = len(diag.windowed_log.splitlines())
         self.assertLessEqual(windowed_line_count, 55)
 
+    def test_zero_score_trap_refusal(self):
+        """BKND-26 / CHAT-06: Nonsense out-of-catalog query fails-closed to REFUSED."""
+        nonsense_queries = [
+            "xyzzy completely unknown text 123",
+            "bake me a chocolate cake with frosting",
+            "what is the weather like in san francisco"
+        ]
+        for query in nonsense_queries:
+            res = self.resolver.resolve(query)
+            self.assertEqual(res.status, "REFUSED", f"Query [{query}] should have been REFUSED but was {res.status}")
+            self.assertIn("Out-of-catalog intent", res.refusal_reason)
+
+    def test_token_budget_overflow_refusal(self):
+        """BKND-28: Working memory budget overflow (>2,500 tokens) fails-closed to REFUSED."""
+        giant_prompt = "Renew SSL certificate for f5-edge-01.pnc.com " + ("extra_token " * 1500)
+        res = self.resolver.resolve(giant_prompt)
+        self.assertEqual(res.status, "REFUSED")
+        self.assertIn("budget exceeded", res.refusal_reason.lower())
+        self.assertGreater(res.tokens_used, 2500)
+
+    def test_deterministic_fake_chat_provider(self):
+        """BKND-27 / CHAT-01: Verifies DeterministicFakeChatProvider port contract."""
+        from app.adapters.fake_chat_adapter import DeterministicFakeChatProvider
+        from app.ports.interfaces import ChatCompletionRequest
+
+        provider = DeterministicFakeChatProvider()
+        req = ChatCompletionRequest(
+            system_prompt="Extract parameters",
+            user_prompt="Renew SSL on f5-edge-01.pnc.com with VIP 10.200.1.50 for 90 days"
+        )
+        resp = provider.complete_structured(req)
+        self.assertEqual(resp.model_version, "deterministic-fake-v1")
+        self.assertEqual(resp.parsed_json.get("hostname"), "f5-edge-01.pnc.com")
+        self.assertEqual(resp.parsed_json.get("vip_ip"), "10.200.1.50")
+        self.assertEqual(resp.parsed_json.get("cert_valid_days"), 90)
+        self.assertGreater(resp.prompt_tokens, 0)
+        self.assertLess(resp.latency_ms, 100.0)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+

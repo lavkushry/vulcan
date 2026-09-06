@@ -148,6 +148,26 @@ class TestPolicyEngine(unittest.TestCase):
         self.assertEqual(res["decision"], "REQUIRE_APPROVAL")
         self.assertIn("POL-001", res["gated_policies"])
 
+    def test_servicenow_adapter_fail_closed_on_unknown_and_expired_tickets(self):
+        """BKND-16 / CHAT-16: Unknown or expired tickets fail closed."""
+        from app.adapters.servicenow_adapter import ServiceNowGateway
+        from datetime import datetime, timezone
+
+        snow = ServiceNowGateway(mock_mode=True)
+        # Unknown ticket must fail closed
+        unknown = snow.validate_chg("CHG-NONEXISTENT-999")
+        self.assertFalse(unknown["is_valid"])
+        self.assertEqual(unknown["state"], "Invalid")
+        self.assertIsNone(unknown["approved_by"])
+
+        # Unknown ticket maintenance window must be False
+        now = datetime.now(timezone.utc)
+        self.assertFalse(snow.is_within_maintenance_window("CHG-NONEXISTENT-999", now))
+
+        # Expired ticket maintenance window must be False
+        self.assertFalse(snow.is_within_maintenance_window("CHG-EXPIRED", now))
+
 
 if __name__ == "__main__":
     unittest.main()
+
