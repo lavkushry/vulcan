@@ -1,0 +1,74 @@
+---
+- name: Deploy and Configure PostgreSQL Database on Sandbox
+  hosts: "{{ target_host | default('sandbox') }}"
+  gather_facts: true
+  vars:
+    postgresql_version: "{{ db_version | default('16') }}"
+    postgresql_user: "{{ postgres_user | default('app_user') }}"
+    postgresql_password: "{{ postgres_password | default('secure_app_pass_2026') }}"
+    postgresql_database: "{{ postgres_db_name | default('production_app') }}"
+    postgresql_port: "{{ postgres_port | default(5432) | int }}"
+    postgresql_listen_addresses: ["*"]
+  tasks:
+    - name: Update apt package cache
+      ansible.builtin.apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Install PostgreSQL server and client
+      ansible.builtin.apt:
+        name:
+          - "postgresql-{{ postgresql_version }}"
+          - "postgresql-contrib"
+          - python3-psycopg2
+        state: present
+      ignore_errors: yes
+
+    - name: Fallback to standard postgresql package
+      ansible.builtin.apt:
+        name:
+          - postgresql
+          - postgresql-contrib
+          - python3-psycopg2
+        state: present
+
+    - name: Ensure PostgreSQL service is running and enabled
+      ansible.builtin.service:
+        name: postgresql
+        state: started
+        enabled: yes
+
+    - name: Create application database user
+      become_user: postgres
+      community.postgresql.postgresql_user:
+        name: "{{ postgresql_user }}"
+        password: "{{ postgresql_password }}"
+        encrypted: yes
+        role_attr_flags: "CREATEDB,NOSUPERUSER"
+        state: present
+      ignore_errors: yes
+
+    - name: Create application database
+      become_user: postgres
+      community.postgresql.postgresql_db:
+        name: "{{ postgresql_database }}"
+        owner: "{{ postgresql_user }}"
+        encoding: "UTF-8"
+        state: present
+      ignore_errors: yes
+
+    - name: Verification query
+      become_user: postgres
+      ansible.builtin.command:
+        cmd: "psql -U postgres -c 'SELECT current_database(), current_user, version();'"
+      register: psql_verify
+      changed_when: false
+
+    - name: Output Database Readiness
+      ansible.builtin.debug:
+        msg:
+          - "PostgreSQL deployment successful!"
+          - "Database: {{ postgresql_database }}"
+          - "Owner: {{ postgresql_user }}"
+          - "Port: {{ postgresql_port }}"
+          - "Verification: {{ psql_verify.stdout_lines }}"

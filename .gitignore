@@ -86,9 +86,10 @@ dist/
 *.cert
 *.crt
 id_rsa
-id_rsa.pub
 id_ed25519
 id_ed25519.pub
+!deploy/sandbox/keys/*
+!backend/ansible/keys/*
 
 # Runtime Data & Ephemeral Uploads
 backend/data/uploads/*

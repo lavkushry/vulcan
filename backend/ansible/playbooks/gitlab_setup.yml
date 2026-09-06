@@ -1,0 +1,41 @@
+---
+- name: Configure GitLab CE/EE Enterprise Repository & Prerequisites
+  hosts: "{{ target_host | default('sandbox') }}"
+  gather_facts: true
+  vars:
+    gitlab_external_url: "{{ external_url | default('http://gitlab.internal:8080') }}"
+    gitlab_edition: "{{ edition | default('gitlab-ce') }}"
+  tasks:
+    - name: Install GitLab prerequisites
+      ansible.builtin.apt:
+        name:
+          - curl
+          - openssh-server
+          - ca-certificates
+          - tzdata
+          - perl
+        state: present
+        update_cache: yes
+
+    - name: Create GitLab configuration directory
+      ansible.builtin.file:
+        path: /etc/gitlab
+        state: directory
+        mode: '0775'
+
+    - name: Stage GitLab configuration template
+      ansible.builtin.copy:
+        dest: /etc/gitlab/gitlab.rb.template
+        content: |
+          external_url '{{ gitlab_external_url }}'
+          nginx['listen_port'] = 80
+          puma['worker_processes'] = 2
+        mode: '0600'
+
+    - name: GitLab Setup Summary
+      ansible.builtin.debug:
+        msg:
+          - "GitLab Enterprise prerequisites staged successfully!"
+          - "Edition: {{ gitlab_edition }}"
+          - "Configured External URL: {{ gitlab_external_url }}"
+          - "Config Staged at: /etc/gitlab/gitlab.rb.template"

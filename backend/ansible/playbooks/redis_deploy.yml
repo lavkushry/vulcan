@@ -1,0 +1,52 @@
+---
+- name: Deploy and Configure In-Memory Redis Cache & Store
+  hosts: "{{ target_host | default('sandbox') }}"
+  gather_facts: true
+  vars:
+    redis_port: "{{ port | default(6379) | int }}"
+    redis_bind_interface: "{{ bind_address | default('0.0.0.0') }}"
+    redis_maxmemory: "{{ maxmemory_mb | default(256) | int }}"
+  tasks:
+    - name: Install Redis server
+      ansible.builtin.apt:
+        name: redis-server
+        state: present
+        update_cache: yes
+
+    - name: Configure Redis port
+      ansible.builtin.lineinfile:
+        path: /etc/redis/redis.conf
+        regexp: '^port '
+        line: "port {{ redis_port }}"
+
+    - name: Configure Redis bind address
+      ansible.builtin.lineinfile:
+        path: /etc/redis/redis.conf
+        regexp: '^bind '
+        line: "bind {{ redis_bind_interface }}"
+
+    - name: Configure Redis maxmemory limit
+      ansible.builtin.lineinfile:
+        path: /etc/redis/redis.conf
+        regexp: '^#?maxmemory '
+        line: "maxmemory {{ redis_maxmemory }}mb"
+
+    - name: Restart and enable Redis service
+      ansible.builtin.service:
+        name: redis-server
+        state: restarted
+        enabled: yes
+
+    - name: Probe Redis with PING command
+      ansible.builtin.command: "redis-cli -p {{ redis_port }} ping"
+      register: redis_ping
+      changed_when: false
+
+    - name: Redis Deployment Summary
+      ansible.builtin.debug:
+        msg:
+          - "Redis cache deployed successfully!"
+          - "Port: {{ redis_port }}"
+          - "Bind: {{ redis_bind_interface }}"
+          - "Max Memory: {{ redis_maxmemory }}MB"
+          - "Ping Response: {{ redis_ping.stdout }}"

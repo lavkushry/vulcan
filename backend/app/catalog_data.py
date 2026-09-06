@@ -25,6 +25,223 @@ K8S_SHA = "f67890123456789abcdef0123456789012345678"
 
 RAW_CATALOG_DEFINITIONS: List[Dict[str, Any]] = [
     # =========================================================================
+    # 0. REAL ANSIBLE GITHUB PLAYBOOKS & ROLES (SANDBOX TARGET)
+    # =========================================================================
+    {
+        "id": "cat-real-001",
+        "identifier": "os-sandbox-ping",
+        "name": "Sandbox Ping & Facts Gathering Probe",
+        "engine": ExecutionEngineType.ANSIBLE,
+        "git_repo": "https://github.com/adithyakhamithkar/ansible-playbooks.git",
+        "git_commit_sha": OS_SHA,
+        "playbook_or_module_path": "ansible/playbooks/ping_check.yml",
+        "risk_tier": RiskTier.LOW,
+        "requires_maker_checker": False,
+        "requires_chg": False,
+        "category": "os_patching",
+        "description": "Performs real-time SSH ping and system facts gathering on the isolated sandbox environment.",
+        "tags": ["ping", "facts", "sandbox", "connectivity", "health", "ubuntu"],
+        "input_schema": {
+            "type": "object",
+            "required": ["target_host"],
+            "properties": {
+                "target_host": {"type": "string", "default": "sandbox", "description": "Target hostname in inventory"}
+            }
+        }
+    },
+    {
+        "id": "cat-real-002",
+        "identifier": "db-postgres-provision",
+        "name": "PostgreSQL Cluster Deployment & Database Provisioning",
+        "engine": ExecutionEngineType.ANSIBLE,
+        "git_repo": "https://github.com/geerlingguy/ansible-role-postgresql.git",
+        "git_commit_sha": DB_SHA,
+        "playbook_or_module_path": "ansible/playbooks/postgres_setup.yml",
+        "risk_tier": RiskTier.HIGH,
+        "requires_maker_checker": True,
+        "requires_chg": True,
+        "category": "database",
+        "description": "Provisions PostgreSQL server, creates application database, user credentials, and grants access rights (geerlingguy.postgresql).",
+        "tags": ["postgresql", "postgres", "database", "sql", "geerlingguy", "provision"],
+        "input_schema": {
+            "type": "object",
+            "required": ["postgres_db_name", "postgres_user", "postgres_password"],
+            "properties": {
+                "db_version": {"type": "string", "default": "16", "enum": ["14", "15", "16"], "description": "PostgreSQL major version"},
+                "postgres_db_name": {"type": "string", "default": "production_app", "description": "Application database name"},
+                "postgres_user": {"type": "string", "default": "app_user", "description": "Primary database user"},
+                "postgres_password": {"type": "string", "default": "secure_app_pass_2026", "description": "User password"},
+                "postgres_port": {"type": "integer", "default": 5432, "minimum": 1024, "maximum": 65535, "description": "PostgreSQL listening port"}
+            }
+        }
+    },
+    {
+        "id": "cat-real-003",
+        "identifier": "ci-jenkins-deploy",
+        "name": "Jenkins CI/CD Automation Server Deployment",
+        "engine": ExecutionEngineType.ANSIBLE,
+        "git_repo": "https://github.com/geerlingguy/ansible-role-jenkins.git",
+        "git_commit_sha": CLOUD_SHA,
+        "playbook_or_module_path": "ansible/playbooks/jenkins_setup.yml",
+        "risk_tier": RiskTier.MEDIUM,
+        "requires_maker_checker": False,
+        "requires_chg": False,
+        "category": "cloud",
+        "description": "Installs OpenJDK, configures Jenkins official Debian repository, installs Jenkins CI, and tunes HTTP port (geerlingguy.jenkins).",
+        "tags": ["jenkins", "ci", "cd", "java", "automation", "geerlingguy"],
+        "input_schema": {
+            "type": "object",
+            "required": ["http_port"],
+            "properties": {
+                "http_port": {"type": "integer", "default": 8080, "minimum": 1024, "maximum": 65535, "description": "Jenkins HTTP listening port"},
+                "target_host": {"type": "string", "default": "sandbox", "description": "Target hostname in inventory"}
+            }
+        }
+    },
+    {
+        "id": "cat-real-004",
+        "identifier": "git-gitlab-stage",
+        "name": "GitLab Enterprise CE/EE Infrastructure Setup",
+        "engine": ExecutionEngineType.ANSIBLE,
+        "git_repo": "https://github.com/geerlingguy/ansible-role-gitlab.git",
+        "git_commit_sha": CLOUD_SHA,
+        "playbook_or_module_path": "ansible/playbooks/gitlab_setup.yml",
+        "risk_tier": RiskTier.HIGH,
+        "requires_maker_checker": True,
+        "requires_chg": True,
+        "category": "cloud",
+        "description": "Installs GitLab omnibus prerequisites, downloads repository configuration script, and stages gitlab.rb configuration (geerlingguy.gitlab).",
+        "tags": ["gitlab", "git", "devops", "omnibus", "geerlingguy", "repository"],
+        "input_schema": {
+            "type": "object",
+            "required": ["external_url", "edition"],
+            "properties": {
+                "external_url": {"type": "string", "default": "http://gitlab.internal:8080", "description": "Full external URL for GitLab web access"},
+                "edition": {"type": "string", "default": "gitlab-ce", "enum": ["gitlab-ce", "gitlab-ee"], "description": "GitLab package edition"}
+            }
+        }
+    },
+    {
+        "id": "cat-real-005",
+        "identifier": "k8s-node-provision",
+        "name": "Kubernetes Node Provisioning & Container Runtime Setup",
+        "engine": ExecutionEngineType.ANSIBLE,
+        "git_repo": "https://github.com/geerlingguy/ansible-for-kubernetes.git",
+        "git_commit_sha": K8S_SHA,
+        "playbook_or_module_path": "ansible/playbooks/k8s_node_setup.yml",
+        "risk_tier": RiskTier.HIGH,
+        "requires_maker_checker": True,
+        "requires_chg": True,
+        "category": "kubernetes",
+        "description": "Configures kernel networking modules (overlay, br_netfilter), sysctl, containerd runtime, and prepares kubelet/kubeadm tools (ansible-for-kubernetes).",
+        "tags": ["kubernetes", "k8s", "containerd", "kubeadm", "geerlingguy", "cluster"],
+        "input_schema": {
+            "type": "object",
+            "required": ["kubernetes_version", "cgroup_mgr"],
+            "properties": {
+                "kubernetes_version": {"type": "string", "default": "v1.30", "enum": ["v1.28", "v1.29", "v1.30"], "description": "Target Kubernetes release version"},
+                "cgroup_mgr": {"type": "string", "default": "systemd", "enum": ["systemd", "cgroupfs"], "description": "Cgroup driver for container runtime"}
+            }
+        }
+    },
+    {
+        "id": "cat-real-006",
+        "identifier": "web-nginx-deploy",
+        "name": "High-Performance Nginx Web Server & Reverse Proxy",
+        "engine": ExecutionEngineType.ANSIBLE,
+        "git_repo": "https://github.com/lework/Ansible-roles.git",
+        "git_commit_sha": OS_SHA,
+        "playbook_or_module_path": "ansible/playbooks/nginx_deploy.yml",
+        "risk_tier": RiskTier.LOW,
+        "requires_maker_checker": False,
+        "requires_chg": False,
+        "category": "network",
+        "description": "Installs Nginx, creates custom virtual host server block, deploys styled landing page, and validates configuration (lework/Ansible-roles).",
+        "tags": ["nginx", "web", "proxy", "http", "lework", "reverse-proxy"],
+        "input_schema": {
+            "type": "object",
+            "required": ["port", "server_name"],
+            "properties": {
+                "port": {"type": "integer", "default": 80, "minimum": 80, "maximum": 65535, "description": "HTTP listening port"},
+                "server_name": {"type": "string", "default": "vulcan.internal", "description": "Virtual host domain or server name"},
+                "root_dir": {"type": "string", "default": "/var/www/html", "description": "Document root directory"}
+            }
+        }
+    },
+    {
+        "id": "cat-real-007",
+        "identifier": "cache-redis-deploy",
+        "name": "Redis In-Memory Cache & Key-Value Store Deployment",
+        "engine": ExecutionEngineType.ANSIBLE,
+        "git_repo": "https://github.com/lework/Ansible-roles.git",
+        "git_commit_sha": DB_SHA,
+        "playbook_or_module_path": "ansible/playbooks/redis_deploy.yml",
+        "risk_tier": RiskTier.MEDIUM,
+        "requires_maker_checker": False,
+        "requires_chg": False,
+        "category": "database",
+        "description": "Deploys and tunes Redis in-memory cache with custom memory limits, bind interfaces, and LRU eviction policies (lework/Ansible-roles).",
+        "tags": ["redis", "cache", "nosql", "in-memory", "lework", "key-value"],
+        "input_schema": {
+            "type": "object",
+            "required": ["port", "maxmemory_mb"],
+            "properties": {
+                "port": {"type": "integer", "default": 6379, "minimum": 1024, "maximum": 65535, "description": "Redis TCP port"},
+                "bind_address": {"type": "string", "default": "0.0.0.0", "description": "Network binding interface address"},
+                "maxmemory_mb": {"type": "integer", "default": 256, "minimum": 64, "maximum": 16384, "description": "Maximum memory limit in megabytes"}
+            }
+        }
+    },
+    {
+        "id": "cat-real-008",
+        "identifier": "sec-system-hardening",
+        "name": "Linux Server Security Hardening & SSH Audit Policy",
+        "engine": ExecutionEngineType.ANSIBLE,
+        "git_repo": "https://github.com/adithyakhamithkar/ansible-playbooks.git",
+        "git_commit_sha": SEC_SHA,
+        "playbook_or_module_path": "ansible/playbooks/system_hardening.yml",
+        "risk_tier": RiskTier.MEDIUM,
+        "requires_maker_checker": False,
+        "requires_chg": False,
+        "category": "security",
+        "description": "Enforces SSH access restrictions (MaxAuthTries, X11Forwarding), installs unattended-upgrades and fail2ban, and sets legal pre-login banner (adithyakhamithkar/ansible-playbooks).",
+        "tags": ["hardening", "security", "ssh", "fail2ban", "audit", "compliance"],
+        "input_schema": {
+            "type": "object",
+            "required": ["port", "auto_updates"],
+            "properties": {
+                "port": {"type": "integer", "default": 22, "minimum": 22, "maximum": 65535, "description": "SSH listening port"},
+                "auto_updates": {"type": "boolean", "default": True, "description": "Enable automated security package updates"},
+                "legal_banner": {"type": "string", "default": "AUTHORIZED ACCESS ONLY - Project Vulcan Governed System", "description": "Pre-login legal warning message"}
+            }
+        }
+    },
+    {
+        "id": "cat-real-009",
+        "identifier": "sec-create-operator",
+        "name": "Enterprise Unix Operator User & Sudo Provisioning",
+        "engine": ExecutionEngineType.ANSIBLE,
+        "git_repo": "https://github.com/adithyakhamithkar/ansible-playbooks.git",
+        "git_commit_sha": SEC_SHA,
+        "playbook_or_module_path": "ansible/playbooks/create_user.yml",
+        "risk_tier": RiskTier.MEDIUM,
+        "requires_maker_checker": False,
+        "requires_chg": False,
+        "category": "security",
+        "description": "Provisions an enterprise Unix engineer account with custom login shell, home directory, and passwordless sudoers rules (adithyakhamithkar/ansible-playbooks).",
+        "tags": ["user", "sudo", "linux", "iam", "account", "provisioning"],
+        "input_schema": {
+            "type": "object",
+            "required": ["username", "shell", "sudo_access"],
+            "properties": {
+                "username": {"type": "string", "default": "ops_engineer", "description": "Unix system account login name"},
+                "shell": {"type": "string", "default": "/bin/bash", "enum": ["/bin/bash", "/bin/zsh", "/bin/sh"], "description": "Default user login shell"},
+                "sudo_access": {"type": "boolean", "default": True, "description": "Grant passwordless sudo administrative privileges"}
+            }
+        }
+    },
+
+    # =========================================================================
     # 1. NETWORK & LOAD BALANCING (ANSIBLE)
     # =========================================================================
     {
@@ -1170,7 +1387,13 @@ def find_matching_playbook(user_query: str, ambient_params: Optional[Dict[str, A
         "drain": ["drain", "cordon", "node", "pdb"],
         "ssh": ["ssh", "key", "rotate", "authorized_keys", "ed25519"],
         "vault": ["vault", "approle", "secretid", "renew"],
-        "cis": ["cis", "benchmark", "hardening", "compliance"]
+        "cis": ["cis", "benchmark", "hardening", "compliance"],
+        "ping": ["ping", "probe", "facts", "sandbox", "connectivity"],
+        "jenkins": ["jenkins", "ci", "cd", "pipeline"],
+        "gitlab": ["gitlab", "repo", "git", "omnibus"],
+        "nginx": ["nginx", "reverse proxy", "web server"],
+        "user": ["create user", "new user", "operator", "sudo user", "provision user"],
+        "hardening": ["harden", "hardening", "ssh hardening", "security updates"]
     }
     
     scored_candidates = []
@@ -1307,6 +1530,23 @@ def get_sample_tasks() -> List[Dict[str, Any]]:
     statuses, and categories for rich filtering demonstrations.
     """
     return [
+        {
+            "id": "task-1000",
+            "correlation_id": "EXEC-9901",
+            "identifier": "os-sandbox-ping",
+            "name": "Sandbox Ping & Facts Gathering Probe",
+            "engine": "ansible",
+            "category": "os_patching",
+            "target_resource": "vulcan-sandbox",
+            "environment": "SANDBOX",
+            "status": "QUEUED",
+            "risk_tier": "LOW",
+            "requester_id": "eng.alice",
+            "approver_id": "lead.bob",
+            "duration_sec": 0,
+            "created_at": "2026-09-06T12:00:00Z",
+            "parameters": {"target_host": "sandbox"}
+        },
         {
             "id": "task-1001",
             "correlation_id": "EXEC-9821",

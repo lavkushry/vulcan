@@ -12,6 +12,7 @@ from app.adapters.fake_chat_adapter import DeterministicFakeChatProvider
 from app.adapters.redlock_adapter import RedlockManager
 from app.adapters.s3_multipart_adapter import S3MultipartGateway
 from app.adapters.servicenow_adapter import ServiceNowGateway
+from app.adapters.ansible_runner_adapter import AnsibleRunnerExecutionEngine
 from app.adapters.simulation_adapter import SimulationExecutionEngine
 from app.adapters.sqlite_repositories import (
     SQLiteAuditLedgerRepository,
@@ -58,7 +59,12 @@ class AppContainer:
             bucket_name=os.getenv("S3_BUCKET_NAME", "vulcan-artifacts"),
             mock_mode=True
         )
-        self.execution_engine = SimulationExecutionEngine(delay_per_step=0.02)
+        if not self.simulation_mode:
+            self.execution_engine = AnsibleRunnerExecutionEngine()
+            logger.info("Initialized real AnsibleRunnerExecutionEngine for production execution.")
+        else:
+            self.execution_engine = SimulationExecutionEngine(delay_per_step=0.02)
+            logger.info("Initialized SimulationExecutionEngine.")
 
         # 2. AI Chat Model Provider
         self.chat_provider = DeterministicFakeChatProvider()

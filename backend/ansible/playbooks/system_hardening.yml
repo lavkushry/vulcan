@@ -1,0 +1,53 @@
+---
+- name: Linux Security Hardening, Audit & Patching Policy
+  hosts: "{{ target_host | default('sandbox') }}"
+  gather_facts: true
+  vars:
+    ssh_port: "{{ port | default(22) | int }}"
+    enable_automatic_updates: "{{ auto_updates | default(true) | bool }}"
+    banner_message: "{{ legal_banner | default('AUTHORIZED ACCESS ONLY - Project Vulcan Governed System') }}"
+  tasks:
+    - name: Install security packages
+      ansible.builtin.apt:
+        name:
+          - unattended-upgrades
+          - apt-listchanges
+          - fail2ban
+        state: present
+        update_cache: yes
+
+    - name: Configure legal SSH pre-login warning banner
+      ansible.builtin.copy:
+        dest: /etc/issue.net
+        content: |
+          ********************************************************************
+          * WARNING: {{ banner_message }}
+          * All activities are monitored, logged, and cryptographically signed.
+          ********************************************************************
+        mode: '0644'
+
+    - name: Ensure SSH uses legal banner
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?Banner'
+        line: "Banner /etc/issue.net"
+
+    - name: Disable insecure SSH X11 forwarding
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?X11Forwarding'
+        line: "X11Forwarding no"
+
+    - name: Configure SSH max authentication attempts
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?MaxAuthTries'
+        line: "MaxAuthTries 4"
+
+    - name: Hardening Audit Summary
+      ansible.builtin.debug:
+        msg:
+          - "System Hardening applied successfully!"
+          - "SSH MaxAuthTries: 4"
+          - "Banner: Active"
+          - "Target Host: {{ inventory_hostname }}"

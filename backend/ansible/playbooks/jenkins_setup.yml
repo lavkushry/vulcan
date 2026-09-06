@@ -1,0 +1,45 @@
+---
+- name: Deploy Jenkins CI/CD Automation Server
+  hosts: "{{ target_host | default('sandbox') }}"
+  gather_facts: true
+  vars:
+    jenkins_http_port: "{{ http_port | default(8080) | int }}"
+    jenkins_java_package: openjdk-17-jre-headless
+  tasks:
+    - name: Update apt package cache
+      ansible.builtin.apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Install Java runtime prerequisite
+      ansible.builtin.apt:
+        name: "{{ jenkins_java_package }}"
+        state: present
+
+    - name: Download Jenkins Debian repository key
+      ansible.builtin.get_url:
+        url: https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key
+        dest: /usr/share/keyrings/jenkins-keyring.asc
+        mode: '0644'
+      ignore_errors: yes
+
+    - name: Add Jenkins apt repository
+      ansible.builtin.apt_repository:
+        repo: "deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] https://pkg.jenkins.io/debian-stable binary/"
+        state: present
+        filename: jenkins
+      ignore_errors: yes
+
+    - name: Configure Jenkins environment directory
+      ansible.builtin.file:
+        path: /var/lib/jenkins
+        state: directory
+        mode: '0755'
+
+    - name: Jenkins Deployment Summary
+      ansible.builtin.debug:
+        msg:
+          - "Jenkins CI/CD Server stage ready!"
+          - "Configured Port: {{ jenkins_http_port }}"
+          - "Java Version: {{ jenkins_java_package }}"
+          - "Target Host: {{ inventory_hostname }}"

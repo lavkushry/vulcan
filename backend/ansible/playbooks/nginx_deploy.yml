@@ -1,0 +1,76 @@
+---
+- name: Deploy and Configure High-Performance Nginx Web Server
+  hosts: "{{ target_host | default('sandbox') }}"
+  gather_facts: true
+  vars:
+    nginx_port: "{{ port | default(80) | int }}"
+    nginx_server_name: "{{ server_name | default('vulcan.internal') }}"
+    nginx_root_dir: "{{ root_dir | default('/var/www/html') }}"
+  tasks:
+    - name: Install Nginx package
+      ansible.builtin.apt:
+        name: nginx
+        state: present
+        update_cache: yes
+
+    - name: Ensure web root directory exists
+      ansible.builtin.file:
+        path: "{{ nginx_root_dir }}"
+        state: directory
+        owner: www-data
+        group: www-data
+        mode: '0755'
+
+    - name: Deploy landing page
+      ansible.builtin.copy:
+        dest: "{{ nginx_root_dir }}/index.html"
+        content: |
+          <!DOCTYPE html>
+          <html>
+          <head><title>Vulcan Managed Nginx</title></head>
+          <body style="font-family:sans-serif; background:#07090e; color:#00f5ff; padding:40px;">
+            <h1>Project Vulcan — Governed Automation Control Plane</h1>
+            <p>Target: {{ inventory_hostname }} | Port: {{ nginx_port }} | Server: {{ nginx_server_name }}</p>
+            <p>Executed by Real Ansible Engine against Sandbox Container.</p>
+          </body>
+          </html>
+        mode: '0644'
+
+    - name: Configure Nginx virtual host site
+      ansible.builtin.copy:
+        dest: /etc/nginx/sites-available/vulcan-app.conf
+        content: |
+          server {
+              listen {{ nginx_port }};
+              server_name {{ nginx_server_name }};
+              root {{ nginx_root_dir }};
+              index index.html;
+
+              location / {
+                  try_files $uri $uri/ =404;
+              }
+
+              access_log /var/log/nginx/vulcan_access.log;
+              error_log /var/log/nginx/vulcan_error.log;
+          }
+        mode: '0644'
+
+    - name: Enable site by symlinking to sites-enabled
+      ansible.builtin.file:
+        src: /etc/nginx/sites-available/vulcan-app.conf
+        dest: /etc/nginx/sites-enabled/vulcan-app.conf
+        state: link
+
+    - name: Ensure Nginx service is started and enabled
+      ansible.builtin.service:
+        name: nginx
+        state: started
+        enabled: yes
+
+    - name: Nginx Deployment Summary
+      ansible.builtin.debug:
+        msg:
+          - "Nginx web server successfully deployed!"
+          - "Listening Port: {{ nginx_port }}"
+          - "Server Name: {{ nginx_server_name }}"
+          - "Document Root: {{ nginx_root_dir }}"

@@ -379,40 +379,39 @@ class SQLiteCatalogRepository(ICatalogRepository):
         self._conn.commit()
 
     def seed_if_empty(self, items: List[CatalogItem]) -> int:
-        """Seed catalog items if the table is empty. Returns count of items seeded."""
+        """Seed catalog items, ensuring all catalog items are synchronized into SQLite."""
         with self._lock:
-            cursor = self._conn.execute("SELECT COUNT(*) FROM catalog_items")
-            count = cursor.fetchone()[0]
-            if count > 0:
-                return 0
-
+            existing = {row[0] for row in self._conn.execute("SELECT id FROM catalog_items").fetchall()}
+            seeded = 0
             for item in items:
-                self._conn.execute("""
-                    INSERT OR IGNORE INTO catalog_items (
-                        id, identifier, name, engine, git_repo, git_commit_sha,
-                        playbook_or_module_path, risk_tier, requires_maker_checker,
-                        requires_chg, input_schema, rollback_path, category,
-                        description, tags
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    item.id,
-                    item.identifier,
-                    item.name,
-                    item.engine.value,
-                    item.git_repo,
-                    item.git_commit_sha,
-                    item.playbook_or_module_path,
-                    item.risk_tier.value,
-                    1 if item.requires_maker_checker else 0,
-                    1 if item.requires_chg else 0,
-                    json.dumps(item.input_schema),
-                    item.rollback_path,
-                    item.category,
-                    item.description,
-                    json.dumps(item.tags),
-                ))
+                if item.id not in existing:
+                    self._conn.execute("""
+                        INSERT INTO catalog_items (
+                            id, identifier, name, engine, git_repo, git_commit_sha,
+                            playbook_or_module_path, risk_tier, requires_maker_checker,
+                            requires_chg, input_schema, rollback_path, category,
+                            description, tags
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        item.id,
+                        item.identifier,
+                        item.name,
+                        item.engine.value if hasattr(item.engine, "value") else str(item.engine),
+                        item.git_repo,
+                        item.git_commit_sha,
+                        item.playbook_or_module_path,
+                        item.risk_tier.value if hasattr(item.risk_tier, "value") else str(item.risk_tier),
+                        1 if item.requires_maker_checker else 0,
+                        1 if item.requires_chg else 0,
+                        json.dumps(item.input_schema),
+                        item.rollback_path,
+                        item.category,
+                        item.description,
+                        json.dumps(item.tags)
+                    ))
+                    seeded += 1
             self._conn.commit()
-            return len(items)
+            return seeded
 
     def get_by_identifier(self, identifier: str) -> Optional[CatalogItem]:
         with self._lock:

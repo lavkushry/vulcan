@@ -1,0 +1,47 @@
+---
+- name: Provision Enterprise Operator User & Security Credentials
+  hosts: "{{ target_host | default('sandbox') }}"
+  gather_facts: true
+  vars:
+    target_username: "{{ username | default('ops_engineer') }}"
+    target_shell: "{{ shell | default('/bin/bash') }}"
+    target_sudo: "{{ sudo_access | default(true) | bool }}"
+  tasks:
+    - name: Ensure user group exists
+      ansible.builtin.group:
+        name: "{{ target_username }}"
+        state: present
+
+    - name: Create operator user account
+      ansible.builtin.user:
+        name: "{{ target_username }}"
+        group: "{{ target_username }}"
+        groups: "{{ 'sudo' if target_sudo else omit }}"
+        shell: "{{ target_shell }}"
+        create_home: yes
+        state: present
+
+    - name: Configure passwordless sudo for user if granted
+      ansible.builtin.copy:
+        dest: "/etc/sudoers.d/{{ target_username }}"
+        content: "{{ target_username }} ALL=(ALL) NOPASSWD:ALL\n"
+        mode: '0440'
+        validate: '/usr/sbin/visudo -cf %s'
+      when: target_sudo
+
+    - name: Provision user .ssh directory
+      ansible.builtin.file:
+        path: "/home/{{ target_username }}/.ssh"
+        state: directory
+        owner: "{{ target_username }}"
+        group: "{{ target_username }}"
+        mode: '0700'
+
+    - name: User Provisioning Summary
+      ansible.builtin.debug:
+        msg:
+          - "Operator account provisioned successfully!"
+          - "User: {{ target_username }}"
+          - "Shell: {{ target_shell }}"
+          - "Sudo Privileges: {{ target_sudo }}"
+          - "Home Directory: /home/{{ target_username }}"

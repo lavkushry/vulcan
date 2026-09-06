@@ -1,0 +1,19 @@
+---
+- name: Vulcan Sandbox Connectivity and Fact Gathering Probe
+  hosts: "{{ target_host | default('sandbox') }}"
+  gather_facts: true
+  tasks:
+    - name: Ping target host
+      ansible.builtin.ping:
+      register: ping_res
+
+    - name: Display connection facts
+      ansible.builtin.debug:
+        msg:
+          - "Host: {{ inventory_hostname }}"
+          - "OS: {{ ansible_distribution }} {{ ansible_distribution_version }} ({{ ansible_distribution_release }})"
+          - "Kernel: {{ ansible_kernel }}"
+          - "Architecture: {{ ansible_architecture }}"
+          - "Python Interpreter: {{ ansible_playbook_python }}"
+          - "Uptime Seconds: {{ ansible_uptime_seconds | default('N/A') }}"
+          - "Ping Status: {{ ping_res.ping }}"

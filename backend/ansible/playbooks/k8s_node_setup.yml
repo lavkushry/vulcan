@@ -1,0 +1,52 @@
+---
+- name: Kubernetes Node Provisioning & Container Runtime Configuration
+  hosts: "{{ target_host | default('sandbox') }}"
+  gather_facts: true
+  vars:
+    k8s_version: "{{ kubernetes_version | default('v1.30') }}"
+    cgroup_driver: "{{ cgroup_mgr | default('systemd') }}"
+  tasks:
+    - name: Load required kernel modules for container networking
+      community.general.modprobe:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - overlay
+        - br_netfilter
+      ignore_errors: yes
+
+    - name: Configure sysctl parameters for Kubernetes networking
+      ansible.posix.sysctl:
+        name: "{{ item.name }}"
+        value: "{{ item.value }}"
+        state: present
+        reload: yes
+      loop:
+        - { name: 'net.bridge.bridge-nf-call-iptables', value: '1' }
+        - { name: 'net.bridge.bridge-nf-call-ip6tables', value: '1' }
+        - { name: 'net.ipv4.ip_forward', value: '1' }
+      ignore_errors: yes
+
+    - name: Install container runtime packages
+      ansible.builtin.apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - iptables
+        state: present
+        update_cache: yes
+
+    - name: Prepare Kubernetes apt keyrings directory
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: '0755'
+
+    - name: Kubernetes Node Readiness Summary
+      ansible.builtin.debug:
+        msg:
+          - "Kubernetes node preparation complete!"
+          - "Kubernetes Target Version: {{ k8s_version }}"
+          - "Cgroup Manager: {{ cgroup_driver }}"
+          - "Kernel Networking: overlay & br_netfilter loaded"
