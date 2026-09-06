@@ -42,3 +42,7 @@ class AuditIntegrityError(DomainError):
 class HealthProbeDegradedError(DomainError):
     """Raised when post-flight semantic health probes fail despite exit code 0."""
     pass
+
+class PolicyViolationError(DomainError):
+    """Raised when an operation violates banking policy, such as executing uncurated candidate code (INV-1)."""
+    pass

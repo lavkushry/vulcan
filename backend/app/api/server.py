@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse
 
 from app.api.routes import router, container
+from app.api.curation_routes import curation_router
 from app.api.websockets import ws_hub
 
 SERVER_START_TIME = time.time()
@@ -136,6 +137,7 @@ def create_app() -> FastAPI:
         return "\n".join(lines) + "\n"
 
     app.include_router(router)
+    app.include_router(curation_router, prefix="/api/v1")
     return app
 
 

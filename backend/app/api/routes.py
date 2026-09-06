@@ -733,6 +733,17 @@ def create_job(req: CreateJobRequest):
     if not catalog_item:
         raise HTTPException(status_code=404, detail=f"Catalog item '{catalog_id}' not found.")
 
+    if not getattr(catalog_item, "can_execute", lambda: True)():
+        cur_status = getattr(catalog_item.curation_status, "value", str(catalog_item.curation_status))
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                f"Catalog item '{catalog_id}' has curation status '{cur_status}'. "
+                "Execution of uncurated candidate code is strictly forbidden by INV-1. "
+                "Module must pass human curation review and internal Git vendoring."
+            )
+        )
+
     target_res = (
         req.target_resource_id
         or req.parameters.get("hostname")

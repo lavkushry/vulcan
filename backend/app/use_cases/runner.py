@@ -21,6 +21,7 @@ from app.domain.exceptions import (
     HealthProbeDegradedError,
     MaintenanceWindowClosedError,
     ParameterValidationError,
+    PolicyViolationError,
     ResourceLockedError,
     StateTransitionError,
 )
@@ -62,6 +63,23 @@ class BaseJobRunner(abc.ABC):
 
     def run(self, job: ExecutionJob) -> EngineExecutionResult:
         """The Master Template Method enforcing all banking invariants."""
+        # 0. Hard Invariant INV-1: Curation Gate Validation (REG-01 / REG-02)
+        if not getattr(job.catalog_item, "can_execute", lambda: True)():
+            curation_status = getattr(job.catalog_item, "curation_status", "UNKNOWN")
+            try:
+                self.audit.record(job, "EXEC_BLOCKED", {
+                    "reason": "UNCURATED_CANDIDATE_EXECUTION_FORBIDDEN",
+                    "curation_status": curation_status.value if hasattr(curation_status, "value") else str(curation_status),
+                    "item_identifier": job.catalog_item.identifier,
+                    "details": "Execution blocked: Catalog item is unvetted candidate code. Must pass human curation and internal Git review."
+                })
+            except Exception as audit_err:
+                logger.critical("Audit ledger write failed for EXEC_BLOCKED (UNCURATED_CANDIDATE) on job %s: %s", job.id, audit_err)
+            raise PolicyViolationError(
+                f"CatalogItem [{job.catalog_item.identifier}] has curation status [{curation_status}]. "
+                "Execution of uncurated candidate code is strictly prohibited by INV-1."
+            )
+
         # 1. State Pre-flight
         if job.status not in (JobStatus.QUEUED, JobStatus.PARSED):
             if job.catalog_item.risk_tier == RiskTier.HIGH and job.status != JobStatus.QUEUED:

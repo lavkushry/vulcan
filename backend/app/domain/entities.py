@@ -16,6 +16,7 @@ from app.domain.exceptions import (
     AuditIntegrityError,
     MakerCheckerViolationError,
     ParameterValidationError,
+    PolicyViolationError,
     SecretLintError,
     StateTransitionError,
 )
@@ -53,6 +54,17 @@ class ExecutionEngineType(str, enum.Enum):
     SCRIPT = "script"
 
 
+class CurationStatus(str, enum.Enum):
+    """
+    Catalog admission lifecycle state (REG-01 / REG-02).
+    Enforces INV-1: Only CURATED items may execute against infrastructure.
+    """
+    CURATED = "CURATED"        # Reviewed, internal Git vendored, and approved for execution
+    CANDIDATE = "CANDIDATE"    # Crawled from public registry, pending human review and security scan
+    DRAFTED_PR = "DRAFTED_PR"  # Registration PR drafted for internal Git vendoring
+    REJECTED = "REJECTED"      # Rejected by curator or failed security/license policy
+
+
 @dataclass(frozen=True)
 class CatalogItem:
     """
@@ -74,12 +86,18 @@ class CatalogItem:
     category: str = "general"
     description: str = ""
     tags: List[str] = field(default_factory=list)
+    curation_status: CurationStatus = CurationStatus.CURATED
+    provenance: Optional[Dict[str, Any]] = None
 
     def __post_init__(self):
         if not re.match(r"^[0-9a-f]{40}$", self.git_commit_sha):
             raise ParameterValidationError(
                 f"CatalogItem [{self.identifier}] must bind to a 40-character Git commit SHA."
             )
+
+    def can_execute(self) -> bool:
+        """Determines if this catalog item is authorized for execution under INV-1."""
+        return self.curation_status == CurationStatus.CURATED
 
 
 @dataclass(frozen=True)
