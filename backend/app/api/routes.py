@@ -608,6 +608,7 @@ def _format_job_response(job: ExecutionJob, current_user: Optional[str] = None) 
         "risk_tier": job.catalog_item.risk_tier.value,
         "requester_id": job.requester_id,
         "approver_id": job.approver_id,
+        "dispatched_by": getattr(job, "dispatched_by", None),
         "target_resource_id": job.target_resource_id,
         "target_resource": job.target_resource_id,
         "parameters": job.parameters,
@@ -927,6 +928,8 @@ def trigger_execution(correlation_id: str, request: Request):
             detail=f"Job cannot execute in status [{job.status.value}]. Must be QUEUED or PARSED."
         )
 
+    job.dispatched_by = actor
+
     # Synchronous write-before-execute audit record (Uncle Bob invariant)
     container.audit_logger.record(
         job,
@@ -1019,11 +1022,36 @@ def complete_multipart(req: MultipartCompleteRequest):
 # =====================================================================
 
 @router.websocket("/ws/jobs/{correlation_id}")
-async def job_websocket_endpoint(websocket: WebSocket, correlation_id: str, last_seq: int = Query(0)):
+async def job_websocket_endpoint(
+    websocket: WebSocket,
+    correlation_id: str,
+    last_seq: int = Query(0),
+    token: Optional[str] = Query(None)
+):
     """
     Real-time log streaming backplane for xterm.js terminal.
+    Enforces API-token authentication via query param ?token=... or Authorization header.
     Replays missed logs for late joiners and streams subsequent live lines.
     """
+    import os
+    from app.api.auth import authenticate_token, load_token_map
+
+    auth_disabled = os.getenv("VULCAN_AUTH_DISABLED", "0").lower() in ("1", "true", "yes")
+    if not auth_disabled:
+        token_map = load_token_map()
+        token_val = token or websocket.query_params.get("token")
+        if not token_val:
+            auth_header = websocket.headers.get("authorization", "")
+            if auth_header.lower().startswith("bearer "):
+                token_val = auth_header[7:].strip()
+            else:
+                token_val = websocket.headers.get("x-vulcan-api-key")
+
+        user_id = authenticate_token(token_val, token_map)
+        if not user_id:
+            await websocket.close(code=4401, reason="ERR_VULCAN_UNAUTHENTICATED")
+            return
+
     await ws_hub.register(websocket, correlation_id, last_seq=last_seq)
     try:
         while True:
@@ -1033,3 +1061,4 @@ async def job_websocket_endpoint(websocket: WebSocket, correlation_id: str, last
         pass
     finally:
         ws_hub.unregister(websocket, correlation_id)
+

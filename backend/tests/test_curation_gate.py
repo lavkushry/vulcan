@@ -194,7 +194,9 @@ class TestCurationRestApi:
     @pytest.fixture
     def client(self):
         app = create_app()
-        return TestClient(app)
+        c = TestClient(app)
+        c.headers.update({"Authorization": "Bearer vlc_test_bob"})
+        return c
 
     def test_job_submission_blocks_candidate_with_403(self, client, candidate_item):
         # Temporarily inject candidate into active catalog

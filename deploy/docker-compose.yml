@@ -23,11 +23,14 @@ services:
     image: redis:7.2-alpine
     container_name: vulcan-redis
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes"]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+    command: >
+      sh -c "if [ -n \"$${REDIS_PASSWORD}\" ]; then exec redis-server --appendonly yes --requirepass \"$${REDIS_PASSWORD}\"; else exec redis-server --appendonly yes; fi"
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "if [ -n \"$${REDIS_PASSWORD}\" ]; then redis-cli -a \"$${REDIS_PASSWORD}\" ping || exit 1; else redis-cli ping || exit 1; fi"]
       interval: 5s
       timeout: 5s
       retries: 5

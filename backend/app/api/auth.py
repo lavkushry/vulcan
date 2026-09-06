@@ -21,6 +21,15 @@ def load_token_map() -> dict[str, str]:
     return {single: user} if single else {}
 
 
+def authenticate_token(token: str, token_map: dict[str, str] | None = None) -> str | None:
+    """Validates an API token using constant-time comparison against the token map."""
+    if not token:
+        return None
+    tokens = token_map if token_map is not None else load_token_map()
+    return next((u for t, u in tokens.items() if secrets.compare_digest(token, t)), None)
+
+
+
 class APIKeyMiddleware(BaseHTTPMiddleware):
     def __init__(self, app, token_map: dict[str, str], allow_disabled: bool = False):
         super().__init__(app)
@@ -42,7 +51,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         header = request.headers.get("authorization", "")
         token = header[7:].strip() if header.lower().startswith("bearer ") \
             else request.headers.get("x-vulcan-api-key", "")
-        user_id = next((u for t, u in self._tokens.items() if secrets.compare_digest(token, t)), None)
+        user_id = authenticate_token(token, self._tokens)
         if user_id is None:
             return JSONResponse(status_code=401, content={
                 "error_code": "ERR_VULCAN_UNAUTHENTICATED",

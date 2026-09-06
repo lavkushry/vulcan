@@ -80,7 +80,7 @@ class MerkleAuditLogger(IAuditLogger):
         """
         import fcntl
         now_str = datetime.now(timezone.utc).isoformat()
-        actor_id = actor or job.requester_id
+        actor_id = actor or getattr(job, "dispatched_by", None) or job.requester_id
 
         with self._lock:
             # If disk persistence is enabled, use exclusive advisory lock across worker processes

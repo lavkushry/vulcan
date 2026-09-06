@@ -74,20 +74,21 @@ class InMemoryAuditLogger(IAuditLogger):
         self._last_hash = self.GENESIS_HASH
         self.fail_pre_run_write = False
 
-    def record(self, job: ExecutionJob, action: str, payload: Dict[str, Any]) -> AuditRecord:
+    def record(self, job: ExecutionJob, action: str, payload: Dict[str, Any], actor: Optional[str] = None) -> AuditRecord:
         if self.fail_pre_run_write and action == "EXEC_START":
             raise IOError("Storage write failed: WORM volume unmounted.")
 
         rec_id = len(self.ledger) + 1
         now_str = datetime.now(timezone.utc).isoformat()
+        actor_id = actor or getattr(job, "dispatched_by", None) or job.requester_id
         current_hash = AuditRecord.compute_hash(
-            job.correlation_id, now_str, job.requester_id, action, payload, self._last_hash
+            job.correlation_id, now_str, actor_id, action, payload, self._last_hash
         )
         rec = AuditRecord(
             id=rec_id,
             correlation_id=job.correlation_id,
             timestamp=now_str,
-            actor=job.requester_id,
+            actor=actor_id,
             action=action,
             payload=payload,
             prev_hash=self._last_hash,

@@ -224,6 +224,7 @@ class ExecutionJob:
 
         self.status = JobStatus.SUBMITTED
         self.approver_id: Optional[str] = None
+        self.dispatched_by: Optional[str] = None
         self.approval_decision: Optional[ApprovalDecision] = None
         self.approval_requested_at: Optional[datetime] = None
         self.exit_code: Optional[int] = None

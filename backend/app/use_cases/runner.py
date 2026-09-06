@@ -63,6 +63,8 @@ class BaseJobRunner(abc.ABC):
 
     def run(self, job: ExecutionJob) -> EngineExecutionResult:
         """The Master Template Method enforcing all banking invariants."""
+        exec_actor = getattr(job, "dispatched_by", None) or job.requester_id
+
         # 0. Hard Invariant INV-1: Curation Gate Validation (REG-01 / REG-02)
         if not getattr(job.catalog_item, "can_execute", lambda: True)():
             curation_status = getattr(job.catalog_item, "curation_status", "UNKNOWN")
@@ -72,7 +74,7 @@ class BaseJobRunner(abc.ABC):
                     "curation_status": curation_status.value if hasattr(curation_status, "value") else str(curation_status),
                     "item_identifier": job.catalog_item.identifier,
                     "details": "Execution blocked: Catalog item is unvetted candidate code. Must pass human curation and internal Git review."
-                })
+                }, actor=exec_actor)
             except Exception as audit_err:
                 logger.critical("Audit ledger write failed for EXEC_BLOCKED (UNCURATED_CANDIDATE) on job %s: %s", job.id, audit_err)
             raise PolicyViolationError(
@@ -97,7 +99,7 @@ class BaseJobRunner(abc.ABC):
                         "resource": job.target_resource_id,
                         "chg": job.servicenow_chg,
                         "details": f"Current time [{current_time.isoformat()}] is outside the approved window."
-                    })
+                    }, actor=exec_actor)
                 except Exception as audit_err:
                     logger.critical("Audit ledger write failed for EXEC_BLOCKED (MAINTENANCE_WINDOW_CLOSED) on job %s: %s", job.id, audit_err)
                 raise MaintenanceWindowClosedError(
@@ -113,7 +115,7 @@ class BaseJobRunner(abc.ABC):
                         "reason": "CHECKSUM_MISMATCH",
                         "resource": job.target_resource_id,
                         "uri": job.storage_artifact_uri
-                    })
+                    }, actor=exec_actor)
                 except Exception as audit_err:
                     logger.critical("Audit ledger write failed for EXEC_BLOCKED (CHECKSUM_MISMATCH) on job %s: %s", job.id, audit_err)
                 raise ParameterValidationError(
@@ -128,7 +130,7 @@ class BaseJobRunner(abc.ABC):
                     "reason": "RESOURCE_LOCKED",
                     "resource": job.target_resource_id,
                     "details": f"Distributed target resource [{job.target_resource_id}] is locked by an active change."
-                })
+                }, actor=exec_actor)
             except Exception as audit_err:
                 logger.critical("Audit ledger write failed for EXEC_BLOCKED (RESOURCE_LOCKED) on job %s: %s", job.id, audit_err)
             raise ResourceLockedError(
@@ -147,8 +149,9 @@ class BaseJobRunner(abc.ABC):
                     "resource": job.target_resource_id,
                     "requester": job.requester_id,
                     "approver": job.approver_id,
+                    "dispatched_by": exec_actor,
                     "chg": job.servicenow_chg
-                })
+                }, actor=exec_actor)
             except Exception as audit_err:
                 raise AuditIntegrityError(
                     f"Pre-execution audit write failed. Aborting execution: {audit_err}"
@@ -189,7 +192,7 @@ class BaseJobRunner(abc.ABC):
                                     "status": "REVERTED",
                                     "rollback_path": job.catalog_item.rollback_path,
                                     "health_details": health_result.details
-                                })
+                                }, actor=exec_actor)
                                 raise HealthProbeDegradedError("Post-flight health probe failed. System state automatically reverted.")
                             else:
                                 job.transition_to(JobStatus.FAILED, f"Rollback failed with exit code {rb_result.exit_code}")
@@ -206,7 +209,7 @@ class BaseJobRunner(abc.ABC):
             job.completed_at = datetime.now(timezone.utc)
             job.exit_code = 0
 
-            self.audit.record(job, "EXEC_SUCCESS", {"exit_code": 0, "status": "SUCCESS"})
+            self.audit.record(job, "EXEC_SUCCESS", {"exit_code": 0, "status": "SUCCESS"}, actor=exec_actor)
             if job.servicenow_chg and self.snow:
                 self.snow.update_work_notes(job.servicenow_chg, "Execution verified healthy. Change closed.", "Closed Complete")
 
@@ -222,7 +225,7 @@ class BaseJobRunner(abc.ABC):
 
             try:
                 if job.status != JobStatus.REVERTED:
-                    self.audit.record(job, "EXEC_FAILED", {"error": str(exc), "status": job.status.value})
+                    self.audit.record(job, "EXEC_FAILED", {"error": str(exc), "status": job.status.value}, actor=exec_actor)
             except Exception as audit_err:
                 logger.critical("Audit ledger write failed for EXEC_FAILED on job %s: %s", job.id, audit_err)
 

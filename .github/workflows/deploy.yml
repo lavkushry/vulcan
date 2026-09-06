@@ -27,15 +27,24 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r backend/requirements.txt
 
-      - name: Run PyTest Test Matrix (123 Tests)
+      - name: Run Gitleaks Secret Scanner
+        uses: gitleaks/gitleaks-action@v2
         env:
-          VULCAN_AUTH_DISABLED: "1"
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run PyTest Test Matrix (126 Tests, Auth-Enabled)
+        env:
+          VULCAN_AUTH_DISABLED: "0"
+          VULCAN_API_TOKENS: '{"vlc_test_alice": "eng.alice", "vlc_test_bob": "lead.bob", "vlc_test_admin": "admin.dave", "vlc_test_sec": "sec.carol"}'
+          NEXT_PUBLIC_VULCAN_API_TOKEN: "vlc_test_alice"
         run: |
           cd backend && python -m pytest tests -q
 
-      - name: Verify Architecture Reality Matrix Probes (Hermetic Mode)
+      - name: Verify Architecture Reality Matrix Probes (Hermetic Mode, Auth-Enabled)
         env:
-          VULCAN_AUTH_DISABLED: "1"
+          VULCAN_AUTH_DISABLED: "0"
+          VULCAN_API_TOKENS: '{"vlc_test_alice": "eng.alice", "vlc_test_bob": "lead.bob", "vlc_test_admin": "admin.dave", "vlc_test_sec": "sec.carol"}'
+          NEXT_PUBLIC_VULCAN_API_TOKEN: "vlc_test_alice"
         run: |
           python scripts/verify-matrix-claims.py --hermetic
 

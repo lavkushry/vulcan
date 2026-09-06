@@ -34,6 +34,9 @@ Every invariant was tested against the live production stack running on Oracle C
 * **Assigned Correlation ID:** `EXEC-569F5E`
 * **Resulting Status:** `PENDING_APPROVAL`
 
+> [!NOTE]
+> **Governance Fixture Disclosure:** `CHG-2026-9901` is a seeded test fixture within the mock ServiceNow gateway (`ServiceNowGateway(mock_mode=True)`). It models a pre-approved PNC CAB emergency change window and does not represent a live ServiceNow production instance.
+
 ```json
 {
   "id": "task-1011",
@@ -132,6 +135,9 @@ Every invariant was tested against the live production stack running on Oracle C
 * **Lifecycle State Progression:** `QUEUED` $\rightarrow$ `LOCKED` $\rightarrow$ `RUNNING` $\rightarrow$ `VERIFYING` $\rightarrow$ `SUCCESS`
 * **Exit Code:** `0`
 
+> [!NOTE]
+> **Operational Intervention on Target Sandbox:** During initial container provisioning, a stale entry in `/var/lib/dpkg/statoverride` for `redis` blocked `apt-get` package configuration. An operational intervention was executed (`dpkg-statoverride --remove /etc/redis` cleanup) to restore package manager health before running the Ansible hardening tasks.
+
 ```
 Sunday 06 September 2026 17:39:40 +0000: TASK [Gathering Facts] **************************
 ok: [vulcan-sandbox]
@@ -168,8 +174,10 @@ The audit entries for `EXEC-569F5E` retrieved from disk storage (`/app/data/audi
 | Ledger ID | Action | Actor | Timestamp | Prev Hash | Current Hash |
 |---|---|---|---|---|---|
 | **32** | `EXECUTION_TRIGGERED` | `lead.bob` | `2026-09-06T17:39:39.664260Z` | `1639e4a0074eae82...` | `7e5e43d4eb36d315...` |
-| **33** | `EXEC_START` | `eng.alice` | `2026-09-06T17:39:39.668938Z` | `7e5e43d4eb36d315...` | `738e6e793489c472...` |
-| **34** | `EXEC_SUCCESS` | `eng.alice` | `2026-09-06T17:40:04.450603Z` | `738e6e793489c472...` | `749bc109c2193eb0...` |
+| **33** | `EXEC_START` | `eng.alice`* | `2026-09-06T17:39:39.668938Z` | `7e5e43d4eb36d315...` | `738e6e793489c472...` |
+| **34** | `EXEC_SUCCESS` | `eng.alice`* | `2026-09-06T17:40:04.450603Z` | `738e6e793489c472...` | `749bc109c2193eb0...` |
+
+\* *Remediation Note on Execution Attribution:* In the initial run above, `runner.py` defaulted the `EXEC_START` and `EXEC_SUCCESS` actor to `job.requester_id` (`eng.alice`), which made the ledger appear as though Alice executed her own approved change. With `job.dispatched_by` now persisted and propagated, all subsequent `EXEC_*` records are strictly attributed to `lead.bob` (the dispatcher who authorized execution).
 
 ### Authoritative API Chain Tip Probe:
 ```bash

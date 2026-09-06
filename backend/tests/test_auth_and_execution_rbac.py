@@ -137,3 +137,9 @@ class TestAuthAndExecutionRBAC(unittest.TestCase):
         exec_triggers = [r for r in audit_records if r.action == "EXECUTION_TRIGGERED"]
         self.assertGreaterEqual(len(exec_triggers), 1)
         self.assertEqual(exec_triggers[0].actor, "lead.bob")
+
+        # 5. Verify dispatched_by attribution on job entity
+        saved_job = container.job_repo.get_by_correlation_id(corr_id)
+        self.assertIsNotNone(saved_job)
+        self.assertEqual(saved_job.dispatched_by, "lead.bob")
+

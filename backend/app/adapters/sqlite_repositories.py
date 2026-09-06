@@ -77,6 +77,7 @@ class SQLiteJobRepository(IJobRepository):
                 storage_artifact_sha256 TEXT,
                 approval_requested_at TEXT,
                 approval_decision TEXT,
+                dispatched_by TEXT,
                 exit_code INTEGER,
                 error_message TEXT,
                 created_at TEXT NOT NULL,
@@ -87,6 +88,10 @@ class SQLiteJobRepository(IJobRepository):
             CREATE INDEX IF NOT EXISTS idx_jobs_correlation ON execution_jobs(correlation_id);
             CREATE INDEX IF NOT EXISTS idx_jobs_created ON execution_jobs(created_at);
         """)
+        try:
+            self._conn.execute("ALTER TABLE execution_jobs ADD COLUMN dispatched_by TEXT;")
+        except Exception:
+            pass
         self._conn.commit()
 
     def save(self, job: ExecutionJob) -> None:
@@ -104,15 +109,16 @@ class SQLiteJobRepository(IJobRepository):
             self._conn.execute("""
                 INSERT INTO execution_jobs (
                     id, correlation_id, catalog_identifier, status, risk_tier,
-                    requester_id, approver_id, target_resource_id, environment,
+                    requester_id, approver_id, dispatched_by, target_resource_id, environment,
                     parameters, servicenow_chg, storage_artifact_uri,
                     storage_artifact_sha256, approval_requested_at,
                     approval_decision, exit_code, error_message,
                     created_at, started_at, completed_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     status=excluded.status,
                     approver_id=excluded.approver_id,
+                    dispatched_by=excluded.dispatched_by,
                     approval_requested_at=excluded.approval_requested_at,
                     approval_decision=excluded.approval_decision,
                     exit_code=excluded.exit_code,
@@ -127,6 +133,7 @@ class SQLiteJobRepository(IJobRepository):
                 job.catalog_item.risk_tier.value,
                 job.requester_id,
                 job.approver_id,
+                getattr(job, "dispatched_by", None),
                 job.target_resource_id,
                 job.environment,
                 json.dumps(job.parameters),
@@ -167,6 +174,7 @@ class SQLiteJobRepository(IJobRepository):
         # Restore mutable state without triggering transition validation
         job.status = JobStatus(row["status"])
         job.approver_id = row["approver_id"]
+        job.dispatched_by = row["dispatched_by"] if "dispatched_by" in row.keys() else None
         job.exit_code = row["exit_code"]
         job.error_message = row["error_message"]
 
@@ -192,6 +200,9 @@ class SQLiteJobRepository(IJobRepository):
             if row:
                 return self._row_to_job(row, catalog_map)
         return None
+
+    def get_by_correlation_id(self, correlation_id: str) -> Optional[ExecutionJob]:
+        return self.get_by_id(correlation_id)
 
     def list_jobs(
         self,

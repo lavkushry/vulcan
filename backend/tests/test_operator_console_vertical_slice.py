@@ -23,6 +23,7 @@ class TestOperatorConsoleVerticalSlice(unittest.TestCase):
 
     def setUp(self):
         self.client = TestClient(app)
+        self.client.headers.update({"Authorization": "Bearer vlc_test_alice"})
 
     def test_intent_resolution_operator_console_contract(self):
         """Resolves prompt text into structured match, parameters, and ParamSpec array."""
@@ -71,7 +72,11 @@ class TestOperatorConsoleVerticalSlice(unittest.TestCase):
         alice_approval = {
             "approver_id": "eng.alice"
         }
-        self_res = self.client.post(f"/api/v1/jobs/{job_id}/approve", json=alice_approval)
+        self_res = self.client.post(
+            f"/api/v1/jobs/{job_id}/approve",
+            json=alice_approval,
+            headers={"Authorization": "Bearer vlc_test_alice"}
+        )
         self.assertEqual(self_res.status_code, 403)
         self.assertIn("Separation of Duties Violation", self_res.json()["detail"])
 
@@ -79,14 +84,21 @@ class TestOperatorConsoleVerticalSlice(unittest.TestCase):
         bob_approval = {
             "approver_id": "lead.bob"
         }
-        bob_res = self.client.post(f"/api/v1/jobs/{job_id}/approve", json=bob_approval)
+        bob_res = self.client.post(
+            f"/api/v1/jobs/{job_id}/approve",
+            json=bob_approval,
+            headers={"Authorization": "Bearer vlc_test_bob"}
+        )
         self.assertEqual(bob_res.status_code, 200)
         approved_job = bob_res.json()
         self.assertEqual(approved_job["status"], "QUEUED")
         self.assertEqual(approved_job["approver_id"], "lead.bob")
 
         # 4. Trigger execution
-        exec_res = self.client.post(f"/api/v1/jobs/{corr_id}/execute")
+        exec_res = self.client.post(
+            f"/api/v1/jobs/{corr_id}/execute",
+            headers={"Authorization": "Bearer vlc_test_bob"}
+        )
         self.assertEqual(exec_res.status_code, 200)
 
         # Allow worker thread to complete execution with polling
@@ -97,10 +109,11 @@ class TestOperatorConsoleVerticalSlice(unittest.TestCase):
             if final_job["status"] in ("SUCCESS", "FAILED"):
                 break
 
-        # 5. Verify final status is SUCCESS
+        # 5. Verify final status is SUCCESS and dispatched_by is lead.bob
         self.assertIsNotNone(final_job)
         self.assertEqual(final_job["status"], "SUCCESS")
         self.assertEqual(final_job["exit_code"], 0)
+        self.assertEqual(final_job["dispatched_by"], "lead.bob")
 
     def test_rejection_lifecycle(self):
         """Checker can reject a job and transition status to REJECTED."""
@@ -121,7 +134,11 @@ class TestOperatorConsoleVerticalSlice(unittest.TestCase):
             "approver_id": "lead.bob",
             "reason": "Risk posture elevated during emergency window"
         }
-        rej_res = self.client.post(f"/api/v1/jobs/{job_id}/reject", json=reject_payload)
+        rej_res = self.client.post(
+            f"/api/v1/jobs/{job_id}/reject",
+            json=reject_payload,
+            headers={"Authorization": "Bearer vlc_test_bob"}
+        )
         self.assertEqual(rej_res.status_code, 200)
         rej_job = rej_res.json()
         self.assertEqual(rej_job["status"], "REJECTED")

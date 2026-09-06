@@ -37,8 +37,10 @@ export function useJobStream(jobId: string | null) {
     };
 
     const connect = () => {
+      const token = process.env.NEXT_PUBLIC_VULCAN_API_TOKEN || "";
+      const tokenParam = token ? `&token=${encodeURIComponent(token)}` : "";
       // last_seq => server replays buffered events first, then streams live
-      ws = new WebSocket(`${getWsBaseUrl()}/api/v1/ws/jobs/${jobId}?last_seq=${lastSeq}`);
+      ws = new WebSocket(`${getWsBaseUrl()}/api/v1/ws/jobs/${jobId}?last_seq=${lastSeq}${tokenParam}`);
       ws.onopen = () => {
         setLive(true);
         retryCount = 0;
@@ -59,9 +61,14 @@ export function useJobStream(jobId: string | null) {
           }
         } catch { /* ignore corrupted frame */ }
       };
-      ws.onclose = () => {
+      ws.onclose = (event: CloseEvent) => {
         setLive(false);
         if (!closed) {
+          // If unauthenticated (4401), fail closed and do not spam reconnect attempts
+          if (event.code === 4401) {
+            console.error(`[Vulcan WS] Connection closed with code 4401: Unauthorized API token.`);
+            return;
+          }
           // Exponential backoff with full jitter to eliminate thundering-herd storms
           retryCount++;
           const baseDelay = Math.min(1000 * Math.pow(1.5, retryCount), 10000);

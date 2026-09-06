@@ -40,7 +40,7 @@ class DummyLock(ILockManager):
 class DummyAudit(IAuditLogger):
     def __init__(self):
         self.records = []
-    def record(self, job: ExecutionJob, event_type: str, details: dict):
+    def record(self, job: ExecutionJob, event_type: str, details: dict, actor: Optional[str] = None):
         self.records.append((event_type, details))
 
 

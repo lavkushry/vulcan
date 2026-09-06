@@ -15,6 +15,7 @@ class TestAPIEndpoints(unittest.TestCase):
 
     def setUp(self):
         self.client = TestClient(app)
+        self.client.headers.update({"Authorization": "Bearer vlc_test_alice"})
 
     def test_health_endpoint(self):
         """GET /api/v1/health returns 200 and valid audit chain."""
@@ -55,7 +56,7 @@ class TestAPIEndpoints(unittest.TestCase):
         submit_payload = {
             "catalog_identifier": "net-f5-cert-renew",
             "target_resource_id": "f5-vip-api-01",
-            "requester_id": "engineer.alice",
+            "requester_id": "eng.alice",
             "parameters": {
                 "hostname": "f5-edge-01.pnc.com",
                 "vip_ip": "10.200.1.50",
@@ -71,11 +72,15 @@ class TestAPIEndpoints(unittest.TestCase):
 
         # 2. Maker-Checker Anti-Self-Approval Verification (Alice cannot approve Alice)
         self_approval_payload = {
-            "approver_id": "engineer.alice",
+            "approver_id": "eng.alice",
             "decision": "APPROVE",
             "reason": "Self-approval test"
         }
-        self_res = self.client.post(f"/api/v1/jobs/{corr_id}/approve", json=self_approval_payload)
+        self_res = self.client.post(
+            f"/api/v1/jobs/{corr_id}/approve",
+            json=self_approval_payload,
+            headers={"Authorization": "Bearer vlc_test_alice"}
+        )
         self.assertEqual(self_res.status_code, 403)
         self.assertIn("Separation of Duties Violation", self_res.json()["detail"])
 
@@ -85,7 +90,11 @@ class TestAPIEndpoints(unittest.TestCase):
             "decision": "APPROVE",
             "reason": "Unprivileged approval attempt"
         }
-        unauth_res = self.client.post(f"/api/v1/jobs/{corr_id}/approve", json=unauth_payload)
+        unauth_res = self.client.post(
+            f"/api/v1/jobs/{corr_id}/approve",
+            json=unauth_payload,
+            headers={"Authorization": "Bearer vlc_test_charlie"}
+        )
         self.assertEqual(unauth_res.status_code, 403)
         self.assertIn("RBAC Policy Violation", unauth_res.json()["detail"])
 
@@ -95,12 +104,19 @@ class TestAPIEndpoints(unittest.TestCase):
             "decision": "APPROVE",
             "reason": "Authorized change review"
         }
-        appr_res = self.client.post(f"/api/v1/jobs/{corr_id}/approve", json=bob_approval_payload)
+        appr_res = self.client.post(
+            f"/api/v1/jobs/{corr_id}/approve",
+            json=bob_approval_payload,
+            headers={"Authorization": "Bearer vlc_test_bob"}
+        )
         self.assertEqual(appr_res.status_code, 200)
         self.assertEqual(appr_res.json()["status"], "QUEUED")
 
         # 4. Trigger Execution
-        exec_res = self.client.post(f"/api/v1/jobs/{corr_id}/execute")
+        exec_res = self.client.post(
+            f"/api/v1/jobs/{corr_id}/execute",
+            headers={"Authorization": "Bearer vlc_test_bob"}
+        )
         self.assertEqual(exec_res.status_code, 200)
 
         # Allow background thread worker to complete
@@ -179,7 +195,11 @@ class TestAPIEndpoints(unittest.TestCase):
             "parameters": {"bucket_name": "analytics-bucket-test", "retention_days": 90},
             "environment": "UAT"
         }
-        disp_res = self.client.post("/api/v1/tasks/dispatch", json=payload)
+        disp_res = self.client.post(
+            "/api/v1/tasks/dispatch",
+            json=payload,
+            headers={"Authorization": "Bearer vlc_test_bob"}
+        )
         self.assertEqual(disp_res.status_code, 200)
         disp_data = disp_res.json()
         corr_id = disp_data["correlation_id"]
