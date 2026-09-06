@@ -80,15 +80,33 @@ class AppContainer:
         # 3. Seed Catalog (in-memory materialization)
         self.catalog = self._build_catalog()
 
-        # 4. Durable Persistence Repositories (SQLite)
+        # 4. Durable Persistence Repositories
         self.job_repo = SQLiteJobRepository(db_path=self.database_url, catalog=self.catalog)
         self.audit_repo = SQLiteAuditLedgerRepository(db_path=self.database_url)
-        self.catalog_repo = SQLiteCatalogRepository(db_path=self.database_url)
 
-        # 5. Seed catalog into SQLite if empty
-        seeded = self.catalog_repo.seed_if_empty(self.catalog)
-        if seeded > 0:
-            logger.info(f"Seeded {seeded} catalog items into SQLite.")
+        catalog_backend = os.getenv("VULCAN_CATALOG_BACKEND", "sqlite").lower()
+        if catalog_backend in ("postgres", "pgvector"):
+            try:
+                from app.adapters.postgres_catalog_repository import PostgresCatalogRepository
+                pg_repo = PostgresCatalogRepository(
+                    db_url=os.getenv("POSTGRES_URL") or os.getenv("DATABASE_URL")
+                )
+                self.catalog_repo = pg_repo
+                logger.info("Initialized PostgreSQL pgvector Catalog Repository.")
+                # Sync catalog items to Postgres if empty
+                if self.catalog_repo.count() == 0:
+                    for item in self.catalog:
+                        self.catalog_repo.save(item)
+                    logger.info("Seeded %d catalog items into PostgreSQL pgvector.", len(self.catalog))
+            except Exception as e:
+                logger.warning("Failed to initialize PostgresCatalogRepository (%s); falling back to SQLite.", e)
+                self.catalog_repo = SQLiteCatalogRepository(db_path=self.database_url)
+                self.catalog_repo.seed_if_empty(self.catalog)
+        else:
+            self.catalog_repo = SQLiteCatalogRepository(db_path=self.database_url)
+            seeded = self.catalog_repo.seed_if_empty(self.catalog)
+            if seeded > 0:
+                logger.info(f"Seeded {seeded} catalog items into SQLite.")
 
         # 6. Seed sample jobs into SQLite if empty
         self._seed_jobs_to_db()

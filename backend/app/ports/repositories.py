@@ -66,11 +66,32 @@ class ICatalogRepository(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def list_all(self) -> List[CatalogItem]:
+    def list_all(self, curation_status: Optional[str] = None) -> List[CatalogItem]:
         """Returns all registered catalog items."""
         pass
 
     @abc.abstractmethod
     def search_vector(self, embedding: List[float], top_k: int = 10) -> List[CatalogItem]:
         """Executes pgvector HNSW cosine similarity search over catalog items."""
+        pass
+
+    @abc.abstractmethod
+    def save(self, item: CatalogItem, embedding: Optional[List[float]] = None) -> None:
+        """Persists or updates a catalog item."""
+        pass
+
+    @abc.abstractmethod
+    def count(self, curation_status: Optional[str] = None) -> int:
+        """Returns total count of registered catalog items."""
+        pass
+
+    @abc.abstractmethod
+    def search_hybrid(
+        self,
+        query: str,
+        query_embedding: Optional[List[float]] = None,
+        top_k: int = 10,
+        curation_status: Optional[str] = None
+    ) -> List[Any]:
+        """Executes hybrid dense HNSW + sparse keyword search with RRF fusion and refusal gating."""
         pass

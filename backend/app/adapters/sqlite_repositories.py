@@ -438,16 +438,86 @@ class SQLiteCatalogRepository(ICatalogRepository):
                 return self._row_to_item(row)
         return None
 
-    def list_all(self) -> List[CatalogItem]:
+    def list_all(self, curation_status: Optional[str] = None) -> List[CatalogItem]:
         with self._lock:
             cursor = self._conn.execute("SELECT * FROM catalog_items ORDER BY category, name")
             rows = cursor.fetchall()
-        return [self._row_to_item(row) for row in rows]
+        items = [self._row_to_item(row) for row in rows]
+        if curation_status:
+            items = [i for i in items if getattr(i, "curation_status", None) == curation_status]
+        return items
 
     def search_vector(self, embedding: List[float], top_k: int = 10) -> List[CatalogItem]:
         """Vector search not available in SQLite. Falls back to returning all items."""
         logger.debug("Vector search not available in SQLite adapter; returning full catalog.")
         return self.list_all()[:top_k]
+
+    def save(self, item: CatalogItem, embedding: Optional[List[float]] = None) -> None:
+        """Persists or updates a catalog item in SQLite."""
+        with self._lock:
+            self._conn.execute("""
+                INSERT INTO catalog_items (
+                    id, identifier, name, engine, git_repo, git_commit_sha,
+                    playbook_or_module_path, risk_tier, requires_maker_checker,
+                    requires_chg, input_schema, rollback_path, category,
+                    description, tags
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    identifier=excluded.identifier,
+                    name=excluded.name,
+                    engine=excluded.engine,
+                    git_repo=excluded.git_repo,
+                    git_commit_sha=excluded.git_commit_sha,
+                    playbook_or_module_path=excluded.playbook_or_module_path,
+                    risk_tier=excluded.risk_tier,
+                    requires_maker_checker=excluded.requires_maker_checker,
+                    requires_chg=excluded.requires_chg,
+                    input_schema=excluded.input_schema,
+                    rollback_path=excluded.rollback_path,
+                    category=excluded.category,
+                    description=excluded.description,
+                    tags=excluded.tags,
+                    updated_at=datetime('now')
+            """, (
+                item.id,
+                item.identifier,
+                item.name,
+                item.engine.value if hasattr(item.engine, "value") else str(item.engine),
+                item.git_repo,
+                item.git_commit_sha,
+                item.playbook_or_module_path,
+                item.risk_tier.value if hasattr(item.risk_tier, "value") else str(item.risk_tier),
+                1 if item.requires_maker_checker else 0,
+                1 if item.requires_chg else 0,
+                json.dumps(item.input_schema),
+                item.rollback_path,
+                item.category,
+                item.description,
+                json.dumps(item.tags)
+            ))
+            self._conn.commit()
+
+    def count(self, curation_status: Optional[str] = None) -> int:
+        """Returns total count of registered catalog items."""
+        with self._lock:
+            cursor = self._conn.execute("SELECT COUNT(*) FROM catalog_items")
+            return int(cursor.fetchone()[0])
+
+    def search_hybrid(
+        self,
+        query: str,
+        query_embedding: Optional[List[float]] = None,
+        top_k: int = 10,
+        curation_status: Optional[str] = None
+    ) -> List[Any]:
+        """Hybrid search fallback using keyword matching."""
+        items = self.list_all(curation_status=curation_status)
+        matches = []
+        for it in items:
+            text = f"{it.name} {it.description} {it.identifier}".lower()
+            if any(term in text for term in query.lower().split()):
+                matches.append((it, 1.0, {"sparse_score": 1.0, "dense_score": 0.0}))
+        return matches[:top_k]
 
     def _row_to_item(self, row: sqlite3.Row) -> CatalogItem:
         return CatalogItem(
