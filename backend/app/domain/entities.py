@@ -71,6 +71,9 @@ class CatalogItem:
     requires_chg: bool
     input_schema: Dict[str, Any]
     rollback_path: Optional[str] = None
+    category: str = "general"
+    description: str = ""
+    tags: List[str] = field(default_factory=list)
 
     def __post_init__(self):
         if not re.match(r"^[0-9a-f]{40}$", self.git_commit_sha):
@@ -187,7 +190,8 @@ class ExecutionJob:
         parameters: Dict[str, Any],
         servicenow_chg: Optional[str] = None,
         storage_artifact_uri: Optional[str] = None,
-        storage_artifact_sha256: Optional[str] = None
+        storage_artifact_sha256: Optional[str] = None,
+        environment: str = "PROD"
     ):
         self.id = job_id
         self.correlation_id = correlation_id
@@ -198,6 +202,7 @@ class ExecutionJob:
         self.servicenow_chg = servicenow_chg
         self.storage_artifact_uri = storage_artifact_uri
         self.storage_artifact_sha256 = storage_artifact_sha256
+        self.environment = environment
 
         self.status = JobStatus.SUBMITTED
         self.approver_id: Optional[str] = None

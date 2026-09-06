@@ -125,6 +125,57 @@ class TestAPIEndpoints(unittest.TestCase):
         self.assertEqual(comp_res.status_code, 200)
         self.assertEqual(comp_res.json()["status"], "SUCCESS")
 
+    def test_chat_intent_endpoint(self):
+        """POST /api/v1/chat/intent maps free-text to catalog item and parameters."""
+        res = self.client.post("/api/v1/chat/intent", json={"prompt": "Renew SSL cert on f5-edge-01.internal for 90 days"})
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertTrue(data["matched"])
+        self.assertEqual(data["identifier"], "net-f5-cert-renew")
+        self.assertEqual(data["engine"], "ansible")
+        self.assertIn("hostname", data["suggested_parameters"])
+
+    def test_high_filtered_tasks_endpoint(self):
+        """GET /api/v1/tasks supports filtering by engine, status, environment, and search."""
+        # 1. Base list
+        res = self.client.get("/api/v1/tasks")
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertGreaterEqual(data["total_count"], 10)
+        self.assertIn("counts_by_status", data)
+        self.assertIn("counts_by_engine", data)
+
+        # 2. Filter by engine=terraform
+        res_tf = self.client.get("/api/v1/tasks?engine=terraform")
+        self.assertEqual(res_tf.status_code, 200)
+        for t in res_tf.json()["tasks"]:
+            self.assertEqual(t["engine"], "terraform")
+
+        # 3. Filter by status=SUCCESS
+        res_succ = self.client.get("/api/v1/tasks?status=SUCCESS")
+        self.assertEqual(res_succ.status_code, 200)
+        for t in res_succ.json()["tasks"]:
+            self.assertEqual(t["status"], "SUCCESS")
+
+    def test_task_dispatch_and_logs(self):
+        """POST /api/v1/tasks/dispatch dispatches run and GET /api/v1/tasks/{id}/logs returns logs."""
+        payload = {
+            "catalog_identifier": "cloud-s3-kms-bucket-provision",
+            "target_resource_id": "analytics-bucket-test",
+            "parameters": {"bucket_name": "analytics-bucket-test", "retention_days": 90},
+            "environment": "UAT"
+        }
+        disp_res = self.client.post("/api/v1/tasks/dispatch", json=payload)
+        self.assertEqual(disp_res.status_code, 200)
+        disp_data = disp_res.json()
+        corr_id = disp_data["correlation_id"]
+
+        # Check logs
+        time.sleep(0.5)
+        logs_res = self.client.get(f"/api/v1/tasks/{corr_id}/logs")
+        self.assertEqual(logs_res.status_code, 200)
+        self.assertGreater(len(logs_res.json()["logs"]), 0)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

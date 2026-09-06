@@ -38,91 +38,41 @@ class AppContainer:
         self.diagnostic_engine = FailureDiagnosticEngine()
 
         # 4. In-Memory Job Store for Active Control Plane
-        self.jobs = {}
+        self.jobs = self._seed_jobs()
 
     def _build_catalog(self) -> List[CatalogItem]:
-        return [
-            CatalogItem(
-                id="cat-f5-renew",
-                identifier="net-f5-cert-renew",
-                name="F5 BIG-IP SSL Certificate Renewal",
-                engine=ExecutionEngineType.ANSIBLE,
-                git_repo="git@github.com:pnc/net-playbooks.git",
-                git_commit_sha="a1b2c3d4e5f67890123456789abcdef012345678",
-                playbook_or_module_path="catalog/net-f5-cert-renew/playbook.yml",
-                risk_tier=RiskTier.HIGH,
-                requires_maker_checker=True,
-                requires_chg=True,
-                input_schema={
-                    "type": "object",
-                    "required": ["hostname", "vip_ip", "cert_valid_days"],
-                    "properties": {
-                        "hostname": {"type": "string", "pattern": r"^[a-z0-9-]+(\.pnc\.com)?$"},
-                        "vip_ip": {"type": "string", "pattern": r"^\d{1,3}(\.\d{1,3}){3}$"},
-                        "cert_valid_days": {"type": "integer", "minimum": 30, "maximum": 365}
-                    }
-                }
-            ),
-            CatalogItem(
-                id="cat-db-expand",
-                identifier="db-expand-tablespace",
-                name="Database Tablespace Disk Expansion",
-                engine=ExecutionEngineType.ANSIBLE,
-                git_repo="git@github.com:pnc/db-playbooks.git",
-                git_commit_sha="b2c3d4e5f67890123456789abcdef01234567890",
-                playbook_or_module_path="catalog/db-expand-tablespace/playbook.yml",
-                risk_tier=RiskTier.HIGH,
-                requires_maker_checker=True,
-                requires_chg=True,
-                input_schema={
-                    "type": "object",
-                    "required": ["tablespace_name", "expand_gb"],
-                    "properties": {
-                        "tablespace_name": {"type": "string"},
-                        "expand_gb": {"type": "integer", "minimum": 10, "maximum": 500}
-                    }
-                }
-            ),
-            CatalogItem(
-                id="cat-vpc-peer",
-                identifier="cloud-vpc-peering",
-                name="Cross-Account AWS VPC Peering Connection",
-                engine=ExecutionEngineType.TERRAFORM,
-                git_repo="git@github.com:pnc/cloud-terraform.git",
-                git_commit_sha="c3d4e5f67890123456789abcdef0123456789012",
-                playbook_or_module_path="catalog/cloud-vpc-peering/main.tf",
-                risk_tier=RiskTier.MEDIUM,
-                requires_maker_checker=True,
-                requires_chg=True,
-                input_schema={
-                    "type": "object",
-                    "required": ["peer_vpc_id", "peer_cidr"],
-                    "properties": {
-                        "peer_vpc_id": {"type": "string", "pattern": r"^vpc-[0-9a-fA-F]+$"},
-                        "peer_cidr": {"type": "string", "pattern": r"^\d{1,3}(\.\d{1,3}){3}/\d{1,2}$"}
-                    }
-                }
-            ),
-            CatalogItem(
-                id="cat-os-patch",
-                identifier="os-kernel-patch",
-                name="Enterprise Linux Kernel Patching (10GB ISO)",
-                engine=ExecutionEngineType.ANSIBLE,
-                git_repo="git@github.com:pnc/os-playbooks.git",
-                git_commit_sha="d4e5f67890123456789abcdef012345678901234",
-                playbook_or_module_path="catalog/os-kernel-patch/playbook.yml",
-                risk_tier=RiskTier.HIGH,
-                requires_maker_checker=True,
-                requires_chg=True,
-                input_schema={
-                    "type": "object",
-                    "required": ["target_host"],
-                    "properties": {
-                        "target_host": {"type": "string"}
-                    }
-                }
+        from app.catalog_data import get_catalog_items
+        return get_catalog_items()
+
+    def _seed_jobs(self) -> dict:
+        from app.catalog_data import get_sample_tasks
+        from app.domain.entities import ExecutionJob, JobStatus
+        cat_map = {item.identifier: item for item in self.catalog}
+        samples = get_sample_tasks()
+        jobs = {}
+        for s in samples:
+            cat_item = cat_map.get(s['identifier'])
+            if not cat_item:
+                continue
+            params = dict(s.get('parameters', {}))
+            for req in cat_item.input_schema.get('required', []):
+                if req not in params:
+                    props = cat_item.input_schema.get('properties', {}).get(req, {})
+                    params[req] = props.get('default', 'test-val')
+            job = ExecutionJob(
+                job_id=s['id'],
+                correlation_id=s['correlation_id'],
+                catalog_item=cat_item,
+                requester_id=s['requester_id'],
+                target_resource_id=s['target_resource'],
+                parameters=params,
+                environment=s.get('environment', 'PROD')
             )
-        ]
+            job.status = JobStatus(s['status'])
+            job.approver_id = s.get('approver_id')
+            job.error_message = s.get('error_message')
+            jobs[job.correlation_id] = job
+        return jobs
 
     def create_runner(self, log_event_stream=None) -> AnsibleJobRunner:
         return AnsibleJobRunner(

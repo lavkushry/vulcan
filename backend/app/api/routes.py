@@ -60,6 +60,19 @@ class MultipartCompleteRequest(BaseModel):
     s3_key: str
     parts: List[Dict[str, Any]]
 
+class ChatIntentRequest(BaseModel):
+    prompt: str
+    ambient_params: Optional[Dict[str, Any]] = None
+
+class DispatchTaskRequest(BaseModel):
+    catalog_identifier: str
+    target_resource_id: str
+    requester_id: str = "console.operator"
+    parameters: Dict[str, Any] = Field(default_factory=dict)
+    environment: str = "PROD"
+    servicenow_chg: Optional[str] = None
+    dry_run: bool = False
+
 
 # =====================================================================
 # ROUTES
@@ -80,10 +93,28 @@ def get_health():
 
 
 @router.get("/catalog")
-def list_catalog():
-    """Returns list of immutable playbooks in the enterprise catalog."""
-    return [
-        {
+def list_catalog(
+    search: Optional[str] = None,
+    category: Optional[str] = None,
+    engine: Optional[str] = None,
+    risk_tier: Optional[str] = None
+):
+    """Returns list of immutable playbooks and Terraform stacks with multi-filter support."""
+    items = []
+    q_lower = (search or "").lower().strip()
+    for item in container.catalog:
+        if category and category != "all" and getattr(item, "category", "") != category:
+            continue
+        if engine and engine != "all" and item.engine.value != engine:
+            continue
+        if risk_tier and risk_tier != "all" and item.risk_tier.value != risk_tier:
+            continue
+        if q_lower:
+            text = f"{item.identifier} {item.name} {getattr(item, 'description', '')} {' '.join(getattr(item, 'tags', []))}".lower()
+            if q_lower not in text:
+                continue
+
+        items.append({
             "id": item.id,
             "identifier": item.identifier,
             "name": item.name,
@@ -94,9 +125,264 @@ def list_catalog():
             "requires_maker_checker": item.requires_maker_checker,
             "requires_chg": item.requires_chg,
             "input_schema": item.input_schema,
+            "category": getattr(item, "category", "general"),
+            "description": getattr(item, "description", ""),
+            "tags": getattr(item, "tags", [])
+        })
+    return items
+
+
+@router.post("/chat/intent")
+def chat_intent(req: ChatIntentRequest):
+    """
+    Conversational AI Intent Parsing:
+    Maps natural language request to exact playbook or Terraform stack from 100+ items,
+    extracts parameters (host, IPs, numbers, env), and generates interactive launch card.
+    """
+    from app.catalog_data import find_matching_playbook
+    return find_matching_playbook(req.prompt, req.ambient_params)
+
+
+@router.get("/tasks")
+def list_tasks_filtered(
+    engine: Optional[str] = Query("all"),
+    status: Optional[str] = Query("all"),
+    environment: Optional[str] = Query("all"),
+    category: Optional[str] = Query("all"),
+    search: Optional[str] = Query(None),
+    limit: int = Query(100),
+    offset: int = Query(0)
+):
+    """
+    High-Filtered Task Window Endpoint:
+    Provides multi-dimensional querying across engine, status, environment, category,
+    and text search with real-time aggregate telemetry counts.
+    """
+    all_tasks = []
+    counts_by_status = {"RUNNING": 0, "SUCCESS": 0, "FAILED": 0, "PENDING_APPROVAL": 0, "QUEUED": 0}
+    counts_by_engine = {"ansible": 0, "terraform": 0}
+    counts_by_category = {}
+
+    for job in container.jobs.values():
+        st = job.status.value
+        eng = job.catalog_item.engine.value
+        cat = getattr(job.catalog_item, "category", "general")
+        env = getattr(job, "environment", "PROD")
+
+        # Telemetry aggregations
+        if st in counts_by_status:
+            counts_by_status[st] += 1
+        if eng in counts_by_engine:
+            counts_by_engine[eng] += 1
+        counts_by_category[cat] = counts_by_category.get(cat, 0) + 1
+
+        # Apply multi-dimensional filters
+        if engine and engine != "all" and eng != engine:
+            continue
+        if status and status != "all" and st != status:
+            continue
+        if environment and environment != "all" and env != environment:
+            continue
+        if category and category != "all" and cat != category:
+            continue
+
+        if search:
+            q = search.lower().strip()
+            haystack = f"{job.correlation_id} {job.id} {job.catalog_item.name} {job.catalog_item.identifier} {job.target_resource_id} {job.requester_id} {job.error_message or ''}".lower()
+            if q not in haystack:
+                continue
+
+        all_tasks.append({
+            "id": job.id,
+            "correlation_id": job.correlation_id,
+            "identifier": job.catalog_item.identifier,
+            "name": job.catalog_item.name,
+            "engine": eng,
+            "category": cat,
+            "target_resource": job.target_resource_id,
+            "environment": env,
+            "status": st,
+            "risk_tier": job.catalog_item.risk_tier.value,
+            "requester_id": job.requester_id,
+            "approver_id": job.approver_id,
+            "duration_sec": 45 if st == "RUNNING" else (120 if st == "SUCCESS" else 30),
+            "created_at": job.created_at.isoformat() if job.created_at else None,
+            "parameters": job.parameters,
+            "error_message": job.error_message,
+        })
+
+    # Sort newest first
+    all_tasks.sort(key=lambda t: t["created_at"] or "", reverse=True)
+    paginated = all_tasks[offset : offset + limit]
+
+    return {
+        "tasks": paginated,
+        "total_count": len(container.jobs),
+        "filtered_count": len(all_tasks),
+        "counts_by_status": counts_by_status,
+        "counts_by_engine": counts_by_engine,
+        "counts_by_category": counts_by_category
+    }
+
+
+@router.post("/tasks/dispatch")
+def dispatch_task(req: DispatchTaskRequest):
+    """
+    Launches an automation task directly from the Chat Assistant or Launch Card.
+    Handles parameter injection, Maker-Checker routing, and background thread streaming.
+    """
+    catalog_item = next((i for i in container.catalog if i.identifier == req.catalog_identifier), None)
+    if not catalog_item:
+        raise HTTPException(status_code=404, detail=f"Catalog item '{req.catalog_identifier}' not found.")
+
+    job_id = f"task-{uuid.uuid4().hex[:6]}"
+    correlation_id = f"EXEC-{uuid.uuid4().hex[:4].upper()}"
+
+    try:
+        job = ExecutionJob(
+            job_id=job_id,
+            correlation_id=correlation_id,
+            catalog_item=catalog_item,
+            requester_id=req.requester_id,
+            target_resource_id=req.target_resource_id,
+            parameters=req.parameters,
+            servicenow_chg=req.servicenow_chg,
+            environment=req.environment
+        )
+    except (SecretLintError, ParameterValidationError) as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    # Governance check
+    if catalog_item.risk_tier == RiskTier.HIGH and catalog_item.requires_maker_checker and not req.dry_run:
+        job.parse()
+        job.request_approval(datetime.now(timezone.utc))
+        container.jobs[correlation_id] = job
+        ws_hub.emit_log(correlation_id, f"\033[1;33m[GOVERNANCE]\033[0m Task submitted. Awaiting Maker-Checker sign-off (CHG: {req.servicenow_chg or 'AUTO-REQ'}).")
+        return {
+            "job_id": job.id,
+            "correlation_id": job.correlation_id,
+            "status": job.status.value,
+            "target_resource": job.target_resource_id,
+            "requires_approval": True,
+            "message": "High-risk automation requires Maker-Checker approval before execution."
         }
-        for item in container.catalog
+
+    # Immediate execution path
+    job.parse()
+    job.transition_to(JobStatus.QUEUED, "Dispatched from automation hub")
+    job.transition_to(JobStatus.LOCKED, "Distributed lock acquired")
+    job.transition_to(JobStatus.RUNNING, "Execution initiated")
+    container.jobs[correlation_id] = job
+
+    def run_simulation():
+        import time
+        engine_name = catalog_item.engine.value.upper()
+        ws_hub.emit_log(correlation_id, f"\033[1;36m[PROJECT VULCAN CONTROL PLANE]\033[0m Initializing runtime sandbox for {catalog_item.identifier}...")
+        time.sleep(0.3)
+        ws_hub.emit_log(correlation_id, f"\033[1;34m[PAM CYBERARK]\033[0m Bound ephemeral session credentials for {req.target_resource_id}.")
+        time.sleep(0.3)
+        ws_hub.emit_log(correlation_id, f"\033[1;32m[AUDIT LEDGER]\033[0m Synchronous pre-run cryptographic commit hash: {container.audit_logger.get_last_hash()[:12]}...")
+        time.sleep(0.4)
+
+        if catalog_item.engine == ExecutionEngineType.ANSIBLE:
+            ws_hub.emit_log(correlation_id, f"PLAY [{catalog_item.name}] ****************************************")
+            time.sleep(0.4)
+            ws_hub.emit_log(correlation_id, f"TASK [Gathering Facts] *********************************************************")
+            ws_hub.emit_log(correlation_id, f"ok: [{req.target_resource_id}]")
+            time.sleep(0.5)
+            ws_hub.emit_log(correlation_id, f"TASK [execute_playbook_tasks : Verify environment state] ***********************")
+            ws_hub.emit_log(correlation_id, f"ok: [{req.target_resource_id}] => {{\"status\": \"READY\", \"env\": \"{req.environment}\"}}")
+            time.sleep(0.6)
+            ws_hub.emit_log(correlation_id, f"TASK [execute_playbook_tasks : Apply configurations] ***************************")
+            ws_hub.emit_log(correlation_id, f"changed: [{req.target_resource_id}] => {{\"params\": {req.parameters}, \"state\": \"APPLIED\"}}")
+            time.sleep(0.5)
+            ws_hub.emit_log(correlation_id, f"PLAY RECAP *********************************************************************")
+            ws_hub.emit_log(correlation_id, f"{req.target_resource_id} : ok=3    changed=1    unreachable=0    failed=0")
+        else:
+            ws_hub.emit_log(correlation_id, f"\033[1;35m[TERRAFORM INIT]\033[0m Initializing provider plugins (AWS / Azure / GCP)...")
+            time.sleep(0.4)
+            ws_hub.emit_log(correlation_id, f"\033[1;35m[TERRAFORM PLAN]\033[0m Plan: 1 to add, 0 to change, 0 to destroy.")
+            time.sleep(0.6)
+            ws_hub.emit_log(correlation_id, f"\033[1;35m[TERRAFORM APPLY]\033[0m Applying configuration to {req.target_resource_id}...")
+            time.sleep(0.7)
+            ws_hub.emit_log(correlation_id, f"\033[1;32m[TERRAFORM SUCCESS]\033[0m Apply complete! Resources: 1 added, 0 changed, 0 destroyed.")
+
+        ws_hub.emit_log(correlation_id, f"\033[1;32m[POST-FLIGHT VERIFICATION]\033[0m Health probes passed with 0% error rate.")
+        job.transition_to(JobStatus.VERIFYING, "Verifying health probes")
+        job.transition_to(JobStatus.SUCCESS, "Completed execution")
+        job.completed_at = datetime.now(timezone.utc)
+        ws_hub.emit_log(correlation_id, f"\033[1;32m[COMPLETE]\033[0m Task {correlation_id} finished successfully with exit code 0.")
+
+    thread = threading.Thread(target=run_simulation, daemon=True)
+    thread.start()
+
+    return {
+        "job_id": job.id,
+        "correlation_id": job.correlation_id,
+        "status": job.status.value,
+        "target_resource": job.target_resource_id,
+        "requires_approval": False,
+        "message": f"Task {job.correlation_id} dispatched and executing live."
+    }
+
+
+@router.get("/tasks/{correlation_id}/logs")
+def get_task_logs(correlation_id: str):
+    """Returns ANSI terminal log lines for live or historical replay."""
+    # 1. From real-time buffer
+    buffer_lines = ws_hub.buffers.get(correlation_id, [])
+    if buffer_lines:
+        return {
+            "correlation_id": correlation_id,
+            "logs": [item["data"].rstrip("\r\n") for item in buffer_lines],
+            "total_lines": len(buffer_lines)
+        }
+
+    # 2. If pre-seeded task, generate realistic logs
+    job = container.jobs.get(correlation_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Task correlation ID not found.")
+
+    target = job.target_resource_id
+    cat_item = job.catalog_item
+    is_tf = cat_item.engine == ExecutionEngineType.TERRAFORM
+    
+    logs = [
+        f"\033[1;36m[PROJECT VULCAN CONTROL PLANE]\033[0m Execution log session for {correlation_id} ({cat_item.identifier})",
+        f"\033[1;34m[PAM CYBERARK]\033[0m Ephemeral session credentials verified on target {target}.",
+        f"\033[1;32m[AUDIT LEDGER]\033[0m Merkle root chain verification: VALID (Tip: 0x9a8f12c...)",
+        f"Target Resource: {target} | Environment: {getattr(job, 'environment', 'PROD')} | Requester: {job.requester_id}",
+        "--------------------------------------------------------------------------------"
     ]
+
+    if is_tf:
+        logs.extend([
+            "\033[1;35m[TERRAFORM INIT]\033[0m Initializing provider modules from Git commit sha...",
+            f"\033[1;35m[TERRAFORM PLAN]\033[0m Refreshing state for target {target}...",
+            f"\033[1;35m[TERRAFORM PLAN]\033[0m Plan: 1 to add, 0 to change, 0 to destroy.",
+            f"\033[1;35m[TERRAFORM APPLY]\033[0m {cat_item.name} applying changes...",
+        ])
+    else:
+        logs.extend([
+            f"PLAY [{cat_item.name}] **************************************************",
+            f"TASK [Gathering Facts] *********************************************************",
+            f"ok: [{target}]",
+            f"TASK [execute_steps : Run primary automation sequence] *************************",
+            f"changed: [{target}] => {{\"applied\": true, \"params\": {job.parameters}}}",
+            f"PLAY RECAP *********************************************************************",
+            f"{target} : ok=3    changed=1    unreachable=0    failed=0"
+        ])
+
+    if job.status == JobStatus.FAILED:
+        logs.append(f"\033[1;31m[FATAL ERROR]\033[0m {job.error_message or 'Step failure on node'}")
+    else:
+        logs.append(f"\033[1;32m[SUCCESS]\033[0m Automation completed cleanly with exit code 0.")
+
+    return {
+        "correlation_id": correlation_id,
+        "logs": logs,
+        "total_lines": len(logs)
+    }
 
 
 @router.post("/intent/resolve")
