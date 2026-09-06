@@ -28,8 +28,8 @@ function MatrixContent() {
         }
       }
       // Fallback to jobs list mapped to TaskRecord
-      const jobs = await api.listJobs();
-      const mapped: TaskRecord[] = jobs.map((j) => ({
+      const jobs = await api.listJobs(currentUser);
+      const mapped: TaskRecord[] = jobs.map((j: Job) => ({
         id: j.id,
         correlation_id: j.correlation_id,
         identifier: j.identifier,
@@ -47,6 +47,7 @@ function MatrixContent() {
         parameters: j.parameters,
         servicenow_chg: j.servicenow_chg,
         diagnostic: j.diagnostic,
+        capabilities: j.capabilities,
       }));
       setTasks(mapped);
     } catch {

@@ -21,6 +21,18 @@ export function Terminal({ events, live }: { events: WsEvent[]; live: boolean })
     }
   }, [visibleEvents, isAutoscrollLocked]);
 
+  // Detect manual scroll-up by operator to pause autoscroll (UI-18)
+  const handleScroll = () => {
+    if (!ref.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = ref.current;
+    const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+    if (distanceFromBottom > 20 && !isAutoscrollLocked) {
+      setIsAutoscrollLocked(true);
+    } else if (distanceFromBottom <= 5 && isAutoscrollLocked) {
+      setIsAutoscrollLocked(false);
+    }
+  };
+
   // Copy raw clean stdout without ANSI escape codes
   const handleCopyStdout = () => {
     const rawLines = visibleEvents
@@ -54,7 +66,7 @@ export function Terminal({ events, live }: { events: WsEvent[]; live: boolean })
   }, [visibleEvents, searchQuery]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col rounded-lg border border-slate-800 bg-[#05070B] overflow-hidden">
+    <div className="relative flex h-full min-h-0 flex-col rounded-lg border border-slate-800 bg-[#05070B] overflow-hidden">
       {/* Live Terminal Action Bar */}
       <TerminalActionBar
         onClear={handleClear}
@@ -67,7 +79,11 @@ export function Terminal({ events, live }: { events: WsEvent[]; live: boolean })
       />
 
       {/* Terminal Output */}
-      <div ref={ref} className="flex-1 overflow-y-auto p-3 font-mono text-xs leading-5 text-slate-300">
+      <div 
+        ref={ref} 
+        onScroll={handleScroll}
+        className="flex-1 overflow-y-auto p-3 font-mono text-xs leading-5 text-slate-300"
+      >
         {filteredEvents.length === 0 ? (
           <div className="text-slate-600 italic py-4 text-center">
             {searchQuery ? `No log lines matching "${searchQuery}"` : "Awaiting stdout stream…"}
@@ -100,6 +116,22 @@ export function Terminal({ events, live }: { events: WsEvent[]; live: boolean })
           })
         )}
       </div>
+
+      {/* Floating Scroll Paused Pill (UI-18) */}
+      {isAutoscrollLocked && (
+        <button
+          type="button"
+          onClick={() => {
+            setIsAutoscrollLocked(false);
+            if (ref.current) {
+              ref.current.scrollTop = ref.current.scrollHeight;
+            }
+          }}
+          className="absolute bottom-3 right-4 px-2.5 py-1 rounded bg-amber-500/20 border border-amber-500/40 text-amber-300 hover:bg-amber-500/30 text-xs font-mono font-bold shadow-lg flex items-center gap-1.5 animate-bounce z-10 transition-colors"
+        >
+          <span>↓ SCROLL PAUSED (Resume tail)</span>
+        </button>
+      )}
     </div>
   );
 }

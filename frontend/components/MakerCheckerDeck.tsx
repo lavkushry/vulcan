@@ -23,6 +23,8 @@ export default function MakerCheckerDeck({
   }
 
   const isSelfApproval = currentUserId === job.requester_id;
+  const canApprove = job.capabilities ? job.capabilities.can_approve : (!isSelfApproval);
+  const disabledReason = job.capabilities?.disabled_reason || (isSelfApproval ? "Banking Rule: You cannot approve your own change. An independent Checker must sign off." : "Action not permitted");
 
   return (
     <div className="glass-panel border border-amber-500/30 rounded-xl p-5 shadow-glow-amber space-y-4">
@@ -103,10 +105,10 @@ export default function MakerCheckerDeck({
 
       {/* Anti-Self-Approval Action Buttons */}
       <div className="flex items-center justify-between pt-2">
-        {isSelfApproval ? (
+        {!canApprove ? (
           <div className="text-xs text-rose-400 font-mono flex items-center gap-2">
             <Lock className="w-4 h-4" />
-            Banking Rule: You cannot approve your own change. An independent Checker must sign off.
+            {disabledReason}
           </div>
         ) : (
           <div className="text-xs text-emerald-400 font-mono flex items-center gap-2">
@@ -129,7 +131,7 @@ export default function MakerCheckerDeck({
           <button
             type="button"
             onClick={() => onApprove('APPROVE', reason)}
-            disabled={isProcessing || isSelfApproval}
+            disabled={isProcessing || !canApprove}
             className="px-5 py-2 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-mono text-xs font-bold shadow-glow-emerald transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1.5"
           >
             <CheckCircle className="w-4 h-4" />

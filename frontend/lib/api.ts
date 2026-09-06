@@ -34,7 +34,7 @@ export const api = {
     }
     return job;
   },
-  listJobs: () => req<{ jobs: Job[] } | Job[]>("GET", "/api/v1/jobs").then((r) => Array.isArray(r) ? r : r.jobs),
+  listJobs: (currentUser?: string) => req<Job[]>("GET", `/api/v1/jobs${currentUser ? `?current_user=${encodeURIComponent(currentUser)}` : ""}`).then((r) => Array.isArray(r) ? r : (r as any).jobs),
   approveJob: async (id: string, approver_id: string) => {
     const job = await req<Job>("POST", `/api/v1/jobs/${id}/approve`, { approver_id });
     try { await req("POST", `/api/v1/jobs/${job.correlation_id ?? job.id}/execute`); } catch { /* ignore */ }

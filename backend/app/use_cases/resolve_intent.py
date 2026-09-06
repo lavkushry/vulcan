@@ -9,6 +9,7 @@ Implements:
 """
 import math
 import re
+import unicodedata
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.domain.entities import CatalogItem, ExecutionEngineType, RiskTier
@@ -17,12 +18,14 @@ from app.domain.entities import CatalogItem, ExecutionEngineType, RiskTier
 class IntentResolutionResult:
     def __init__(
         self,
-        status: str,  # "READY" | "NEEDS_INPUT" | "REFUSED"
+        status: str,  # "READY" | "NEEDS_INPUT" | "REFUSED" | "DISAMBIGUATION"
         catalog_item: Optional[CatalogItem] = None,
         extracted_parameters: Optional[Dict[str, Any]] = None,
         missing_fields: Optional[List[str]] = None,
         refusal_reason: Optional[str] = None,
-        tokens_used: int = 0
+        tokens_used: int = 0,
+        disambiguation_candidates: Optional[List[Dict[str, Any]]] = None,
+        delta_sim: float = 0.0
     ):
         self.status = status
         self.catalog_item = catalog_item
@@ -30,6 +33,8 @@ class IntentResolutionResult:
         self.missing_fields = missing_fields or []
         self.refusal_reason = refusal_reason
         self.tokens_used = tokens_used
+        self.disambiguation_candidates = disambiguation_candidates or []
+        self.delta_sim = delta_sim
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -39,7 +44,9 @@ class IntentResolutionResult:
             "parameters": self.extracted_parameters,
             "missing_fields": self.missing_fields,
             "refusal_reason": self.refusal_reason,
-            "tokens_used": self.tokens_used
+            "tokens_used": self.tokens_used,
+            "disambiguation_candidates": self.disambiguation_candidates,
+            "delta_sim": self.delta_sim
         }
 
 
@@ -50,22 +57,74 @@ class IntentResolver:
     """
 
     ADVERSARIAL_PATTERNS = [
-        r"(?i)ignore\s+(all\s+)?(previous\s+)?instructions",
-        r"(?i)bypass\s+(maker[-_\s]?checker|approval|security)",
-        r"(?i)drop\s+database",
-        r"(?i)system\s+override",
-        r"(?i)give\s+(me\s+)?root",
-        r"(?i)disable\s+audit",
-        r"(?i)rm\s+-rf\s+/",
+        # Instruction Overrides & Jailbreaks
+        r"(?i)ignore\s+(all\s+)?(previous|prior|above|system)\s+instructions",
+        r"(?i)disregard\s+(all\s+)?(rules|safety|guidelines|restrictions|instructions)",
+        r"(?i)forget\s+(all\s+)?(previous|prior)\s+instructions",
+        r"(?i)you\s+are\s+now\s+(in\s+)?(dan|developer|root|admin|god|unrestricted)\s+mode",
+        r"(?i)pretend\s+(you\s+are|to\s+be)\s+(an\s+unrestricted|a\s+hacker|root|god|superadmin)",
+        r"(?i)system\s+(override|prompt|reset)",
+        r"(?i)new\s+system\s+directive",
+        
+        # Governance & Approval Bypasses
+        r"(?i)bypass\s+(maker[-_\s]?checker|approval|security|governance|rbac|controls)",
+        r"(?i)self[-_\s]?approv(e|al)",
+        r"(?i)skip\s+(maker[-_\s]?checker|approval|change\s+ticket|governance|checks)",
+        r"(?i)force\s+execut(e|ion)\s+without\s+(approval|review|ticket)",
+        
+        # Privilege Escalation
+        r"(?i)give\s+(me\s+)?(root|admin|sudo|superuser)",
+        r"(?i)grant\s+(me\s+)?(admin|root|superuser)",
+        r"(?i)elevate\s+(my\s+)?privileges",
+        
+        # Destructive OS Commands & SQL Injection
+        r"(?i)(drop|truncate)\s+(database|table|schema|user)",
+        r"(?i)delete\s+from\s+[a-z0-9_]+",
+        r"(?i)rm\s+-rf\s+[/~]",
+        r"(?i)\bmkfs\b",
+        r"(?i)dd\s+if=/dev",
+        r"(?i);\s*(cat\s+/etc/passwd|shutdown|reboot|curl\s+http|wget\s+http)",
+        
+        # Secret Exfiltration & Information Gathering
+        r"(?i)print\s+(the\s+)?(system\s+prompt|hidden\s+instructions|api\s+key|password|secret|creds)",
+        r"(?i)reveal\s+(your\s+)?(instructions|system\s+prompt|secrets|credentials|keys)",
+        r"(?i)dump\s+(database|env|environment|pam|credentials|keys|tokens)",
+        r"(?i)echo\s+\$(AWS|VAULT|CYBERARK|SECRET|TOKEN|PASSWORD)",
+        r"(?i)disable\s+(audit|logging|merkle|checks)",
+        
+        # Prompt Delimiter Escapes & Tags
+        r"(?i)(```\s*system|<\|im_start\|>|<\|im_end\|>|\[INST\]|\[/INST\]|<system>)",
+        r"(?i)(<\s*script|javascript:|onerror\s*=)",
+    ]
+
+    SENSITIVE_SECRET_PATTERNS = [
+        r"BEGIN\s+(RSA|OPENSSH|EC|DSA)?\s*PRIVATE\s+KEY",
+        r"(?i)(aws_secret_access_key|cyberark_secret|vault_token)\s*[:=]",
+        r"ghp_[a-zA-Z0-9]{36}",
     ]
 
     def __init__(self, catalog: List[CatalogItem]):
         self.catalog = catalog
 
     def _check_adversarial(self, prompt: str) -> Optional[str]:
-        """Detects prompt injection or security boundary override attempts."""
+        """
+        Four-Stage Adversarial Injection & Secret Sanitization Pipeline (CHAT-17).
+        Stage 1: Unicode normalization & control char stripping.
+        Stage 2: High-entropy secret and private key detection.
+        Stage 3: Comprehensive regex pattern matching.
+        """
+        # Stage 1: Normalize unicode (NFKC) & strip zero-width characters
+        normalized = unicodedata.normalize("NFKC", prompt)
+        clean_prompt = re.sub(r"[\u200B-\u200D\uFEFF]", "", normalized)
+
+        # Stage 2: Secret and key leak detection
+        for sec_pattern in self.SENSITIVE_SECRET_PATTERNS:
+            if re.search(sec_pattern, clean_prompt):
+                return "Adversarial security violation: Prompt contains private credentials or sensitive secrets."
+
+        # Stage 3: Heuristic pattern blacklist
         for pattern in self.ADVERSARIAL_PATTERNS:
-            if re.search(pattern, prompt):
+            if re.search(pattern, clean_prompt):
                 return f"Adversarial security policy violation detected: Prompt matches blocked pattern [{pattern}]."
         return None
 
@@ -79,19 +138,23 @@ class IntentResolver:
         return len(intersection) / len(query_tokens)
 
     def _dense_similarity_score(self, query: str, item: CatalogItem) -> float:
-        """Semantic term alignment score."""
-        semantic_map = {
-            "f5": ["ssl", "cert", "tls", "certificate", "renew", "f5", "vip", "loadbalancer"],
-            "db": ["database", "tablespace", "disk", "expand", "storage", "oracle", "postgres"],
-            "vpc": ["peering", "vpc", "network", "route", "cidr", "terraform", "cloud", "aws"],
-            "patch": ["kernel", "os", "patch", "upgrade", "rhel", "iso", "linux"]
-        }
+        """Semantic term alignment score across actions and infrastructure domains."""
         query_lower = query.lower()
+        item_text = f"{item.identifier} {item.name} {getattr(item, 'description', '')}".lower()
         score = 0.0
-        for category, keywords in semantic_map.items():
-            if any(k in query_lower for k in keywords):
-                if category in item.identifier.lower() or category in item.name.lower():
-                    score += 0.8
+
+        # Exact action alignment
+        actions = ["renew", "expand", "scale", "patch", "rotate", "backup", "drain", "peer", "deploy", "inspect"]
+        matched_actions = [a for a in actions if a in query_lower and a in item_text]
+        if matched_actions:
+            score += 0.4
+
+        # Target infrastructure domain alignment
+        domains = ["ssl", "cert", "tls", "tablespace", "database", "postgres", "eks", "kernel", "vpc", "ssh", "f5", "vip"]
+        matched_domains = [d for d in domains if d in query_lower and d in item_text]
+        if matched_domains:
+            score += min(0.5, len(matched_domains) * 0.25)
+
         return min(score, 1.0)
 
     def hybrid_search(self, query: str, k: int = 60) -> List[Tuple[CatalogItem, float]]:
@@ -159,7 +222,52 @@ class IntentResolver:
                 tokens_used=120
             )
 
-        best_item, score = ranked[0]
+        # Check if caller explicitly disambiguated/selected an item
+        selected_id = (ambient_params or {}).get("catalog_identifier") or (ambient_params or {}).get("playbook_identifier")
+        best_item = None
+        if selected_id:
+            for item, _ in ranked:
+                if item.identifier == selected_id or item.id == selected_id:
+                    best_item = item
+                    break
+
+        # 2b. Semantic Ambivalence Detection & Disambiguation Gate (CHAT-08)
+        if not best_item and len(ranked) >= 2:
+            dense_scores = {item.id: self._dense_similarity_score(prompt, item) for item in self.catalog}
+            sparse_scores = {
+                item.id: self._sparse_bm25_score(prompt, f"{item.identifier} {item.name} {item.playbook_or_module_path}")
+                for item in self.catalog
+            }
+            cand1, _ = ranked[0]
+            cand2, _ = ranked[1]
+            sim1 = dense_scores.get(cand1.id, 0.0) * 0.6 + sparse_scores.get(cand1.id, 0.0) * 0.4
+            sim2 = dense_scores.get(cand2.id, 0.0) * 0.6 + sparse_scores.get(cand2.id, 0.0) * 0.4
+            delta_sim = abs(sim1 - sim2)
+            
+            # If both candidates exhibit significant relevance and difference is under 0.05
+            if sim1 >= 0.30 and sim2 >= 0.30 and delta_sim < 0.05:
+                candidates_payload = []
+                for idx, (c_item, _) in enumerate(ranked[:3]):
+                    c_sim = dense_scores.get(c_item.id, 0.0) * 0.6 + sparse_scores.get(c_item.id, 0.0) * 0.4
+                    candidates_payload.append({
+                        "identifier": c_item.identifier,
+                        "name": c_item.name,
+                        "engine": c_item.engine.value,
+                        "cosineSimilarity": round(c_sim, 3),
+                        "blastRadius": c_item.risk_tier.value,
+                        "governanceGate": "MAKER_CHECKER" if c_item.requires_maker_checker else "PRE_APPROVED",
+                        "summary": getattr(c_item, "description", "") or f"Automated execution of {c_item.name}",
+                        "shortcut": str(idx + 1)
+                    })
+                return IntentResolutionResult(
+                    status="DISAMBIGUATION",
+                    tokens_used=80,
+                    disambiguation_candidates=candidates_payload,
+                    delta_sim=round(delta_sim, 3)
+                )
+
+        if not best_item:
+            best_item = ranked[0][0]
 
         # 3. Parameter Slot Extraction
         extracted: Dict[str, Any] = dict(ambient_params or {})

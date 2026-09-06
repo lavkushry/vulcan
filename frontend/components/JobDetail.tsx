@@ -56,9 +56,22 @@ export function JobDetail({ job, currentUser, onChanged }: {
     catch (e) { setError((e as Error).message); }
   }
 
-  const handleRollback = () => {
+  const handleRollback = async () => {
+    if (!job) return;
     setRollbackDispatched(true);
-    setTimeout(() => setRollbackDispatched(false), 3000);
+    try {
+      await api.createJob({
+        identifier: job.identifier,
+        parameters: { ...job.parameters, action: "rollback", rollback_mode: true },
+        requester_id: currentUser,
+        servicenow_chg: job.servicenow_chg,
+      });
+      onChanged();
+    } catch (err: any) {
+      setError(err?.message || "Failed to dispatch rollback playbook");
+    } finally {
+      setTimeout(() => setRollbackDispatched(false), 3000);
+    }
   };
 
   // Determine active step index in the 8-step domain rail
@@ -129,11 +142,13 @@ export function JobDetail({ job, currentUser, onChanged }: {
           <RedlockHeartbeatBar
             leaseTtlSeconds={30}
             watchdogIntervalSeconds={10}
-            fencingToken={10482}
-            targetResource={(job.parameters?.target_resource as string) || "prod-edge-vip"}
-            quorumActive={4}
-            quorumTotal={5}
+            fencingToken={stream.latestHeartbeat?.data?.fencing_token ?? 10482}
+            targetResource={(job.parameters?.target_resource as string) || job.target_resource || "prod-edge-vip"}
+            quorumActive={stream.latestHeartbeat?.data?.quorum_active ?? 5}
+            quorumTotal={stream.latestHeartbeat?.data?.quorum_total ?? 5}
             isHolding={true}
+            serverTtlMs={stream.latestHeartbeat?.data?.remaining_ttl_ms}
+            lastHeartbeatReceivedAt={stream.latestHeartbeat ? Date.parse(stream.latestHeartbeat.timestamp) : undefined}
           />
         )}
 
@@ -144,6 +159,8 @@ export function JobDetail({ job, currentUser, onChanged }: {
               requesterId={job.requester_id}
               currentUserId={currentUser}
               servicenowChg={job.servicenow_chg}
+              approvalRequestedAt={job.approval_requested_at || job.created_at}
+              capabilities={job.capabilities}
               onApprove={() => decide("approveJob")}
               onReject={() => decide("rejectJob")}
               onSwitchUser={(user) => setCurrentUser(user)}

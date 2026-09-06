@@ -27,14 +27,21 @@ export interface IntentResult {
 export interface Job {
   id: string; correlation_id: string; identifier: string; name: string;
   engine: string; risk_tier: string; requester_id: string; approver_id: string | null;
+  target_resource?: string; target_resource_id?: string;
   parameters: Record<string, unknown>; status: JobStatus;
   servicenow_chg: string | null; created_at: string;
+  approval_requested_at?: string | null;
   approved_at: string | null; completed_at: string | null;
   exit_code: number | null; diagnostic: string | null;
+  capabilities?: {
+    can_approve: boolean;
+    can_reject: boolean;
+    disabled_reason?: string | null;
+  };
 }
 
 export interface WsEvent {
-  seq: number; type: "status" | "stdout" | "diagnostic";
+  seq: number; type: "status" | "stdout" | "diagnostic" | "lock_heartbeat";
   data: Record<string, any>; timestamp: string;
 }
 

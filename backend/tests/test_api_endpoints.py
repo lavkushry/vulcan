@@ -222,6 +222,36 @@ class TestAPIEndpoints(unittest.TestCase):
         self.assertTrue(data["requires_approval"])
         self.assertEqual(data["status"], "PENDING_APPROVAL")
 
+    def test_observability_probes_and_metrics(self):
+        """Validates /healthz, /ready, and Prometheus /metrics endpoints."""
+        # 1. Liveness
+        res_live = self.client.get("/healthz")
+        self.assertEqual(res_live.status_code, 200)
+        self.assertEqual(res_live.json()["status"], "ALIVE")
+
+        # 2. Readiness
+        res_ready = self.client.get("/ready")
+        self.assertEqual(res_ready.status_code, 200)
+        self.assertEqual(res_ready.json()["status"], "READY")
+        self.assertTrue(res_ready.json()["checks"]["catalog_loaded"])
+
+        # 3. Prometheus Metrics
+        res_metrics = self.client.get("/metrics")
+        self.assertEqual(res_metrics.status_code, 200)
+        text = res_metrics.text
+        self.assertIn("vulcan_uptime_seconds", text)
+        self.assertIn("vulcan_catalog_items_total", text)
+        self.assertIn("vulcan_jobs_total", text)
+
+    def test_consistent_error_envelope(self):
+        """Validates consistent error envelope {error_code, message, correlation_id, details} on 404."""
+        res = self.client.get("/api/v1/jobs/non-existent-job-999")
+        self.assertEqual(res.status_code, 404)
+        data = res.json()
+        self.assertEqual(data["error_code"], "ERR_404")
+        self.assertIn("Job not found", data["message"])
+        self.assertIn("correlation_id", data)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

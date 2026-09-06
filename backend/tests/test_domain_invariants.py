@@ -988,6 +988,37 @@ class TestVulcanCleanArchitectureSuite(unittest.TestCase):
             if os.path.exists(lock_path):
                 os.remove(lock_path)
 
+    def test_exhaustive_state_transition_matrix(self):
+        """
+        BKND-01 & BKND-02: Exhaustively validates the 14x14 state transition matrix.
+        Asserts that every declared legal transition succeeds, and every illegal transition
+        raises StateTransitionError fail-closed across all 196 possible state pairs.
+        """
+        all_statuses = list(JobStatus)
+        transitions = ExecutionJob._TRANSITIONS
+
+        for from_status in all_statuses:
+            allowed_next = transitions.get(from_status, [])
+            for to_status in all_statuses:
+                job = ExecutionJob(
+                    job_id="test-fsm",
+                    correlation_id="EXEC-FSM",
+                    catalog_item=self.catalog_item,
+                    requester_id="alice",
+                    target_resource_id="res-01",
+                    parameters=self.valid_params,
+                    servicenow_chg="CHG001"
+                )
+                # Set origin status
+                job.status = from_status
+
+                if to_status in allowed_next:
+                    job.transition_to(to_status, f"Legal transition test {from_status} -> {to_status}")
+                    self.assertEqual(job.status, to_status)
+                else:
+                    with self.assertRaises(StateTransitionError, msg=f"Expected StateTransitionError for illegal {from_status} -> {to_status}"):
+                        job.transition_to(to_status, "Illegal transition attempt")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

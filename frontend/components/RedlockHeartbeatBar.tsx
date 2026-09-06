@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { AlertTriangle, ShieldAlert } from 'lucide-react';
 
 interface RedlockProps {
   leaseTtlSeconds?: number; // default 30s
@@ -10,6 +11,8 @@ interface RedlockProps {
   quorumActive?: number; // e.g. 4
   quorumTotal?: number; // e.g. 5
   isHolding?: boolean;
+  serverTtlMs?: number; // Telemetry from server WebSocket
+  lastHeartbeatReceivedAt?: number; // Date.now() timestamp of last received heartbeat
 }
 
 export const RedlockHeartbeatBar: React.FC<RedlockProps> = ({
@@ -20,35 +23,41 @@ export const RedlockHeartbeatBar: React.FC<RedlockProps> = ({
   quorumActive = 4,
   quorumTotal = 5,
   isHolding = true,
+  serverTtlMs,
+  lastHeartbeatReceivedAt,
 }) => {
-  const [remainingTtl, setRemainingTtl] = useState<number>(leaseTtlSeconds);
+  const initialTtl = serverTtlMs ? serverTtlMs / 1000 : leaseTtlSeconds;
+  const [remainingTtl, setRemainingTtl] = useState<number>(initialTtl);
   const [pulse, setPulse] = useState<boolean>(false);
+  const [lastHeartbeat, setLastHeartbeat] = useState<number>(lastHeartbeatReceivedAt || Date.now());
 
+  // Trigger pulse whenever a genuine server heartbeat arrives
+  useEffect(() => {
+    if (serverTtlMs !== undefined) {
+      setRemainingTtl(serverTtlMs / 1000);
+      setPulse(true);
+      setLastHeartbeat(Date.now());
+      const pulseTimer = setTimeout(() => setPulse(false), 800);
+      return () => clearTimeout(pulseTimer);
+    }
+  }, [serverTtlMs, lastHeartbeatReceivedAt]);
+
+  // Honest countdown: TTL strictly decreases toward 0 unless a real server heartbeat arrives
   useEffect(() => {
     if (!isHolding) return;
     const interval = setInterval(() => {
-      setRemainingTtl((prev) => {
-        if (prev <= 0.2) return leaseTtlSeconds;
-        return +(prev - 0.1).toFixed(1);
-      });
+      setRemainingTtl((prev) => Math.max(0, +(prev - 0.1).toFixed(1)));
     }, 100);
     return () => clearInterval(interval);
-  }, [isHolding, leaseTtlSeconds]);
+  }, [isHolding]);
 
-  // Simulate Watchdog 10s renewal pulse
-  useEffect(() => {
-    if (!isHolding) return;
-    const watchdogTimer = setInterval(() => {
-      setRemainingTtl(leaseTtlSeconds);
-      setPulse(true);
-      setTimeout(() => setPulse(false), 900);
-    }, watchdogIntervalSeconds * 1000);
-    return () => clearInterval(watchdogTimer);
-  }, [isHolding, leaseTtlSeconds, watchdogIntervalSeconds]);
+  const timeSinceLastHeartbeat = (Date.now() - lastHeartbeat) / 1000;
+  const isSplitBrain = timeSinceLastHeartbeat > 10 && remainingTtl <= 0.5;
+  const isHeartbeatLate = !isSplitBrain && timeSinceLastHeartbeat > (watchdogIntervalSeconds + 2);
 
   const percent = Math.max(0, Math.min(100, (remainingTtl / leaseTtlSeconds) * 100));
-  const isWarning = remainingTtl < 10;
-  const isCritical = remainingTtl < 5;
+  const isCritical = remainingTtl < 5 || isSplitBrain;
+  const isWarning = (remainingTtl < 10 && !isCritical) || isHeartbeatLate;
 
   return (
     <div className="flex flex-col gap-1.5 p-3 rounded-lg border border-slate-800 bg-[#0C101A] font-mono text-xs">
@@ -58,6 +67,10 @@ export const RedlockHeartbeatBar: React.FC<RedlockProps> = ({
             className={`w-2 h-2 rounded-full ${
               pulse
                 ? 'bg-emerald-400 scale-125 shadow-[0_0_8px_#00FF9D]'
+                : isSplitBrain
+                ? 'bg-rose-500 animate-ping'
+                : isHeartbeatLate
+                ? 'bg-amber-400 animate-pulse'
                 : 'bg-cyan-400'
             } transition-all duration-300`}
           />
@@ -100,9 +113,29 @@ export const RedlockHeartbeatBar: React.FC<RedlockProps> = ({
         />
       </div>
 
+      {/* Split-Brain Alarm Banner */}
+      {isSplitBrain && (
+        <div className="p-1.5 rounded bg-rose-950/40 border border-rose-500/60 text-rose-300 text-[10px] flex items-center gap-1.5 animate-pulse">
+          <AlertTriangle className="w-3.5 h-3.5 text-rose-400 flex-shrink-0" />
+          <span className="font-bold">
+            SPLIT-BRAIN RISK: Heartbeat missed by daemon ({timeSinceLastHeartbeat.toFixed(0)}s &gt; 10s). Lock lease expiration imminent!
+          </span>
+        </div>
+      )}
+
+      {/* Delayed Heartbeat Warning Banner */}
+      {isHeartbeatLate && !isSplitBrain && (
+        <div className="p-1.5 rounded bg-amber-950/40 border border-amber-500/40 text-amber-300 text-[10px] flex items-center gap-1.5">
+          <AlertTriangle className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+          <span>
+            Heartbeat delayed ({timeSinceLastHeartbeat.toFixed(1)}s elapsed). Awaiting watchdog renewal.
+          </span>
+        </div>
+      )}
+
       <div className="flex items-center justify-between text-[10px] text-slate-400">
         <span className="flex items-center gap-1">
-          <span>Watchdog Heartbeat (10s daemon renewal)</span>
+          <span>Watchdog Heartbeat (Telemetry-bound)</span>
           {pulse && (
             <span className="text-emerald-300 font-bold animate-pulse">
               • [PEXPIRE 30000 OK]

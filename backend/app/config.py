@@ -27,7 +27,7 @@ class AppContainer:
         self.audit_logger = MerkleAuditLogger(persistence_file="data/audit_ledger.jsonl")
         self.secret_provider = CyberArkPAMProvider(mock_mode=True)
         self.snow_gateway = ServiceNowGateway(mock_mode=True)
-        self.storage_gateway = S3MultipartGateway(bucket_name="pnc-vulcan-artifacts", mock_mode=True)
+        self.storage_gateway = S3MultipartGateway(bucket_name=os.getenv("S3_BUCKET_NAME", "vulcan-artifacts"), mock_mode=True)
         self.execution_engine = SimulationExecutionEngine(delay_per_step=0.02)
 
         # 2. Seed Catalog

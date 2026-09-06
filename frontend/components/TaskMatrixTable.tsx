@@ -52,6 +52,11 @@ export interface TaskRecord {
   servicenow_chg?: string | null;
   error_message?: string | null;
   diagnostic?: string | null;
+  capabilities?: {
+    can_approve: boolean;
+    can_reject: boolean;
+    disabled_reason?: string | null;
+  };
 }
 
 interface TaskMatrixTableProps {
@@ -516,7 +521,9 @@ export default function TaskMatrixTable({
                 const isPending = task.status === 'PENDING_APPROVAL';
                 const isRunning = task.status === 'RUNNING' || task.status === 'VERIFYING';
                 const isFailed = task.status === 'FAILED';
-                const isRequester = currentUser === task.requester_id;
+                const canApprove = task.capabilities ? task.capabilities.can_approve : (currentUser !== task.requester_id);
+                const canReject = task.capabilities ? task.capabilities.can_reject : (currentUser !== task.requester_id);
+                const disabledReason = task.capabilities?.disabled_reason || (currentUser === task.requester_id ? "Maker-Checker violation: Requester cannot approve own job (SOX 404)" : "Action not permitted");
 
                 return (
                   <tr 
@@ -608,14 +615,7 @@ export default function TaskMatrixTable({
                       <div className="flex items-center justify-end gap-1.5">
                         {isPending ? (
                           <>
-                            {isRequester ? (
-                              <span 
-                                title="Anti-self-approval: You requested this task and cannot approve it."
-                                className="px-2 py-1 text-[10px] font-mono rounded bg-amber-500/10 text-amber-400 border border-amber-500/30"
-                              >
-                                🔒 Requester Locked
-                              </span>
-                            ) : (
+                            {canApprove ? (
                               onApproveTask && (
                                 <button
                                   onClick={() => onApproveTask(task)}
@@ -624,9 +624,16 @@ export default function TaskMatrixTable({
                                   Approve
                                 </button>
                               )
+                            ) : (
+                              <span 
+                                title={disabledReason}
+                                className="px-2 py-1 text-[10px] font-mono rounded bg-amber-500/10 text-amber-400 border border-amber-500/30"
+                              >
+                                🔒 {disabledReason.includes("Maker-Checker") ? "Requester Locked" : "Gated"}
+                              </span>
                             )}
 
-                            {onRejectTask && !isRequester && (
+                            {canReject && onRejectTask && (
                               <button
                                 onClick={() => onRejectTask(task)}
                                 className="px-2.5 py-1 text-xs font-semibold rounded bg-rose-600/80 hover:bg-rose-600 text-white shadow-sm transition-colors"

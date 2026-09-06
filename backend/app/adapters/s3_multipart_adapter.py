@@ -19,7 +19,7 @@ class S3MultipartGateway(IObjectStorageGateway):
 
     def __init__(
         self,
-        bucket_name: str = "pnc-vulcan-artifacts",
+        bucket_name: str = "vulcan-artifacts",
         s3_client: Optional[Any] = None,
         mock_mode: bool = True
     ):

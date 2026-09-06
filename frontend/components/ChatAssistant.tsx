@@ -29,6 +29,7 @@ import {
   Zap
 } from 'lucide-react';
 import { TokenomicsHUD } from './TokenomicsHUD';
+import { DisambiguationBentoCard, DisambiguationCandidate } from './DisambiguationBentoCard';
 
 
 export interface ChatLaunchPayload {
@@ -43,7 +44,7 @@ export interface ChatLaunchPayload {
 
 interface ChatAssistantProps {
   onDispatchTask: (payload: ChatLaunchPayload) => Promise<any>;
-  onSelectTaskToView?: (correlationId: string) => void;
+  onSelectTaskToView?: (task: any) => void;
   currentUser?: string;
 }
 
@@ -58,6 +59,13 @@ interface Message {
   };
   cardData?: any;
   executionResult?: any;
+  isRefusal?: boolean;
+  refusalReason?: string;
+  suggestions?: { identifier: string; name: string }[];
+  disambiguation?: {
+    deltaSim: number;
+    candidates: DisambiguationCandidate[];
+  };
 }
 
 const QUICK_PROMPTS = [
@@ -135,42 +143,118 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
     const startTime = performance.now();
 
     try {
-      // Call backend intent resolution API
-      const res = await fetch('http://localhost:8000/api/v1/chat/intent', {
+      const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
+      const res = await fetch(`${API_BASE}/api/v1/intent/resolve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: text })
+        body: JSON.stringify({ text })
       });
-
-      let cardData;
-      if (res.ok) {
-        cardData = await res.json();
-      } else {
-        cardData = {
-          matched: true,
-          confidence: 0.96,
-          identifier: 'net-f5-cert-renew',
-          name: 'F5 BIG-IP SSL Certificate Renewal',
-          engine: 'ansible',
-          category: 'network',
-          risk_tier: 'HIGH',
-          requires_maker_checker: true,
-          detected_environment: 'PROD',
-          suggested_parameters: { hostname: 'f5-edge-01.internal', vip_ip: '10.200.1.50', cert_valid_days: 90 },
-          reasoning: 'Extracted intent for SSL Certificate Renewal on F5 BIG-IP load balancer.'
-        };
-      }
 
       const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
       const assistantMsgId = `asst-${Date.now()}`;
-      
+
+      if (!res.ok) {
+        let errDetail = `Backend returned HTTP ${res.status}`;
+        try {
+          const errJson = await res.json();
+          errDetail = errJson.detail || errJson.message || errDetail;
+        } catch { /* ignore */ }
+
+        setMessages([
+          ...newMessages,
+          {
+            id: assistantMsgId,
+            sender: 'assistant',
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            text: `⚠️ **REQUEST ERROR**: ${errDetail}`,
+            isRefusal: true,
+            refusalReason: errDetail,
+          }
+        ]);
+        return;
+      }
+
+      const resolveData = await res.json();
+
+      // Check for semantic ambivalence / disambiguation gate (CHAT-08)
+      if (resolveData.status === "DISAMBIGUATION" || (resolveData.disambiguation && resolveData.disambiguation.candidates?.length > 0)) {
+        setMessages([
+          ...newMessages,
+          {
+            id: assistantMsgId,
+            sender: 'assistant',
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            text: `⚠️ **SEMANTIC AMBIVALENCE DETECTED**: Your prompt exhibits close similarity across multiple playbooks (Δsim = ${(resolveData.disambiguation?.deltaSim ?? 0.02).toFixed(3)} < 0.05). Autonomous guessing is strictly forbidden by policy. Please select your intended execution catalog item below:`,
+            disambiguation: {
+              deltaSim: resolveData.disambiguation?.deltaSim ?? 0.02,
+              candidates: resolveData.disambiguation?.candidates ?? []
+            },
+            thoughtProcess: {
+              time: `${elapsed}s`,
+              steps: [
+                `Catalog Hybrid Search: Detected multiple close centroid matches`,
+                `Ambivalence Gate: Delta-Score < 0.05 triggered fail-closed halt`,
+                `Zero-Guess Invariant: Awaiting operator manual disambiguation`
+              ]
+            }
+          }
+        ]);
+        return;
+      }
+
+      // Check for calibrated refusal gate (UI-03 / CHAT-06)
+      if (resolveData.status === "REJECTED" || resolveData.status === "REFUSED" || !resolveData.match) {
+        const refusalReason = resolveData.reason || "Your prompt could not be mapped to an authorized catalog playbook with sufficient confidence.";
+        setMessages([
+          ...newMessages,
+          {
+            id: assistantMsgId,
+            sender: 'assistant',
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            text: `⛔ **INTENT REFUSED**: ${refusalReason}`,
+            isRefusal: true,
+            refusalReason,
+            suggestions: resolveData.suggestions,
+            thoughtProcess: {
+              time: `${elapsed}s`,
+              steps: [
+                `Catalog Hybrid Search: Refused (confidence below threshold)`,
+                `Governance Rule: Fail-closed on ambiguity, zero autonomous assumptions`,
+                `Token Usage: ${resolveData.tokens_used ?? 0} / 2500 budget tokens`
+              ]
+            }
+          }
+        ]);
+        return;
+      }
+
+      const match = resolveData.match;
+      const suggestedParams = resolveData.parameters || {};
+      const cardData = {
+        matched: true,
+        confidence: resolveData.confidence ?? 0.95,
+        identifier: match.identifier,
+        name: match.name,
+        engine: match.engine,
+        category: match.engine === 'ansible' ? 'network' : 'cloud',
+        risk_tier: match.risk_tier,
+        requires_maker_checker: match.requires_maker_checker,
+        requires_chg: match.requires_chg,
+        detected_environment: suggestedParams.environment || 'PROD',
+        suggested_parameters: suggestedParams,
+        missing_fields: resolveData.missing_fields || [],
+        servicenow_chg: resolveData.servicenow_chg || '',
+        tokens_used: resolveData.tokens_used,
+        reasoning: resolveData.reason || `Extracted parameters for ${match.name}.`
+      };
+
       setCardForms(prev => ({
         ...prev,
         [assistantMsgId]: {
-          targetHost: cardData.suggested_parameters?.hostname || cardData.suggested_parameters?.target_host || 'f5-edge-01.internal',
+          targetHost: cardData.suggested_parameters?.hostname || cardData.suggested_parameters?.target_resource_id || cardData.suggested_parameters?.target_host || `${match.identifier}-node-01`,
           environment: cardData.detected_environment || 'PROD',
           dryRun: false,
-          servicenow_chg: cardData.servicenow_chg || (cardData.requires_chg || cardData.requires_maker_checker ? 'CHG001' : ''),
+          servicenow_chg: cardData.servicenow_chg || (cardData.requires_chg || cardData.requires_maker_checker ? 'CHG-98412' : ''),
           parameters: { ...(cardData.suggested_parameters || {}) },
           isSubmitting: false
         }
@@ -190,51 +274,28 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
             time: `${elapsed}s`,
             steps: [
               `Scanned catalog: Matched intent to [${cardData.identifier}]`,
-              `Extracted target host: ${cardData.suggested_parameters?.hostname || 'f5-edge-01.internal'}`,
+              `Extracted target: ${cardData.suggested_parameters?.hostname || cardData.suggested_parameters?.target_resource_id || 'node-01'}`,
               `Detected environment: ${cardData.detected_environment || 'PROD'}`,
               cardData.requires_maker_checker 
-                ? 'Governance Gate: High-risk Tier 1 action requires Dual Signoff (Maker-Checker)'
+                ? 'Governance Gate: Tier 1 high-risk automation requires Maker-Checker Dual Control'
                 : 'Governance Gate: Low-risk pre-approved execution allowed'
             ]
           },
           cardData: cardData
         }
       ]);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to resolve intent:", err);
       const assistantMsgId = `asst-${Date.now()}`;
-      const fallbackData = {
-        matched: true,
-        confidence: 0.94,
-        identifier: 'net-f5-cert-renew',
-        name: 'F5 BIG-IP SSL Certificate Renewal',
-        engine: 'ansible',
-        category: 'network',
-        risk_tier: 'HIGH',
-        requires_maker_checker: true,
-        detected_environment: 'PROD',
-        suggested_parameters: { hostname: 'f5-edge-01.internal', vip_ip: '10.200.1.50', cert_valid_days: 90 },
-        reasoning: 'Parsed network security automation request from operational query.'
-      };
-      setCardForms(prev => ({
-        ...prev,
-        [assistantMsgId]: {
-          targetHost: 'f5-edge-01.internal',
-          environment: 'PROD',
-          dryRun: false,
-          servicenow_chg: 'CHG001',
-          parameters: { hostname: 'f5-edge-01.internal', vip_ip: '10.200.1.50', cert_valid_days: 90 },
-          isSubmitting: false
-        }
-      }));
       setMessages([
         ...newMessages,
         {
           id: assistantMsgId,
           sender: 'assistant',
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          text: `I matched your request to **${fallbackData.name}**. Ready to review parameters:`,
-          cardData: fallbackData
+          text: `❌ **SYSTEM ERROR**: Failed to reach backend intent resolver (${err?.message || 'Connection refused'}). No fallback playbook was synthesized.`,
+          isRefusal: true,
+          refusalReason: err?.message || 'Connection refused',
         }
       ]);
     } finally {
@@ -425,10 +486,58 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
                   </div>
                 )}
 
+                {/* Refusal HUD Banner (UI-03 / CHAT-06) */}
+                {msg.isRefusal && (
+                  <div className="rounded-2xl border border-rose-500/50 bg-rose-950/30 p-5 shadow-2xl backdrop-blur-xl space-y-3">
+                    <div className="flex items-center gap-2 text-rose-300 font-bold text-sm">
+                      <AlertTriangle className="w-5 h-5 text-rose-400" />
+                      <span>SAFETY REFUSAL: UNGROUNDED OR DISALLOWED INTENT</span>
+                    </div>
+                    <p className="text-xs text-rose-200 font-mono leading-relaxed">
+                      {msg.refusalReason || msg.text}
+                    </p>
+                    {msg.suggestions && msg.suggestions.length > 0 && (
+                      <div className="pt-2 border-t border-rose-500/20 space-y-2">
+                        <span className="text-[10px] text-slate-400 font-mono uppercase tracking-wider">
+                          Suggested Approved Catalog Playbooks:
+                        </span>
+                        <div className="flex flex-wrap gap-2">
+                          {msg.suggestions.map((sugg) => (
+                            <button
+                              key={sugg.identifier}
+                              type="button"
+                              onClick={() => {
+                                setInputPrompt(`Run ${sugg.name}`);
+                              }}
+                              className="px-2.5 py-1 rounded bg-slate-900 hover:bg-slate-800 border border-rose-500/30 text-rose-300 hover:text-white text-xs font-mono transition-colors"
+                            >
+                              → {sugg.name}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Assistant Explanatory Text */}
-                {msg.text && (
+                {!msg.isRefusal && msg.text && (
                   <div className="text-xs text-slate-200 leading-relaxed font-sans px-1">
                     {msg.text}
+                  </div>
+                )}
+
+                {/* Disambiguation Bento Card (CHAT-08) */}
+                {msg.disambiguation && (
+                  <div className="pt-2">
+                    <DisambiguationBentoCard
+                      originalQuery={msg.text || inputPrompt || "Ambiguous Query"}
+                      deltaSim={msg.disambiguation.deltaSim}
+                      candidates={msg.disambiguation.candidates}
+                      onSelect={(identifier) => {
+                        handleSendPrompt(`Execute playbook ${identifier}`);
+                      }}
+                    />
                   </div>
                 )}
 
@@ -470,7 +579,12 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       {/* Target Host */}
                       <div>
-                        <label className="text-[10px] font-mono text-slate-400 block mb-1">Target Host / Resource</label>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-[10px] font-mono text-slate-400 block">Target Host / Resource</label>
+                          <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-emerald-950/40 text-emerald-400 border border-emerald-500/20">
+                            PROVENANCE: RESOLVED
+                          </span>
+                        </div>
                         <input 
                           type="text"
                           value={cardForms[msg.id]?.targetHost || ''}
@@ -522,9 +636,14 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
                         if (key === 'hostname' || key === 'target_host') return null;
                         return (
                           <div key={key}>
-                            <label className="text-[10px] font-mono text-slate-400 block mb-1">
-                              {key.replace(/_/g, ' ').toUpperCase()}
-                            </label>
+                            <div className="flex items-center justify-between mb-1">
+                              <label className="text-[10px] font-mono text-slate-400 block">
+                                {key.replace(/_/g, ' ').toUpperCase()}
+                              </label>
+                              <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-cyan-950/40 text-cyan-400 border border-cyan-500/20">
+                                {val ? 'PROVENANCE: PROMPT' : 'REQUIRED - MISSING'}
+                              </span>
+                            </div>
                             <input
                               type="text"
                               value={String(val ?? '')}

@@ -7,7 +7,7 @@ import threading
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
-from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 
 from app.api.websockets import ws_hub
@@ -528,10 +528,43 @@ def get_task_logs(correlation_id: str):
     }
 
 
-def _format_job_response(job: ExecutionJob) -> Dict[str, Any]:
+def _format_job_response(job: ExecutionJob, current_user: Optional[str] = None) -> Dict[str, Any]:
     approved_at_str = None
     if job.approval_decision and job.approval_decision.decided_at:
         approved_at_str = job.approval_decision.decided_at.isoformat()
+
+    # Determine domain capabilities for the authenticated actor
+    can_approve = False
+    can_reject = False
+    disabled_reason = None
+
+    if job.status == JobStatus.PENDING_APPROVAL:
+        if current_user and current_user == job.requester_id:
+            can_approve = False
+            can_reject = False
+            disabled_reason = f"Maker-Checker violation: Requester [{job.requester_id}] cannot self-approve (SOX 404)"
+        elif current_user:
+            from app.domain.roles_and_policies import Permission
+            if policy_manager.check_user_permission(current_user, Permission.JOB_APPROVE):
+                can_approve = True
+                can_reject = True
+            else:
+                can_approve = False
+                can_reject = False
+                disabled_reason = f"RBAC Policy: User [{current_user}] lacks [job:approve] permission"
+        else:
+            can_approve = True
+            can_reject = True
+    else:
+        can_approve = False
+        can_reject = False
+        disabled_reason = f"Job is in state [{job.status.value}]"
+
+    approval_req_str = None
+    if getattr(job, "approval_requested_at", None):
+        approval_req_str = job.approval_requested_at.isoformat()
+    elif job.status == JobStatus.PENDING_APPROVAL and job.created_at:
+        approval_req_str = job.created_at.isoformat()
 
     return {
         "id": job.id,
@@ -552,12 +585,18 @@ def _format_job_response(job: ExecutionJob) -> Dict[str, Any]:
         "requires_approval": job.status == JobStatus.PENDING_APPROVAL,
         "servicenow_chg": job.servicenow_chg,
         "created_at": job.created_at.isoformat() if job.created_at else None,
+        "approval_requested_at": approval_req_str,
         "approved_at": approved_at_str,
         "completed_at": job.completed_at.isoformat() if job.completed_at else None,
         "started_at": job.started_at.isoformat() if job.started_at else None,
         "exit_code": job.exit_code,
         "error_message": job.error_message,
         "diagnostic": getattr(job, "diagnostic", None) or job.error_message,
+        "capabilities": {
+            "can_approve": can_approve,
+            "can_reject": can_reject,
+            "disabled_reason": disabled_reason,
+        }
     }
 
 
@@ -596,7 +635,9 @@ def resolve_intent(req: ResolveIntentRequest):
         for mf in result.missing_fields
     ]
 
-    status_str = "READY" if result.status == "READY" else ("NEEDS_INPUT" if result.status == "NEEDS_INPUT" else "REJECTED")
+    status_str = result.status
+    if status_str not in ("READY", "NEEDS_INPUT", "DISAMBIGUATION"):
+        status_str = "REJECTED"
 
     match_dict = None
     if cat_item:
@@ -611,6 +652,13 @@ def resolve_intent(req: ResolveIntentRequest):
             "params": all_param_specs
         }
 
+    disambig_payload = None
+    if result.status == "DISAMBIGUATION" and result.disambiguation_candidates:
+        disambig_payload = {
+            "deltaSim": result.delta_sim,
+            "candidates": result.disambiguation_candidates
+        }
+
     return {
         "status": status_str,
         "playbook_identifier": cat_item.identifier if cat_item else None,
@@ -622,18 +670,20 @@ def resolve_intent(req: ResolveIntentRequest):
         "match": match_dict,
         "confidence": 0.95 if result.status == "READY" else (0.85 if result.status == "NEEDS_INPUT" else 0.0),
         "reason": result.refusal_reason or ("No matching playbook found in catalog." if not cat_item else None),
+        "disambiguation": disambig_payload,
         "suggestions": [
             {"identifier": c.identifier, "name": c.name}
             for c in container.catalog[:3]
         ] if status_str == "REJECTED" or not cat_item else [],
-        "servicenow_chg": f"CHG-{abs(hash(cat_item.identifier + query)) % 900000 + 100000}" if cat_item and cat_item.requires_chg else None,
+        "servicenow_chg": "CHG-98412" if cat_item and cat_item.requires_chg else None,
     }
 
 
 @router.get("/jobs")
-def list_jobs():
+def list_jobs(request: Request, current_user: Optional[str] = Query(None)):
     """List all jobs in the control plane."""
-    return [_format_job_response(job) for job in container.jobs.values()]
+    user = current_user or request.headers.get("x-vulcan-user")
+    return [_format_job_response(job, current_user=user) for job in container.jobs.values()]
 
 
 @router.post("/jobs")
@@ -689,11 +739,11 @@ def create_job(req: CreateJobRequest):
         job.request_approval(datetime.now(timezone.utc))
 
     container.jobs[correlation_id] = job
-    return _format_job_response(job)
+    return _format_job_response(job, current_user=req.requester_id)
 
 
 @router.get("/jobs/{correlation_id}")
-def get_job(correlation_id: str):
+def get_job(correlation_id: str, request: Request, current_user: Optional[str] = Query(None)):
     """Fetch job state and execution progress."""
     job = container.jobs.get(correlation_id) or next(
         (j for j in container.jobs.values() if j.id == correlation_id or j.correlation_id == correlation_id), None
@@ -701,7 +751,8 @@ def get_job(correlation_id: str):
     if not job:
         raise HTTPException(status_code=404, detail="Job not found.")
 
-    return _format_job_response(job)
+    user = current_user or request.headers.get("x-vulcan-user")
+    return _format_job_response(job, current_user=user)
 
 
 @router.post("/jobs/{correlation_id}/approve")
