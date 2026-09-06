@@ -14,6 +14,7 @@ import {
   Table2,
 } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
+import { api } from '@/lib/api';
 
 interface NavItem {
   id: string;
@@ -38,6 +39,24 @@ export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
+  const [pendingCount, setPendingCount] = useState(0);
+
+  useEffect(() => {
+    const fetchPending = async () => {
+      try {
+        const jobs = await api.listJobs();
+        if (Array.isArray(jobs)) {
+          const count = jobs.filter((j) => j.status === 'PENDING_APPROVAL').length;
+          setPendingCount(count);
+        }
+      } catch {
+        /* ignore */
+      }
+    };
+    fetchPending();
+    const t = setInterval(fetchPending, 5000);
+    return () => clearInterval(t);
+  }, []);
 
   const isActive = useCallback(
     (href: string) => {
@@ -59,6 +78,7 @@ export function Sidebar() {
       <nav className="flex-1 py-3 space-y-0.5 px-2">
         {NAV_ITEMS.map((item) => {
           const active = isActive(item.href);
+          const badge = item.id === 'history' && pendingCount > 0 ? pendingCount : item.badge;
           return (
             <button
               key={item.id}
@@ -80,9 +100,9 @@ export function Sidebar() {
               {!collapsed && (
                 <span className="truncate">{item.label}</span>
               )}
-              {!collapsed && item.badge !== undefined && item.badge > 0 && (
-                <span className="ml-auto text-[10px] font-mono bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-full px-1.5 py-0.5 leading-none">
-                  {item.badge}
+              {!collapsed && badge !== undefined && badge > 0 && (
+                <span className="ml-auto text-[10px] font-mono bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-full px-1.5 py-0.5 leading-none animate-pulse">
+                  {badge}
                 </span>
               )}
             </button>

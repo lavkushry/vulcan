@@ -577,19 +577,34 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
 
                     {/* Feedback Alert */}
                     {msg.executionResult && (
-                      <div className="p-3.5 rounded-xl bg-emerald-950/40 border border-emerald-500/40 flex items-center justify-between text-xs font-mono animate-fade-in-up">
-                        <div className="flex items-center gap-2 text-emerald-300">
-                          <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-                          <span>
-                            Execution queued: <strong>{msg.executionResult.correlation_id}</strong> ({msg.executionResult.status})
-                          </span>
+                      <div className={`p-3.5 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs font-mono animate-fade-in-up ${
+                        msg.executionResult.status === 'PENDING_APPROVAL'
+                          ? 'bg-amber-950/40 border-amber-500/40 text-amber-300'
+                          : 'bg-emerald-950/40 border-emerald-500/40 text-emerald-300'
+                      }`}>
+                        <div className="flex items-center gap-2">
+                          {msg.executionResult.status === 'PENDING_APPROVAL' ? (
+                            <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0" />
+                          ) : (
+                            <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                          )}
+                          <div>
+                            <div>
+                              Task: <strong>{msg.executionResult.correlation_id}</strong> · Status: <span className="font-bold">{msg.executionResult.status}</span>
+                            </div>
+                            {msg.executionResult.status === 'PENDING_APPROVAL' && (
+                              <div className="text-[11px] text-slate-400 mt-0.5">
+                                🔒 High-Risk Change: Routed to <strong>Approving Lead (Bob)</strong> for Four-Eyes signoff.
+                              </div>
+                            )}
+                          </div>
                         </div>
                         {onSelectTaskToView && (
                           <button
                             onClick={() => onSelectTaskToView(msg.executionResult.correlation_id)}
-                            className="text-[11px] font-mono text-cyan-400 hover:text-cyan-300 underline flex items-center gap-1 transition-colors"
+                            className="text-[11px] font-mono text-cyan-400 hover:text-cyan-300 underline flex items-center gap-1 transition-colors self-start sm:self-auto"
                           >
-                            <span>Open in Terminal Stream</span>
+                            <span>Inspect &amp; Monitor</span>
                             <ChevronRight className="w-3 h-3" />
                           </button>
                         )}

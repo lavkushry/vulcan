@@ -66,19 +66,45 @@ export function JobDetail({ job, currentUser, onChanged }: {
               {JSON.stringify(job.parameters, null, 2)}
             </pre>
             {isRequester ? (
-              <p className="mt-3 text-xs text-amber-400/90">
-                🔒 Approve is disabled — you submitted this request. Separation of duties: requester ≠ approver.
-              </p>
+              <div className="mt-3 p-3 rounded-lg bg-amber-950/30 border border-amber-500/40 space-y-2">
+                <div className="flex items-center gap-2 text-xs text-amber-300 font-semibold font-mono">
+                  <span>🔒 Self-Approval Blocked (OCC / SOX Compliance)</span>
+                </div>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  You submitted this request as <span className="text-cyan-400 font-mono">{job.requester_id}</span>. Under banking Separation of Duties, the requester cannot be the approver.
+                </p>
+                <div className="pt-1 flex items-center justify-between text-xs">
+                  <span className="text-slate-500 font-mono">Routed to: <strong className="text-amber-300">Approving Lead (Bob)</strong></span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const sel = document.querySelector('select');
+                      if (sel) {
+                        sel.value = 'lead.bob';
+                        sel.dispatchEvent(new Event('change', { bubbles: true }));
+                      }
+                    }}
+                    className="px-2.5 py-1 rounded bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 font-mono text-[11px] transition-colors"
+                  >
+                    Switch to Bob (Approving Lead) →
+                  </button>
+                </div>
+              </div>
             ) : (
-              <div className="mt-3 flex gap-2">
-                <button onClick={() => decide("approveJob")}
-                  className="rounded-md bg-emerald-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-emerald-500">
-                  Approve &amp; Execute
-                </button>
-                <button onClick={() => decide("rejectJob")}
-                  className="rounded-md bg-rose-600/90 px-4 py-1.5 text-sm font-medium text-white hover:bg-rose-500">
-                  Reject
-                </button>
+              <div className="mt-3 space-y-3">
+                <div className="p-2.5 rounded bg-cyan-950/30 border border-cyan-500/30 text-xs text-cyan-200 font-mono">
+                  ✍️ Signed in as <strong className="text-emerald-400">{currentUser} (Approving Lead)</strong>. You have authority to review and approve this change.
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => decide("approveJob")}
+                    className="rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 px-5 py-2 text-xs font-mono font-bold text-black shadow-glow-emerald/30 transition-all hover:scale-[1.02]">
+                    ✓ Approve &amp; Execute Playbook
+                  </button>
+                  <button onClick={() => decide("rejectJob")}
+                    className="rounded-xl bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/40 px-4 py-2 text-xs font-mono font-bold text-rose-300 transition-all">
+                    ✗ Reject Change
+                  </button>
+                </div>
               </div>
             )}
             {error && <p className="mt-2 text-xs text-rose-400">{error}</p>}

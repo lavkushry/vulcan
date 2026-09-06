@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Search, Users, Activity, Shield, Database, Command } from 'lucide-react';
-import { DEMO_USERS } from '@/lib/api';
+import { Search, Users, Activity, Shield, Database, Command, Bell, CheckCircle2 } from 'lucide-react';
+import { DEMO_USERS, api } from '@/lib/api';
+import { useRouter } from 'next/navigation';
 
 interface HeaderProps {
   currentUser: string;
@@ -19,18 +20,27 @@ interface HealthData {
 }
 
 export function Header({ currentUser, onUserChange, onOpenCommandPalette }: HeaderProps) {
+  const router = useRouter();
   const [health, setHealth] = useState<HealthData | null>(null);
+  const [pendingCount, setPendingCount] = useState(0);
 
   useEffect(() => {
     const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
-    const fetchHealth = async () => {
+    const fetchHealthAndJobs = async () => {
       try {
-        const res = await fetch(`${BASE}/api/v1/health`);
-        if (res.ok) setHealth(await res.json());
+        const [h, jobs] = await Promise.all([
+          fetch(`${BASE}/api/v1/health`).then(r => r.ok ? r.json() : null),
+          api.listJobs()
+        ]);
+        if (h) setHealth(h);
+        if (Array.isArray(jobs)) {
+          const pending = jobs.filter(j => j.status === 'PENDING_APPROVAL').length;
+          setPendingCount(pending);
+        }
       } catch { /* backend may be down */ }
     };
-    fetchHealth();
-    const t = setInterval(fetchHealth, 10000);
+    fetchHealthAndJobs();
+    const t = setInterval(fetchHealthAndJobs, 5000);
     return () => clearInterval(t);
   }, []);
 
@@ -100,8 +110,27 @@ export function Header({ currentUser, onUserChange, onOpenCommandPalette }: Head
           )}
         </div>
 
+        {/* Pending Approvals Notification Badge */}
+        {pendingCount > 0 && (
+          <button
+            onClick={() => router.push('/history')}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/15 border border-amber-500/40 text-amber-300 font-mono text-[11px] hover:bg-amber-500/25 transition-all animate-pulse"
+            title="Tasks awaiting Maker-Checker Lead Approval"
+          >
+            <Bell size={12} className="text-amber-400" />
+            <span>{pendingCount} Pending Approval{pendingCount > 1 ? 's' : ''}</span>
+          </button>
+        )}
+
         {/* Persona switcher */}
-        <div className="flex items-center gap-2 border-l border-glass-border pl-4">
+        <div className="flex items-center gap-2 border-l border-glass-border pl-3">
+          <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded border hidden sm:inline ${
+            currentUser === 'lead.bob'
+              ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+              : 'border-cyan-500/30 bg-cyan-500/10 text-cyan-300'
+          }`}>
+            {currentUser === 'lead.bob' ? 'Approving Lead' : 'Engineer (Maker)'}
+          </span>
           <Users size={13} className="text-slate-500" />
           <select
             value={currentUser}
