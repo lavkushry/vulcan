@@ -463,14 +463,16 @@ class PostgresCatalogRepository(ICatalogRepository):
         max_sparse = max((m["score"] for m in sparse_matches.values()), default=0.0)
 
         # Calibrated Refusal Gate (BKND-26 / CHAT-06):
-        # Fail-closed if dense semantic alignment is weak (< 0.45 without keywords, or < 0.35 with weak keywords)
-        if (max_dense < 0.45 and max_sparse <= 0.0) or (max_dense < 0.35 and max_sparse < 0.20):
-            logger.info("Refusal gate triggered for query '%s' (max_dense=%.3f, max_sparse=%.3f)", query, max_dense, max_sparse)
+        # Fail-closed if dense semantic alignment is weak or lacks keyword anchor according to provider thresholds
+        if self.embedding_provider.is_refusal(max_dense, max_sparse):
+            logger.info("Refusal gate triggered for query '%s' (max_dense=%.3f, max_sparse=%.3f, provider=%s)",
+                        query, max_dense, max_sparse, self.embedding_provider.provider_name)
             return []
 
         # RRF Fusion
         all_identifiers = set(dense_matches.keys()).union(sparse_matches.keys())
         fused_scores: List[Dict[str, Any]] = []
+        dense_floor = self.embedding_provider.refusal_thresholds.get("rrf_dense_floor", 0.35)
 
         for ident in all_identifiers:
             dense_info = dense_matches.get(ident)
@@ -480,7 +482,7 @@ class PostgresCatalogRepository(ICatalogRepository):
             d_score = dense_info["score"] if dense_info else 0.0
             s_score = sparse_info["score"] if sparse_info else 0.0
 
-            if dense_info and d_score >= 0.35:
+            if dense_info and d_score >= dense_floor:
                 rrf += dense_weight / (rrf_k + dense_info["rank"])
             if sparse_info and s_score > 0.0:
                 rrf += sparse_weight / (rrf_k + sparse_info["rank"])

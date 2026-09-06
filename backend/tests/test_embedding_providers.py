@@ -197,6 +197,19 @@ class TestIntentResolverWithEmbeddingProvider(unittest.TestCase):
         self.assertEqual(res.status, "REFUSED")
         self.assertIn("Out-of-catalog", res.refusal_reason)
 
+    def test_provider_calibrated_refusal_thresholds(self):
+        # SemanticCluster provider
+        sc = SemanticClusterEmbeddingProvider(dim=1536)
+        self.assertTrue(sc.is_refusal(max_dense=0.40, max_sparse=0.0))  # < 0.45 and no sparse
+        self.assertTrue(sc.is_refusal(max_dense=0.30, max_sparse=0.10)) # < 0.35 and sparse < 0.20
+        self.assertFalse(sc.is_refusal(max_dense=0.48, max_sparse=0.0)) # >= 0.45
+        self.assertFalse(sc.is_refusal(max_dense=0.36, max_sparse=0.25)) # >= 0.35 with sparse >= 0.20
+
+        # DeterministicHash provider has lower floor
+        dh = DeterministicHashEmbeddingProvider(dim=1536)
+        self.assertTrue(dh.is_refusal(max_dense=0.20, max_sparse=0.0))
+        self.assertFalse(dh.is_refusal(max_dense=0.26, max_sparse=0.0))
+
 
 if __name__ == "__main__":
     unittest.main()

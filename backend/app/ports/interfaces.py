@@ -204,4 +204,22 @@ class IEmbeddingProvider(abc.ABC):
         """Returns the unique name or model identifier of the provider."""
         pass
 
+    @property
+    def refusal_thresholds(self) -> Dict[str, float]:
+        """Calibrated refusal gate thresholds for this provider."""
+        return {
+            "min_dense_no_sparse": 0.45,
+            "min_dense_with_sparse": 0.35,
+            "min_sparse_cutoff": 0.20,
+            "rrf_dense_floor": 0.35,
+        }
+
+    def is_refusal(self, max_dense: float, max_sparse: float) -> bool:
+        """Evaluates whether the query falls below the calibrated refusal thresholds."""
+        t = self.refusal_thresholds
+        min_no_sparse = t.get("min_dense_no_sparse", 0.45)
+        min_with_sparse = t.get("min_dense_with_sparse", 0.35)
+        sparse_cutoff = t.get("min_sparse_cutoff", 0.20)
+        return (max_dense < min_no_sparse and max_sparse <= 0.0) or (max_dense < min_with_sparse and max_sparse < sparse_cutoff)
+
 

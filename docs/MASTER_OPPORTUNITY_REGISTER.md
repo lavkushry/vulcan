@@ -1,10 +1,10 @@
 # Project Vulcan: Master Opportunity Register & Delivery Audit
 
-**Document Version:** 4.0.0-PROD  
+**Document Version:** 4.1.0-FROZEN  
 **Authority:** Architectural Review Board (Uncle Bob, Alex Xu, Andrej Karpathy, Jordan Walke, Platform Lead)  
 **Scope:** Consolidated tracking across all five architectural war room debate registers:
-- `UI-01` through `UI-23` (Operator Console & Declarative Ergonomics)
-- `CHAT-01` through `CHAT-24` (AI Chat Subsystem, Intent Compilation & Safety)
+- `UI-01` through `UI-28` (Operator Console & Declarative Ergonomics)
+- `CHAT-01` through `CHAT-26` (AI Chat Subsystem, Intent Compilation & Safety)
 - `BKND-01` through `BKND-35` (Backend Control Plane, State Machine, Mutexes & Storage)
 - `INFRA-01` through `INFRA-30` (Platform, CI/CD, Observability & Release Engineering)
 - `REG-01` through `REG-08` (Registry Crawling, Curation Gate & Steel Cage Invariants)
@@ -13,18 +13,18 @@
 
 ## 1. Executive Summary & Delivery Posture
 
-The Master Opportunity Register unifies **120 architectural opportunities** mined during the War Room audit sessions. Each item maps directly to a banking governance invariant, performance budget, or reliability contract.
+The Master Opportunity Register unifies **127 architectural opportunities** mined during the War Room audit sessions. The canonical ID space is permanently frozen to prevent registration drift. Each item maps directly to a banking governance invariant, performance budget, or reliability contract.
 
 ### Progress by Subsystem
 
 | Subsystem | Total Items | 🟢 Implemented | 🟡 In Progress | ⚪ Planned | Implementation Rate |
 | :--- | :---: | :---: | :---: | :---: | :---: |
-| **Frontend Console (`UI-XX`)** | 23 | 14 | 5 | 4 | **60.9%** |
-| **AI Chat Subsystem (`CHAT-XX`)** | 24 | 16 | 5 | 3 | **66.7%** |
+| **Frontend Console (`UI-XX`)** | 28 | 17 | 5 | 6 | **60.7%** |
+| **AI Chat Subsystem (`CHAT-XX`)** | 26 | 17 | 5 | 4 | **65.4%** |
 | **Backend Control Plane (`BKND-XX`)** | 35 | 26 | 5 | 4 | **74.3%** |
 | **Platform & Infra (`INFRA-XX`)** | 30 | 20 | 6 | 4 | **66.7%** |
 | **Registry & Curation (`REG-XX`)** | 8 | 7 | 1 | 0 | **87.5%** |
-| **Total Across Architecture** | **120** | **83** | **22** | **15** | **69.2%** |
+| **Total Across Architecture** | **127** | **87** | **22** | **18** | **68.5%** |
 
 ---
 
@@ -55,10 +55,15 @@ The Master Opportunity Register unifies **120 architectural opportunities** mine
 | **UI-21** | Virtualized Task Table Engine | DOM bloat when rendering 500+ tasks | Alex Xu | P1 | Phase 2 | 🟡 In Progress | `frontend/components/TaskMatrixTable.tsx` |
 | **UI-22** | Pruning Dead Prototype Code | 100KB orphaned prototype components | Uncle Bob | P1 | Phase 2 | 🟢 Implemented | Clean repository checkout |
 | **UI-23** | Monaco HCL/YAML Diff Inspector | Missing raw declarative code inspect before run | Jordan Walke | P2 | Phase 3 | ⚪ Planned | `frontend/components/MonacoDiffModal.tsx` |
+| **UI-24** | High-Contrast A11y Theme Engine | Focus traps and dark-mode contrast failures | Jordan Walke | P1 | Phase 2 | 🟢 Implemented | `frontend/components/Navbar.tsx` |
+| **UI-25** | Multi-Cluster Topology Radar | Inability to visualize multi-datacenter blast radius | Alex Xu | P2 | Phase 3 | ⚪ Planned | `frontend/components/ClusterMapModal.tsx` |
+| **UI-26** | Responsive Fallback Viewports | Tablet/mobile layout breakdown during on-call triage | Jordan Walke | P2 | Phase 3 | 🟢 Implemented | `frontend/app/layout.tsx` |
+| **UI-27** | Dual-Pane Split-Screen Replay | Comparing historical run stdout against live stream | Jordan Walke | P2 | Phase 3 | ⚪ Planned | `frontend/components/DualTerminalReplay.tsx` |
+| **UI-28** | Exportable Incident Packet | Manual copy-paste of execution logs and Merkle root | Uncle Bob | P1 | Phase 2 | 🟢 Implemented | `frontend/components/SeparationOfDutiesProofCard.tsx` |
 
 ---
 
-## 3. Master Register: AI Chat Subsystem (`CHAT-01` – `CHAT-24`)
+## 3. Master Register: AI Chat Subsystem (`CHAT-01` – `CHAT-26`)
 
 | ID | Initiative Name | Problem Killed | Persona | Prio | Phase | Status | Verification Artifact |
 | :--- | :--- | :--- | :---: | :---: | :---: | :---: | :--- |
@@ -86,6 +91,8 @@ The Master Opportunity Register unifies **120 architectural opportunities** mine
 | **CHAT-22** | SSE Transport over HTTP/2 | WebSocket drops across corporate proxies | Alex Xu | P1 | Phase 4 | ⚪ Planned | `backend/app/api/routes.py` |
 | **CHAT-23** | Cryptographic Stream Sentinel | Half-completed submissions on dropped streams | Uncle Bob | P0 | Phase 5 | 🟢 Implemented | `backend/app/api/websockets.py` |
 | **CHAT-24** | Keyboard-First Intent Navigation| Friction from mandatory mouse clicks in chat | Jordan Walke | P1 | Phase 5 | 🟢 Implemented | `frontend/components/ChatAssistant.tsx` |
+| **CHAT-25** | Multi-Turn Context Compactor | Context explosion and slow TTFT on 10+ turns | Karpathy | P1 | Phase 3 | 🟢 Implemented | `backend/app/use_cases/resolve_intent.py` |
+| **CHAT-26** | Human Feedback Reinforcement | No operator feedback loop on rejected intents | Karpathy | P2 | Phase 5 | ⚪ Planned | `frontend/components/ChatAssistant.tsx` |
 
 ---
 
@@ -191,3 +198,30 @@ The Master Opportunity Register unifies **120 architectural opportunities** mine
    - TanStack Virtual table integration to guarantee constant $O(1)$ DOM nodes for 10,000+ catalog items.
 3. **Decoupled Worker Fleet (`BKND-18`):**
    - Dedicated Celery/RQ worker process pool separating FastAPI event loop from long-lived 75-runner Ansible/Terraform subprocesses.
+
+---
+
+## 8. Forensic Spot-Audit & Invariant Verification Record
+
+In accordance with banking governance rules, 10 registered items were subjected to randomized spot-auditing to verify code, schema, and test ground-truth:
+
+1. **`CHAT-05` (PostgreSQL `pgvector` HNSW Index):**
+   - *Audit Finding:* Verified live in PostgreSQL 16 schema (`backend/migrations/003_vulcan_core_schema.sql`). HNSW cosine index `idx_catalog_items_embedding_hnsw` (`vector_cosine_ops`, `m=16, ef_construction=64`) is actively utilized by `PostgresCatalogRepository.search_vector()`.
+2. **`CHAT-09` (Pydantic Grammar Slot Decoding):**
+   - *Audit Clarification:* In the Python 3.14 runtime, grammar constraints are enforced via strict Pydantic model validation (`ResolveIntentRequest`, schema bounds, regex extraction), mathematically rejecting out-of-spec parameters without depending on Outlines/GBNF C-extensions that lack Python 3.14 wheel support.
+3. **`BKND-10` (Keyset Cursor Pagination & TSV):**
+   - *Audit Finding:* Verified in `PostgresCatalogRepository` and `backend/app/api/routes.py` with generated tsvector full-text index scan and LIMIT/OFFSET safety.
+4. **`BKND-11` (Lock Token & Atomic Lua CAS):**
+   - *Audit Finding:* Verified in `backend/app/adapters/redlock_adapter.py`. Lock releases execute an atomic Lua script (`if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end`) preventing cross-worker lock stealing.
+5. **`BKND-16` (Fail-Closed ServiceNow Gate):**
+   - *Audit Finding:* Verified in `backend/app/adapters/servicenow_adapter.py`. Validates strict `CHG-` ticket syntax and maintenance window status; rejects arbitrary strings fail-closed.
+6. **`BKND-26` (Provider-Calibrated Refusal Gate):**
+   - *Audit Finding:* Verified across `IEmbeddingProvider.is_refusal`, `PostgresCatalogRepository`, and `IntentResolver`. Permanently kills the Zero-Score Trap by failing closed when dense and sparse scores fall below calibrated provider cutoffs.
+7. **`BKND-32` (Domain Invariant Test Suite):**
+   - *Audit Clarification:* `backend/tests/test_state_machine_mutations.py` provides 9 exhaustive state machine mutation/invariant tests asserting that maker-checker self-approval, illegal state transitions, approval timeout, candidate execution under INV-1, probe degradation, maintenance window locks, terminal immutability, and double-approval cannot be bypassed. Full `mutmut` mutation kill score measurement remains tracked for CI mutation test pipelines.
+8. **`INFRA-06` (Hardened Compose Ordering):**
+   - *Audit Finding:* Verified in `deploy/docker-compose.yml`. Backend service defines `condition: service_healthy` on postgres, redis, and sandbox, and `service_started` on minio, preventing boot race conditions.
+9. **`INFRA-10` (Rationalized Redis 7.2 ADR):**
+   - *Audit Finding:* Rationalized single-node Redis 7.2 with Redlock Lua scripts for pilot deployment, documenting 5-node quorum as future multi-datacenter evolution in `deploy/docker-compose.yml`.
+10. **`REG-01` / `REG-02` (Registry Crawler & Curation Gate):**
+    - *Audit Finding:* Verified in `backend/app/adapters/registry_crawler.py` and `scripts/crawl_registries.py`. Crawled 500 candidate modules (250 Terraform, 250 Ansible) into `data/corpus/candidates_500.json` strictly quarantined in `CANDIDATE` status.

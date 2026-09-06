@@ -102,6 +102,8 @@ services:
       - "127.0.0.1:8000:8000"
     volumes:
       - backend_data:/app/data
+      - ../scripts:/app/scripts:ro
+      - ../data/corpus:/app/data/corpus:ro
     depends_on:
       postgres:
         condition: service_healthy

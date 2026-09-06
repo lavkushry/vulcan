@@ -52,6 +52,15 @@ class DeterministicHashEmbeddingProvider(IEmbeddingProvider):
     def provider_name(self) -> str:
         return f"deterministic-hash-{self._dim}"
 
+    @property
+    def refusal_thresholds(self) -> Dict[str, float]:
+        return {
+            "min_dense_no_sparse": 0.25,
+            "min_dense_with_sparse": 0.15,
+            "min_sparse_cutoff": 0.15,
+            "rrf_dense_floor": 0.15,
+        }
+
     def embed_text(self, text: str) -> List[float]:
         tokens = re.findall(r"\w+", text.lower())
         if not tokens:
@@ -162,6 +171,15 @@ class SemanticClusterEmbeddingProvider(IEmbeddingProvider):
     def provider_name(self) -> str:
         return f"semantic-cluster-{self._dim}"
 
+    @property
+    def refusal_thresholds(self) -> Dict[str, float]:
+        return {
+            "min_dense_no_sparse": 0.45,
+            "min_dense_with_sparse": 0.35,
+            "min_sparse_cutoff": 0.20,
+            "rrf_dense_floor": 0.35,
+        }
+
     def embed_text(self, text: str) -> List[float]:
         tokens = re.findall(r"\w+", text.lower())
         if not tokens:
@@ -218,6 +236,15 @@ class OpenAIEmbeddingProvider(IEmbeddingProvider):
     def provider_name(self) -> str:
         return f"openai/{self.model}"
 
+    @property
+    def refusal_thresholds(self) -> Dict[str, float]:
+        return {
+            "min_dense_no_sparse": 0.45,
+            "min_dense_with_sparse": 0.35,
+            "min_sparse_cutoff": 0.20,
+            "rrf_dense_floor": 0.35,
+        }
+
     def embed_text(self, text: str) -> List[float]:
         res = self.embed_batch([text])
         return res[0] if res else [0.0] * self._dim
@@ -272,6 +299,15 @@ class GeminiEmbeddingProvider(IEmbeddingProvider):
     @property
     def provider_name(self) -> str:
         return f"gemini/{self.model}"
+
+    @property
+    def refusal_thresholds(self) -> Dict[str, float]:
+        return {
+            "min_dense_no_sparse": 0.50,
+            "min_dense_with_sparse": 0.40,
+            "min_sparse_cutoff": 0.20,
+            "rrf_dense_floor": 0.40,
+        }
 
     def embed_text(self, text: str) -> List[float]:
         if not self.api_key:

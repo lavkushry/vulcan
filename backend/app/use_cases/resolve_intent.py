@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from app.domain.entities import CatalogItem, ExecutionEngineType, RiskTier
 from app.ports.interfaces import IChatModelProvider, IEmbeddingProvider
 from app.ports.repositories import ICatalogRepository
+from app.adapters.embedding_providers import get_embedding_provider
 from app.use_cases.tokenizer import token_calculator
 
 
@@ -117,7 +118,7 @@ class IntentResolver:
         self.catalog = catalog
         self.chat_model_provider = chat_model_provider
         self.catalog_repo = catalog_repo
-        self.embedding_provider = embedding_provider
+        self.embedding_provider = embedding_provider or get_embedding_provider()
         # Precompute search indices for sub-millisecond retrieval across 10,000+ items
         self._item_tokens: Dict[str, set] = {}
         self._item_texts: Dict[str, str] = {}
@@ -226,7 +227,7 @@ class IntentResolver:
 
         # Calibrated Refusal Gate (BKND-26 / CHAT-06):
         # Kill the Zero-Score Trap: If query has neither dense semantic alignment nor meaningful keyword overlap, refuse.
-        if (max_dense < 0.45 and max_sparse <= 0.0) or (max_dense < 0.35 and max_sparse < 0.20):
+        if self.embedding_provider.is_refusal(max_dense, max_sparse):
             return []
 
         dense_ranked = sorted(
