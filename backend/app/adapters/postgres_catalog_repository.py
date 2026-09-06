@@ -462,9 +462,9 @@ class PostgresCatalogRepository(ICatalogRepository):
         max_dense = max((m["score"] for m in dense_matches.values()), default=0.0)
         max_sparse = max((m["score"] for m in sparse_matches.values()), default=0.0)
 
-        # Refusal Gate:
-        # If both dense alignment is weak (< 0.35) and sparse keyword overlap is zero, refuse!
-        if max_dense < 0.35 and max_sparse <= 0.0:
+        # Calibrated Refusal Gate (BKND-26 / CHAT-06):
+        # Fail-closed if dense semantic alignment is weak (< 0.45 without keywords, or < 0.35 with weak keywords)
+        if (max_dense < 0.45 and max_sparse <= 0.0) or (max_dense < 0.35 and max_sparse < 0.20):
             logger.info("Refusal gate triggered for query '%s' (max_dense=%.3f, max_sparse=%.3f)", query, max_dense, max_sparse)
             return []
 

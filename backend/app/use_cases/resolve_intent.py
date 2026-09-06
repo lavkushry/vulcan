@@ -226,7 +226,7 @@ class IntentResolver:
 
         # Calibrated Refusal Gate (BKND-26 / CHAT-06):
         # Kill the Zero-Score Trap: If query has neither dense semantic alignment nor meaningful keyword overlap, refuse.
-        if max_dense < 0.35 and max_sparse < 0.20:
+        if (max_dense < 0.45 and max_sparse <= 0.0) or (max_dense < 0.35 and max_sparse < 0.20):
             return []
 
         dense_ranked = sorted(
