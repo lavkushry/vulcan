@@ -8,37 +8,7 @@
 CREATE EXTENSION IF NOT EXISTS vector;
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- 2. Playbook Catalog with pgvector HNSW index (1,536-dimensional embeddings)
-CREATE TABLE IF NOT EXISTS catalog_items (
-    id VARCHAR(64) PRIMARY KEY,
-    identifier VARCHAR(128) NOT NULL UNIQUE,
-    name VARCHAR(255) NOT NULL,
-    engine VARCHAR(32) NOT NULL, -- 'ansible' | 'terraform' | 'script'
-    git_repo VARCHAR(255) NOT NULL,
-    git_commit_sha CHAR(40) NOT NULL,
-    playbook_or_module_path VARCHAR(255) NOT NULL,
-    risk_tier VARCHAR(16) NOT NULL, -- 'LOW' | 'MEDIUM' | 'HIGH'
-    requires_maker_checker BOOLEAN NOT NULL DEFAULT TRUE,
-    requires_chg BOOLEAN NOT NULL DEFAULT TRUE,
-    input_schema JSONB NOT NULL DEFAULT '{}'::jsonb,
-    rollback_path VARCHAR(255),
-    category VARCHAR(64) DEFAULT 'general',
-    description TEXT DEFAULT '',
-    tags TEXT[] DEFAULT '{}',
-    embedding vector(1536),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
--- HNSW Vector Index for sub-10ms ANN cosine similarity retrieval across 1,000+ items
-CREATE INDEX IF NOT EXISTS idx_catalog_items_embedding_hnsw 
-ON catalog_items USING hnsw (embedding vector_cosine_ops)
-WITH (m = 16, ef_construction = 64);
-
-CREATE INDEX IF NOT EXISTS idx_catalog_items_engine ON catalog_items(engine);
-CREATE INDEX IF NOT EXISTS idx_catalog_items_risk ON catalog_items(risk_tier);
-
--- 3. Execution Jobs Aggregate Persistence
+-- 2. Execution Jobs Aggregate Persistence
 CREATE TABLE IF NOT EXISTS execution_jobs (
     id VARCHAR(64) PRIMARY KEY,
     correlation_id VARCHAR(64) NOT NULL,

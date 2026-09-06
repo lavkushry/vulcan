@@ -33,7 +33,9 @@ echo ""
 # 2. Schema Migrations Verification
 echo "─── [2/4] Verifying Database Migrations ───"
 test -f backend/migrations/003_vulcan_core_schema.sql
-echo "✓ Schema migration 003_vulcan_core_schema.sql verified."
+test -f backend/migrations/004_catalog_pgvector.sql
+test -f scripts/run_migrations.py
+echo "✓ Schema migrations 003, 004, and migration runner verified."
 echo ""
 
 # 3. Frontend Typecheck & Build

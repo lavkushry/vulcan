@@ -15,6 +15,20 @@ jobs:
   backend-gate:
     name: Backend Domain Invariants & Golden Evals
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: vulcan_control_plane
+          POSTGRES_USER: vulcan_admin
+          POSTGRES_PASSWORD: vulcan_ci_secret
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U vulcan_admin -d vulcan_control_plane"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     defaults:
       run:
         working-directory: backend
@@ -32,13 +46,21 @@ jobs:
       - name: Install Python Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt pytest httpx
+          pip install -r requirements.txt pytest httpx psycopg[binary]
 
-      - name: Run Full PyTest Suite (Domain Invariants + Golden Injection + E2E)
+      - name: Apply Database Migrations (Fresh PostgreSQL Schema Gate)
+        env:
+          DATABASE_URL: "postgresql://vulcan_admin:vulcan_ci_secret@localhost:5432/vulcan_control_plane"
+        run: |
+          python ../scripts/run_migrations.py --db-url "$DATABASE_URL"
+
+      - name: Run Full PyTest Suite (Domain Invariants + Postgres Contract Tests + Golden Evals)
         env:
           VULCAN_AUTH_DISABLED: "0"
           VULCAN_API_TOKENS: '{"vlc_test_alice": "eng.alice", "vlc_test_bob": "lead.bob", "vlc_test_admin": "admin.dave", "vlc_test_sec": "sec.carol", "vlc_test_charlie": "operator.charlie"}'
           NEXT_PUBLIC_VULCAN_API_TOKEN: "vlc_test_alice"
+          DATABASE_URL: "postgresql://vulcan_admin:vulcan_ci_secret@localhost:5432/vulcan_control_plane"
+          POSTGRES_URL: "postgresql://vulcan_admin:vulcan_ci_secret@localhost:5432/vulcan_control_plane"
         run: |
           pytest tests/ -v --tb=short
 
