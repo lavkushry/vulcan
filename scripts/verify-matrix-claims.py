@@ -257,18 +257,22 @@ def run_probes():
 
     # PROBE 10: Remote Oracle Cloud VM Health Check
     print("[PROBE 10/11] Remote Production VM Live Health Check (141.148.195.233)...")
-    import urllib.request
-    try:
-        with urllib.request.urlopen("http://141.148.195.233:8000/healthz", timeout=5) as resp:
-            body = resp.read().decode()
-            if resp.status == 200 and "ALIVE" in body:
-                results["REMOTE_VM_HEALTH"] = "PASSED (HTTP 200 OK - Backend ALIVE)"
-                print(f"  ✓ Remote VM: http://141.148.195.233:8000/healthz is ALIVE.")
-            else:
-                results["REMOTE_VM_HEALTH"] = f"FAILED: status={resp.status}, body={body}"
-    except Exception as exc:
-        results["REMOTE_VM_HEALTH"] = f"FAILED: {exc}"
-        print(f"  ✗ Remote VM check failed: {exc}")
+    if "--offline" in sys.argv or "--hermetic" in sys.argv or os.getenv("HERMETIC_CI", "").lower() == "true":
+        results["REMOTE_VM_HEALTH"] = "SKIPPED (Hermetic CI Mode - Network probes bypassed)"
+        print("  ↷ Remote VM check skipped in hermetic/offline mode.")
+    else:
+        import urllib.request
+        try:
+            with urllib.request.urlopen("http://141.148.195.233:8000/healthz", timeout=5) as resp:
+                body = resp.read().decode()
+                if resp.status == 200 and "ALIVE" in body:
+                    results["REMOTE_VM_HEALTH"] = "PASSED (HTTP 200 OK - Backend ALIVE)"
+                    print(f"  ✓ Remote VM: http://141.148.195.233:8000/healthz is ALIVE.")
+                else:
+                    results["REMOTE_VM_HEALTH"] = f"FAILED: status={resp.status}, body={body}"
+        except Exception as exc:
+            results["REMOTE_VM_HEALTH"] = f"FAILED: {exc}"
+            print(f"  ✗ Remote VM check failed: {exc}")
 
     # PROBE 11: S3 Multipart Storage, Presigned URL Rewrite & BKND-14 Abort
     print("[PROBE 11/11] S3 Multipart Presigned Storage & BKND-14 Lifecycle Cleanup...")
@@ -289,8 +293,12 @@ def run_probes():
     print("=================================================================")
     all_passed = True
     for test, status in results.items():
-        status_sym = "🟢" if "PASSED" in status else "🔴"
-        if "FAILED" in status:
+        if "PASSED" in status:
+            status_sym = "🟢"
+        elif "SKIPPED" in status:
+            status_sym = "⚪"
+        else:
+            status_sym = "🔴"
             all_passed = False
         print(f"{status_sym} {test:<30} : {status}")
     print("=================================================================")
