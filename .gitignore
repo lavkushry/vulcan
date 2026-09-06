@@ -103,6 +103,7 @@ backend/data/tfplan/*
 # Temporary & Log files
 *.tmp
 *.log
+!docs/*.log
 backend/data/*.jsonl
 backend/data/galaxy_catalog_10000.json
 backend/data/terraform_catalog_5000.json

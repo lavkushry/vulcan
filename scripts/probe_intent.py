@@ -9,6 +9,7 @@ Validates:
 """
 import argparse
 import json
+import os
 import urllib.request
 import urllib.error
 import sys
@@ -37,7 +38,7 @@ def run_probe(base_url: str, api_token: str = ""):
         },
         {
             "name": "4. Ambiguous Twin Playbook Disambiguation",
-            "prompt": "renew ssl certificate on f5 big-ip vip",
+            "prompt": "backup f5 network config",
             "ambient_params": {}
         }
     ]
@@ -95,7 +96,16 @@ if __name__ == "__main__":
     parser.add_argument("--output", type=str, default="", help="Save JSON output path")
     args = parser.parse_args()
 
-    results = run_probe(args.url, args.token)
+    token = args.token or os.getenv("VULCAN_API_TOKEN", "")
+    if not token and os.getenv("VULCAN_API_TOKENS"):
+        try:
+            tokens = json.loads(os.getenv("VULCAN_API_TOKENS", "{}"))
+            if tokens:
+                token = next(iter(tokens.keys()))
+        except Exception:
+            pass
+
+    results = run_probe(args.url, token)
     if args.output:
         with open(args.output, "w", encoding="utf-8") as f:
             json.dump(results, f, indent=2)
