@@ -89,11 +89,16 @@ class TestOperatorConsoleVerticalSlice(unittest.TestCase):
         exec_res = self.client.post(f"/api/v1/jobs/{corr_id}/execute")
         self.assertEqual(exec_res.status_code, 200)
 
-        # Allow worker thread to complete execution
-        time.sleep(0.6)
+        # Allow worker thread to complete execution with polling
+        final_job = None
+        for _ in range(15):
+            time.sleep(0.2)
+            final_job = self.client.get(f"/api/v1/jobs/{corr_id}").json()
+            if final_job["status"] in ("SUCCESS", "FAILED"):
+                break
 
         # 5. Verify final status is SUCCESS
-        final_job = self.client.get(f"/api/v1/jobs/{corr_id}").json()
+        self.assertIsNotNone(final_job)
         self.assertEqual(final_job["status"], "SUCCESS")
         self.assertEqual(final_job["exit_code"], 0)
 

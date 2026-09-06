@@ -102,5 +102,7 @@ backend/data/tfplan/*
 *.log
 backend/data/*.jsonl
 backend/data/galaxy_catalog_10000.json
+backend/data/terraform_catalog_5000.json
+backend/data/unified_catalog_10000.json
 data/
 *.jsonl
