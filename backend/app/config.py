@@ -55,9 +55,19 @@ class AppContainer:
         self.audit_logger = MerkleAuditLogger(persistence_file="data/audit_ledger.jsonl")
         self.secret_provider = CyberArkPAMProvider(mock_mode=True)
         self.snow_gateway = ServiceNowGateway(mock_mode=True)
+        s3_endpoint = os.getenv("S3_ENDPOINT_URL")
+        s3_access = os.getenv("S3_ACCESS_KEY") or os.getenv("AWS_ACCESS_KEY_ID")
+        s3_secret = os.getenv("S3_SECRET_KEY") or os.getenv("AWS_SECRET_ACCESS_KEY")
+        s3_public_endpoint = os.getenv("S3_PUBLIC_ENDPOINT_URL") or s3_endpoint
+        s3_bucket = os.getenv("S3_BUCKET_NAME", "vulcan-artifacts")
+
         self.storage_gateway = S3MultipartGateway(
-            bucket_name=os.getenv("S3_BUCKET_NAME", "vulcan-artifacts"),
-            mock_mode=True
+            bucket_name=s3_bucket,
+            endpoint_url=s3_endpoint,
+            public_endpoint_url=s3_public_endpoint,
+            aws_access_key_id=s3_access,
+            aws_secret_access_key=s3_secret,
+            mock_mode=(not s3_endpoint and not s3_access)
         )
         if not self.simulation_mode:
             self.execution_engine = AnsibleRunnerExecutionEngine()

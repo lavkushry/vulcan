@@ -86,11 +86,45 @@ class IServiceNowGateway(abc.ABC):
 
 
 class IObjectStorageGateway(abc.ABC):
-    """Port for decoupled 10GB binary payload verification (MinIO / S3)."""
+    """Port for decoupled 10GB binary payload verification and S3 presigned multipart storage."""
     @abc.abstractmethod
     def verify_artifact_checksum(self, uri: str, expected_sha256: str) -> bool:
         """Verify storage artifact matches expected SHA256 checksum before worker runs."""
         pass
+
+    def initiate_multipart_upload(
+        self,
+        file_name: str,
+        file_size_bytes: int,
+        sha256_checksum: str,
+        job_id: str
+    ) -> Dict[str, Any]:
+        """Calculates 50MB chunks and generates presigned PUT URLs for each chunk."""
+        raise NotImplementedError
+
+    def complete_multipart_upload(
+        self,
+        upload_id: str,
+        s3_key: str,
+        parts: List[Dict[str, Any]]
+    ) -> str:
+        """Completes the multipart upload and returns final S3 URI."""
+        raise NotImplementedError
+
+    def abort_multipart_upload(
+        self,
+        upload_id: str,
+        s3_key: str
+    ) -> bool:
+        """Abort in-progress multipart upload and purge temporary chunks (BKND-14)."""
+        raise NotImplementedError
+
+    def cleanup_orphaned_uploads(
+        self,
+        max_age_seconds: int = 86400
+    ) -> int:
+        """Find and abort multipart uploads older than max_age_seconds (BKND-14)."""
+        raise NotImplementedError
 
 
 class IHealthProbeGateway(abc.ABC):
