@@ -39,6 +39,16 @@ export function JobDetail({ job, currentUser, onChanged }: {
     return null;
   }, [stream.events]);
 
+  const status = liveStatus ?? job?.status ?? "SUBMITTED";
+
+  // Determine active step index in the 8-step domain rail (Must be declared before any conditional return!)
+  const activeStepIdx = useMemo(() => {
+    if (status === "FAILED") return 5;
+    if (status === "REJECTED") return 2;
+    const idx = PROGRESSION_STEPS.indexOf(status);
+    return idx >= 0 ? idx : 5;
+  }, [status]);
+
   if (!job)
     return (
       <div className="flex h-full items-center justify-center bg-[#07090E] p-8 text-center text-sm text-slate-600 font-mono">
@@ -46,7 +56,6 @@ export function JobDetail({ job, currentUser, onChanged }: {
       </div>
     );
 
-  const status = liveStatus ?? job.status;
   const pending = status === "PENDING_APPROVAL";
   const isRunningOrLocked = status === "RUNNING" || status === "LOCKED" || status === "VERIFYING";
 
@@ -73,14 +82,6 @@ export function JobDetail({ job, currentUser, onChanged }: {
       setTimeout(() => setRollbackDispatched(false), 3000);
     }
   };
-
-  // Determine active step index in the 8-step domain rail
-  const activeStepIdx = useMemo(() => {
-    if (status === "FAILED") return 5;
-    if (status === "REJECTED") return 2;
-    const idx = PROGRESSION_STEPS.indexOf(status);
-    return idx >= 0 ? idx : 5;
-  }, [status]);
 
   return (
     <section className="flex h-full min-h-0 flex-1 flex-col bg-[#07090E]">
