@@ -337,6 +337,37 @@ class PostgresCatalogRepository(ICatalogRepository):
                 cur.execute(sql, params)
                 return [self._row_to_entity(r) for r in cur.fetchall()]
 
+    def search_sparse(
+        self,
+        query: str,
+        top_k: int = 10,
+        curation_status: Optional[str] = None
+    ) -> List[Tuple[CatalogItem, float]]:
+        """Executes pure full-text sparse search (tsvector ts_rank)."""
+        if not query.strip():
+            return []
+        sql = """
+            SELECT *, ts_rank(tsv, websearch_to_tsquery('english', %(query)s)) AS score
+            FROM catalog_items
+            WHERE tsv @@ websearch_to_tsquery('english', %(query)s)
+        """
+        params: Dict[str, Any] = {"query": query, "top_k": top_k}
+        if curation_status:
+            sql += " AND curation_status = %(curation_status)s"
+            params["curation_status"] = curation_status
+        sql += " ORDER BY score DESC LIMIT %(top_k)s;"
+
+        with self._get_connection() as conn:
+            with conn.cursor() as cur:
+                try:
+                    cur.execute(sql, params)
+                    return [(self._row_to_entity(r), float(r["score"])) for r in cur.fetchall()]
+                except Exception:
+                    conn.rollback()
+                    fallback_sql = sql.replace("websearch_to_tsquery", "plainto_tsquery")
+                    cur.execute(fallback_sql, params)
+                    return [(self._row_to_entity(r), float(r["score"])) for r in cur.fetchall()]
+
     def search_hybrid(
         self,
         query: str,
@@ -365,10 +396,9 @@ class PostgresCatalogRepository(ICatalogRepository):
 
         vec_literal = format_pgvector_literal(query_embedding)
 
-        # 1. Dense retrieval (HNSW cosine similarity)
+        # 1. Dense retrieval (HNSW cosine similarity index scan)
         dense_sql = """
-            SELECT id, identifier, 1 - (embedding <=> %(qvec)s::vector) AS dense_score,
-                   ROW_NUMBER() OVER (ORDER BY embedding <=> %(qvec)s::vector ASC) AS rank
+            SELECT id, identifier, 1 - (embedding <=> %(qvec)s::vector) AS dense_score
             FROM catalog_items
             WHERE embedding IS NOT NULL
         """
@@ -378,10 +408,9 @@ class PostgresCatalogRepository(ICatalogRepository):
             params["curation_status"] = curation_status
         dense_sql += " ORDER BY embedding <=> %(qvec)s::vector ASC LIMIT 50;"
 
-        # 2. Sparse retrieval (Full text ts_rank)
+        # 2. Sparse retrieval (Full text ts_rank index scan)
         sparse_sql = """
-            SELECT id, identifier, ts_rank(tsv, websearch_to_tsquery('english', %(query)s)) AS sparse_score,
-                   ROW_NUMBER() OVER (ORDER BY ts_rank(tsv, websearch_to_tsquery('english', %(query)s)) DESC) AS rank
+            SELECT id, identifier, ts_rank(tsv, websearch_to_tsquery('english', %(query)s)) AS sparse_score
             FROM catalog_items
             WHERE tsv @@ websearch_to_tsquery('english', %(query)s)
         """
@@ -396,20 +425,20 @@ class PostgresCatalogRepository(ICatalogRepository):
             with conn.cursor() as cur:
                 # Execute dense
                 cur.execute(dense_sql, params)
-                for r in cur.fetchall():
+                for rank, r in enumerate(cur.fetchall(), start=1):
                     dense_matches[r["identifier"]] = {
                         "score": float(r["dense_score"]),
-                        "rank": int(r["rank"]),
+                        "rank": rank,
                         "id": r["id"],
                     }
 
                 # Execute sparse with syntax fallback
                 try:
                     cur.execute(sparse_sql, params)
-                    for r in cur.fetchall():
+                    for rank, r in enumerate(cur.fetchall(), start=1):
                         sparse_matches[r["identifier"]] = {
                             "score": float(r["sparse_score"]),
-                            "rank": int(r["rank"]),
+                            "rank": rank,
                             "id": r["id"],
                         }
                 except Exception as e:
@@ -418,10 +447,10 @@ class PostgresCatalogRepository(ICatalogRepository):
                     fallback_sql = sparse_sql.replace("websearch_to_tsquery", "plainto_tsquery")
                     try:
                         cur.execute(fallback_sql, params)
-                        for r in cur.fetchall():
+                        for rank, r in enumerate(cur.fetchall(), start=1):
                             sparse_matches[r["identifier"]] = {
                                 "score": float(r["sparse_score"]),
-                                "rank": int(r["rank"]),
+                                "rank": rank,
                                 "id": r["id"],
                             }
                     except Exception:
@@ -475,10 +504,18 @@ class PostgresCatalogRepository(ICatalogRepository):
             if delta_score < 0.05:
                 disambiguation_required = True
 
-        # Hydrate domain entities
+        # Hydrate domain entities in a single batch query
         results: List[Tuple[CatalogItem, float, Dict[str, Any]]] = []
+        top_idents = [m["identifier"] for m in top_matches]
+        entities_by_ident: Dict[str, CatalogItem] = {}
+        with self._get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT * FROM catalog_items WHERE identifier = ANY(%(idents)s)", {"idents": top_idents})
+                for r in cur.fetchall():
+                    entities_by_ident[r["identifier"]] = self._row_to_entity(r)
+
         for match in top_matches:
-            item = self.get_by_identifier(match["identifier"])
+            item = entities_by_ident.get(match["identifier"])
             if item:
                 meta = {
                     "dense_score": match["dense_score"],

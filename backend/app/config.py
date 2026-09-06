@@ -93,8 +93,8 @@ class AppContainer:
                 )
                 self.catalog_repo = pg_repo
                 logger.info("Initialized PostgreSQL pgvector Catalog Repository.")
-                # Sync catalog items to Postgres if empty
-                if self.catalog_repo.count() == 0:
+                # Sync catalog items to Postgres if curated items are missing
+                if self.catalog_repo.count(curation_status="CURATED") < len(self.catalog):
                     for item in self.catalog:
                         self.catalog_repo.save(item)
                     logger.info("Seeded %d catalog items into PostgreSQL pgvector.", len(self.catalog))

@@ -503,6 +503,23 @@ class SQLiteCatalogRepository(ICatalogRepository):
             cursor = self._conn.execute("SELECT COUNT(*) FROM catalog_items")
             return int(cursor.fetchone()[0])
 
+    def search_sparse(
+        self,
+        query: str,
+        top_k: int = 10,
+        curation_status: Optional[str] = None
+    ) -> List[Any]:
+        """Sparse search fallback using keyword matching."""
+        items = self.list_all(curation_status=curation_status)
+        matches = []
+        for it in items:
+            text = f"{it.name} {it.description} {it.identifier}".lower()
+            overlap = sum(1 for term in query.lower().split() if term in text)
+            if overlap > 0:
+                matches.append((it, float(overlap)))
+        matches.sort(key=lambda x: x[1], reverse=True)
+        return matches[:top_k]
+
     def search_hybrid(
         self,
         query: str,

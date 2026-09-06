@@ -97,6 +97,7 @@ services:
       SIMULATION_MODE: "${SIMULATION_MODE:-false}"
       VULCAN_API_TOKENS: '${VULCAN_API_TOKENS}'
       VULCAN_AUTH_DISABLED: "${VULCAN_AUTH_DISABLED:-0}"
+      VULCAN_CATALOG_BACKEND: "${VULCAN_CATALOG_BACKEND:-sqlite}"
     ports:
       - "127.0.0.1:8000:8000"
     volumes:

@@ -86,6 +86,16 @@ class ICatalogRepository(abc.ABC):
         pass
 
     @abc.abstractmethod
+    def search_sparse(
+        self,
+        query: str,
+        top_k: int = 10,
+        curation_status: Optional[str] = None
+    ) -> List[Any]:
+        """Executes sparse keyword/full-text search over catalog items."""
+        pass
+
+    @abc.abstractmethod
     def search_hybrid(
         self,
         query: str,
