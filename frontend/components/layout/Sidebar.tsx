@@ -12,6 +12,7 @@ import {
   ChevronRight,
   Sparkles,
   Table2,
+  Plug,
 } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
@@ -31,6 +32,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'history', label: 'Execution History', icon: <History size={20} />, href: '/history' },
   { id: 'rules', label: 'Automation Rules', icon: <GitBranch size={20} />, href: '/rules' },
   { id: 'packs', label: 'Content Packs', icon: <Package size={20} />, href: '/packs' },
+  { id: 'integrations', label: 'Connectors & Integrations', icon: <Plug size={20} />, href: '/integrations' },
   { id: 'audit', label: 'Audit & Compliance', icon: <ShieldCheck size={20} />, href: '/audit' },
   { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={20} />, href: '/dashboard' },
 ];

@@ -98,6 +98,38 @@ def get_health():
     }
 
 
+# =====================================================================
+# ENTERPRISE INTEGRATIONS (ServiceNow, AAP, GitHub, Jira, Vault)
+# =====================================================================
+
+from app.adapters.integrations_manager import integrations_manager
+
+@router.get("/integrations")
+def list_integrations():
+    """List all enterprise connectors (ServiceNow, AAP, GitHub, Jira, Vault, Datadog)."""
+    return integrations_manager.list_all()
+
+
+@router.get("/integrations/{key}")
+def get_integration(key: str):
+    item = integrations_manager.get(key)
+    if not item:
+        raise HTTPException(status_code=404, detail="Integration connector not found.")
+    return item
+
+
+@router.post("/integrations/{key}/test")
+def test_integration_connection(key: str):
+    """Test live connectivity and credentials for connector."""
+    return integrations_manager.test_connection(key)
+
+
+@router.post("/integrations/{key}/sync")
+def sync_integration_data(key: str):
+    """Trigger manual synchronization (e.g. Git catalog pull, CMDB inventory sync)."""
+    return integrations_manager.trigger_sync(key)
+
+
 @router.get("/catalog")
 def list_catalog(
     search: Optional[str] = None,
