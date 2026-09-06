@@ -1,0 +1,27 @@
+# Alternative: Deploy via GitHub Self-Hosted Runner
+# To use this instead of SSH secrets:
+# 1. On your Ubuntu server: Settings -> Actions -> Runners -> New runner
+# 2. Rename this file to deploy.yml (replacing SSH workflow)
+name: Continuous Deployment (Self-Hosted Runner)
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+concurrency:
+  group: vulcan-deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy on Ubuntu Server
+    runs-on: self-hosted
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Run Server Deploy Script
+        run: |
+          chmod +x scripts/deploy-server.sh
+          ./scripts/deploy-server.sh
