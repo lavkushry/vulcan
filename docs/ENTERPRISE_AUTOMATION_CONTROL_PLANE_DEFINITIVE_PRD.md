@@ -1405,52 +1405,104 @@ vulcan-control-plane/
 
 Following the successful implementation of 11 operational views, 60/60 unit tests, and production build verification, the four architects reconvened in War Room 4B to rigorously evaluate the user interface and identify breakthrough opportunities for UI/UX refinement.
 
-### 1. The Debate Transcript
+### 1. The Exhaustive Debate Transcript
 
-**Uncle Bob:**  
-"Gentlemen, our domain entities are pure Python, our invariants hold, and our test suite passes in 1.8 seconds. But looking at the screen, I see **cognitive opacity**. When Alice requests an F5 SSL renewal and is blocked by Maker-Checker, the button is disabled. That enforces the rule, but where is the **deterministic explainability**? An Approving Lead should not have to leave the execution deck to understand which policies passed or failed. Clean architecture demands that the presentation boundary mirrors domain invariants with complete clarity."
+**Robert C. Martin ("Uncle Bob"):**  
+"Gentlemen, our pure Python domain entities—`CatalogItem`, `ExecutionJob`, `RiskTier`, `JobStatus`, `AuditRecord`—have zero external framework dependencies, and our test suite passes in 1.8 seconds. But looking at our frontend, I smell **cognitive opacity and architectural rot**.
+
+In Chapters 22 and 31 of *Clean Architecture*, I emphasized: **'The UI is a detail; the Web is an I/O device.'**  
+The Single Responsibility Principle (SRP) dictates that *a module should be responsible to one, and only one, actor*. In Project Vulcan, we have four distinct human actors: The Maker (Engineer), The Checker (Approving Lead), The Operator (SRE), and The Auditor (Regulator).
+
+Yet `ChatAssistant.tsx` is 674 lines of monolithic chaos trying to serve all actors simultaneously! Worse, in `MakerCheckerDeck.tsx`, line 25 contains `currentUserId === job.requester_id` alongside raw JSON formatting in JSX. The View is computing domain logic! The View must be a **Humble Object**—dumb, passive, and free of business rules, driven by pre-computed ViewModels from a dedicated Presenter.
+
+Furthermore, when Alice requests an F5 SSL renewal and is blocked by Maker-Checker, the button simply disables. That enforces the rule, but where is the **deterministic explainability**? Under SOX 404 and OCC 2013-29, an Approving Lead must not guess why a gate exists. We demand a **Separation of Duties Attestation Cockpit**: side-by-side identity cards with an explicit mathematical inequality assertion ($\text{Requester\_ID} \neq \text{Approver\_ID}$), a live 15-minute fail-closed circuit breaker clock, and an 8-step domain state progression rail (`[SUBMITTED] ──► [PARSED] ──► [PENDING_APPROVAL] ──► [QUEUED] ──► [LOCKED] ──► [RUNNING] ──► [VERIFYING] ──► [SUCCESS]`). Clean architecture demands that the presentation boundary mirrors domain invariants with complete clarity."
 
 **Alex Xu:**  
-"I agree with Bob on explainability, but my concern is **distributed system blindness**. We engineered a 5-node Redis Redlock with a background watchdog heartbeat that holds a 30s lease renewed every 10s. When an operator runs a 15-minute playbook, all they see is a static `RUNNING` badge! 
-An SRE sitting in Dallas doesn't know if the worker pod is alive or if the distributed lock expired! 
-We must add a **Live Redlock Heartbeat Radar**: a visual pulse every 10 seconds showing `Lease: 28s/30s [Heartbeat OK]`. Furthermore, if an operator's network blips, xterm.js must display a reconnection HUD indicating replay from the Redis ring buffer rather than freezing silently."
+"Bob is talking about presentation boundaries. I am talking about **operational catastrophe in production**.
+
+I inspected `JobDetail.tsx`, `TaskMatrixTable.tsx`, and `useJobStream.ts`. Our frontend currently treats distributed systems primitives as static, passive text!
+When a 15-minute playbook executes across an Oracle RAC cluster holding a 30-second Redis Redlock with a 10-second watchdog renewal, all the UI shows is a static cyan pill: `RUNNING`.
+
+Here is the failure mode: If the worker pod suffers an OOM kill or network partition, the Watchdog thread immediately dies and the Redis lock silently expires within 30 seconds. Because the frontend is decoupled, it continues displaying a calm `RUNNING` badge! Another SRE inspects the dashboard, sees the database appears uninhibited, acquires a new lock, and executes a destructive change on the same cluster concurrently!
+
+We must replace that static badge with an **Active Mutex & Watchdog HUD (`RedlockHeartbeatBar`)**:
+- A 30s countdown bar visibly ticking down from 30s to 20s.
+- An emerald pulse every 10s upon background Watchdog renewal (`Watchdog Heartbeat Verified`).
+- Multi-AZ Quorum Matrix indicators (`[AZ-1a: ●] [AZ-1b: ●] [AZ-2a: ●] [AZ-2b: ○] [AZ-3a: ●]` 4/5 nodes active).
+- Monotonic fencing token (`#Token 10482`) and target wait queue drawer.
+
+Furthermore, when uploading 10GB payloads partitioned into 205 parts (50MB each), piping progress directly into React state triggers over 1,000 re-renders per second, locking the V8 main thread! We must deploy a **Decoupled S3 Multipart Swarm Grid (`S3MultipartSwarmGrid`)** rendered via `requestAnimationFrame` or HTML5 Canvas outside React. And for real-time logs, we must use WebGL hardware-accelerated xterm.js with decorrelated exponential jitter reconnection and Redis ring-buffer replay HUD."
 
 **Andrej Karpathy:**  
-"Look at `/chat`. We built an **LLM Operating System**, but the interface still resembles a standard chatbot. The LLM is our CPU token processor; the 100+ playbooks are our disk storage; the 2,500 tokens are our working memory budget. 
-Why is the token budget invisible? We should display a **Live Tokenomics Meter** (`1,640 / 2,500 tokens utilized • 0.8s latency`) directly in the thought accordion. We should also display an **Intent Confidence Score** (`99.4% Match [net-f5-cert-renew] • Cosine Distance: 0.082`). And on execution failure, the AI SRE diagnostic engine shouldn't just print text—it should render a side-by-side **interactive AST log diff** with an immediate `[✨ Synthesize Rollback DAG]` trigger!"
+"Alex is spot on about state feedback, but look at `/chat`. In consumer tech, token economics are hidden to simulate magic. In enterprise banking, **magic breeds distrust**. 
+When an enterprise SRE sees *'Vulcan Copilot is thinking...'*, they assume an unconstrained, hallucinatory model is parsing their production payment switch.
+
+We built an **LLM Operating System**, but we hide the machine:
+- The LLM is a CPU token processor.
+- The prompt is the instruction register.
+- The 100+ playbooks in pgvector are disk storage.
+- The 2,500-token budget is the RAM allocation.
+
+We must expose the **LLM OS Telemetry HUD**:
+1. **Segmented VRAM Memory Bar:** Visualizing the 2,500-token budget (System Directive 400 tok, User Intent 180 tok, pgvector schemas 620 tok, ServiceNow state 280 tok, output buffer 150 tok), with real-time TTFT (48ms), decode throughput (122 tok/s), and HNSW cosine distance (0.082).
+2. **Borderline Semantic Disambiguation Bento Cards:** When two playbooks have adjacent semantic centroids (e.g. `k8s.drain_node` vs `k8s.cordon_only`, $\Delta_{\text{sim}} = 0.023 < 0.05$), the AI must never guess autonomously. Render an interactive Bento card diffing blast radius and governance gates with `[Cmd+1]` / `[Cmd+2]` shortcuts.
+3. **Interactive SRE AST Log Diff:** Replace raw failure text in `DiagnosticDrawer.tsx` with an AST-highlighted pinpoint of the exact failure line (e.g. HTTP 401 CyberArk token expiration), paired with a visual 3-node **Predictive Synthetic Rollback DAG Preview** before dispatch."
 
 **Jordan Walke:**  
-"I synthesize all three points into declarative UI reality: $UI = f(\text{state})$. We will not clutter the Obsidian Glass canvas; we will introduce progressive disclosure and zero layout shift. Here are the 7 breakthrough UI/UX opportunities we are committing to the architecture:"
+"I synthesize all three points into declarative UI reality: **$UI = f(\text{state})$**. We do not add visual noise. We add Progressive Disclosure, Fluid Ergonomics, and Zero Layout Shift (CLS = 0) within the Obsidian Glass Design System (`#07090E` canvas, `#0C101A` acrylic glass, neon cyan `#00F0FF` and emerald `#00FF9D` telemetry).
+
+Here is how we synthesize all disciplines into the interface:
+1. **Dynamic Resizable Draggable Dual-Pane Split (`/chat`):** Clamped strictly between 25% and 75% flex width, with double-click snap to 50/50, pointer capture, and `localStorage` persistence with zero layout shift during SSR.
+2. **Linear-Style Keyboard Hotkeys (`useKeyboardHotkeys`):** `j`/`k` row navigation, `Cmd+Enter` execute/approve, `/` focus search, `Esc` dismiss, `?` cheat sheet modal, with intelligent input-focus gating.
+3. **Live Terminal Action Bar (`xterm.js`):** Autoscroll lock/pause, 1-click clean raw stdout copy (ANSI stripping regex), inline regex search with highlight overlays and match counter, and ring-buffer dropped line telemetry.
+4. **Obsidian Micro-HUD Integration:** Non-intrusive acrylic badges for Uncle Bob's policy citations, Alex's Redlock radar, and Andrej's tokenomics meter."
 
 ---
 
-### 2. The 7 Breakthrough UI/UX Opportunities
+### 2. The Master Catalog of 12 Breakthrough UI/UX Opportunities
 
 ```
-┌────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│                        THE 7 BREAKTHROUGH UI/UX OPPORTUNITIES                                          │
-├──────────────────────────────┬─────────────────────────────────────────────────────────────────────────┤
-│ 1. Resizable Draggable Canvas│ Draggable vertical divider in `/chat` (25% to 75% flex width) with      │
-│                              │ double-click snap to 50/50 and localStorage state persistence.          │
-├──────────────────────────────┼─────────────────────────────────────────────────────────────────────────┤
-│ 2. Redlock Heartbeat Radar   │ Live SVG radial ring in `JobDetail.tsx` displaying 30s lease countdown  │
-│                              │ and emerald pulse on 10s watchdog renewal. Eliminates operator panic.   │
-├──────────────────────────────┼─────────────────────────────────────────────────────────────────────────┤
-│ 3. LLM Tokenomics HUD        │ Real-time token budget gauge (2,500 max), vector cosine distance, and   │
-│                              │ intent confidence percentage inside the Chat thought accordion.         │
-├──────────────────────────────┼─────────────────────────────────────────────────────────────────────────┤
-│ 4. Policy Explainability Pop │ Interactive popover on gated/disabled buttons showing deterministic     │
-│                              │ evaluation status across all 6 policies (POL-001 through POL-006).     │
-├──────────────────────────────┼─────────────────────────────────────────────────────────────────────────┤
-│ 5. Linear-Style Hotkeys      │ Keyboard-first navigation: `j`/`k` row selection in Matrix and History, │
-│                              │ `Cmd+Enter` to execute/approve, `/` to focus prompt, `Esc` to close.   │
-├──────────────────────────────┼─────────────────────────────────────────────────────────────────────────┤
-│ 6. Terminal Action Bar       │ Quick utility bar above xterm.js: "Autoscroll Lock", "Copy Raw Stdout", │
-│                              │ "Clear Buffer", and "Search Log Regex" with match highlighting.        │
-├──────────────────────────────┼─────────────────────────────────────────────────────────────────────────┤
-│ 7. Inline Multi-Step Stepper │ Horizontal step progression bar above terminal displaying active DAG    │
-│                              │ step, timings, and automatic failure rollback transition branches.      │
-└──────────────────────────────┴─────────────────────────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                           THE MASTER CATALOG OF BREAKTHROUGH UI/UX OPPORTUNITIES                                   │
+├────┬─────────────────────────────┬──────────────────────────┬────────────────────────────────────────────────────┤
+│ #  │ UPGRADE NAME                │ DISCIPLINE / LEAD        │ ARCHITECTURAL CAPABILITY & ERGONOMIC VALUE         │
+├────┼─────────────────────────────┼──────────────────────────┼────────────────────────────────────────────────────┤
+│ 1  │ Resizable Draggable Canvas  │ Frontend (Jordan Walke)  │ Draggable divider in `/chat` (25%-75% flex width), │
+│    │                             │                          │ 50/50 double-click snap, localStorage persistence. │
+├────┼─────────────────────────────┼──────────────────────────┼────────────────────────────────────────────────────┤
+│ 2  │ Redlock Watchdog Radar      │ Distributed (Alex Xu)    │ Live 30s countdown bar, 10s watchdog renewal pulse,│
+│    │                             │                          │ 5-node Multi-AZ quorum matrix, fencing token HUD.  │
+├────┼─────────────────────────────┼──────────────────────────┼────────────────────────────────────────────────────┤
+│ 3  │ S3 Multipart Swarm Grid     │ Distributed (Alex Xu)    │ 205-tile chunk swarm grid, decoupled RAF/Canvas    │
+│    │                             │                          │ rendering (avoiding 1,000+ React re-renders/s).    │
+├────┼─────────────────────────────┼──────────────────────────┼────────────────────────────────────────────────────┤
+│ 4  │ LLM Tokenomics HUD          │ AI Systems (Karpathy)    │ 2,500-token working memory breakdown, TTFT (48ms), │
+│    │                             │                          │ decode throughput (122 tok/s), cosine distance.    │
+├────┼─────────────────────────────┼──────────────────────────┼────────────────────────────────────────────────────┤
+│ 5  │ Semantic Disambiguation     │ AI Systems (Karpathy)    │ Side-by-side Bento card comparing adjacent intents │
+│    │ Bento Card                  │                          │ when Δsim < 0.05, diffing blast radius and gates.  │
+├────┼─────────────────────────────┼──────────────────────────┼────────────────────────────────────────────────────┤
+│ 6  │ Interactive AST Log Diff    │ AI Systems (Karpathy)    │ AST syntax-highlighted failure pinpoint with       │
+│    │ & Synthetic Rollback DAG    │                          │ 1-click 3-node predictive rollback DAG dispatch.   │
+├────┼─────────────────────────────┼──────────────────────────┼────────────────────────────────────────────────────┤
+│ 7  │ Mathematical SoD Cockpit    │ Clean Arch (Uncle Bob)   │ Explicit Req_ID != Appr_ID inequality assertion,   │
+│    │ & 15m Circuit Breaker       │                          │ 15-min fail-closed countdown, and Humble Object.   │
+├────┼─────────────────────────────┼──────────────────────────┼────────────────────────────────────────────────────┤
+│ 8  │ Policy-as-Code Proof Ledger │ Clean Arch (Uncle Bob)   │ Deterministic evidence cards for POL-001 - POL-006 │
+│    │                             │                          │ (Git commit SHA, TruffleHog, ServiceNow window).   │
+├────┼─────────────────────────────┼──────────────────────────┼────────────────────────────────────────────────────┤
+│ 9  │ 8-Step State Rail           │ Clean Arch (Uncle Bob)   │ Explicit domain rail: SUBMITTED -> PARSED ->       │
+│    │                             │                          │ PENDING_APPROVAL -> QUEUED -> LOCKED -> RUNNING... │
+├────┼─────────────────────────────┼──────────────────────────┼────────────────────────────────────────────────────┤
+│ 10 │ Linear-Style Hotkeys        │ Frontend (Jordan Walke)  │ Keyboard-first ergonomics: j/k navigation,         │
+│    │                             │                          │ Cmd+Enter dispatch, / search focus, ? cheat sheet. │
+├────┼─────────────────────────────┼──────────────────────────┼────────────────────────────────────────────────────┤
+│ 11 │ Live Terminal Action Bar    │ Frontend (Jordan Walke)  │ Autoscroll pause lock, 1-click ANSI-stripped copy, │
+│    │                             │                          │ inline regex search with highlight overlays.       │
+├────┼─────────────────────────────┼──────────────────────────┼────────────────────────────────────────────────────┤
+│ 12 │ WebGL xterm.js Reconnection │ Distributed (Alex Xu)    │ Hardware-accelerated terminal with decorrelated    │
+│    │ & Ring Buffer Catchup HUD   │                          │ jitter reconnect and Redis log ring replay.        │
+└────┴─────────────────────────────┴──────────────────────────┴────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -1466,10 +1518,11 @@ By uniting **Robert C. Martin’s Clean Architecture**, **Alex Xu’s Distribute
 * **Zero Self-Approvals:** Mathematically enforced Maker-Checker governance.
 * **Zero Operator Panic:** Real-time distributed heartbeat telemetry and tokenomics transparency.
 
-**Signed and Approved for Implementation:**
+**Signed and Ratified in War Room 4B:**
 * **Robert C. Martin ("Uncle Bob")** — Clean Architecture Lead
 * **Alex Xu** — Distributed Systems Lead
 * **Andrej Karpathy** — AI Systems Lead
 * **Jordan Walke** — Declarative UI/UX Lead
+
 
 

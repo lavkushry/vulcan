@@ -414,6 +414,21 @@ To reconcile developer velocity with rigid banking governance, Project Vulcan es
 - **6 Active Guardrails:** `POL-001` (Maker-Checker `requester != approver`), `POL-002` (ServiceNow CHG window gate), `POL-003` (Zero plaintext credential linting), `POL-004` (Target mutual exclusion via Redlock), `POL-005` (Operational freeze window protection), `POL-006` (Fleet concurrency throttling).
 - **Interactive Simulator:** Real-time pre-flight evaluation tool predicting deterministic decisions (`ALLOW`, `REQUIRE_APPROVAL`, `DENY`).
 
+### 8.4 Second War Room Architectural Debate: 12 Breakthrough UI/UX Opportunities
+Following the successful implementation and testing of the 11 views, the four system architects (Robert C. Martin, Alex Xu, Andrej Karpathy, Jordan Walke) convened in War Room 4B to establish the next frontier of UI/UX excellence:
+1. **Dynamic Resizable Draggable Dual-Pane Split (`/chat`):** 25% to 75% flex width with 50/50 double-click snap and zero-layout-shift `localStorage` persistence.
+2. **Redlock Watchdog Mutex Radar (`JobDetail.tsx`):** Live 30s countdown bar, 10s watchdog renewal pulse, Multi-AZ quorum matrix (4/5 nodes), and fencing token badge.
+3. **Decoupled S3 Multipart Swarm Grid:** 205-tile chunk swarm rendered outside React via `requestAnimationFrame` to avoid V8 event-loop lockup during 10GB transfers.
+4. **LLM OS Working Memory Tokenomics HUD:** 2,500-token memory bar, TTFT (48ms), decode throughput (122 tok/s), and Pydantic FSM grammar pass status.
+5. **Interactive Semantic Disambiguation Bento Card:** Side-by-side comparison for borderline cosine matches ($\Delta_{\text{sim}} < 0.05$) diffing blast radius and governance gates.
+6. **Interactive AST Log Diff & Synthetic Rollback DAG:** Precise AST failure pinpoints with 1-click 3-node predictive rollback DAG dispatch.
+7. **Mathematical Separation of Duties Proof Cockpit:** Side-by-side identity cards with explicit $\text{Requester\_ID} \neq \text{Approver\_ID}$ proof and 15-minute fail-closed circuit breaker clock.
+8. **Policy-as-Code Proof Ledger:** Deterministic evidence cards for POL-001 through POL-006 displayed inline with approval decisions.
+9. **8-Step State Progression Rail:** Immutable domain rail (`SUBMITTED` ➔ `PARSED` ➔ `PENDING_APPROVAL` ➔ `QUEUED` ➔ `LOCKED` ➔ `RUNNING` ➔ `VERIFYING` ➔ `SUCCESS`).
+10. **Linear-Style Keyboard Hotkeys (`useKeyboardHotkeys`):** `j`/`k` row navigation, `Cmd+Enter` execute/approve, `/` focus search, `Esc` dismiss, `?` cheat sheet modal.
+11. **Live Terminal Action Bar (`xterm.js`):** Autoscroll lock/pause, 1-click ANSI-stripped raw stdout copy, inline regex search with highlight overlays.
+12. **WebGL xterm.js Reconnection & Ring Buffer Replay HUD:** Hardware-accelerated terminal with decorrelated jitter reconnect and Redis log ring replay.
+
 ---
 
 ## 9. EXECUTIVE APPROVAL & SIGN-OFF
@@ -428,4 +443,5 @@ By signing below, the stakeholders endorse this Business Requirements Document a
 
 **Information Security & Risk:** __________________________  Date: ____________  
 *(Chief Information Security Officer Representative)*
+
 
