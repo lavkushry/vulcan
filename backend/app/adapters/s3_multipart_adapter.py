@@ -62,6 +62,7 @@ class S3MultipartGateway(IObjectStorageGateway):
 
         if s3_client is not None:
             self.s3_client = s3_client
+            self.signer_client = s3_client
             self.mock_mode = False
         elif mock_mode:
             self.s3_client = None
@@ -91,7 +92,16 @@ class S3MultipartGateway(IObjectStorageGateway):
                     except Exception as create_err:
                         logger.warning("Bucket %s verify/create warning: %s", self.bucket_name, create_err)
 
-                logger.info("Initialized real S3MultipartGateway connected to %s", self.endpoint_url)
+                self.signer_client = boto3.client(
+                    "s3",
+                    endpoint_url=self.public_endpoint_url,
+                    aws_access_key_id=aws_access_key_id,
+                    aws_secret_access_key=aws_secret_access_key,
+                    region_name=self.region_name,
+                    config=Config(signature_version="s3v4")
+                ) if self.public_endpoint_url else self.s3_client
+
+                logger.info("Initialized real S3MultipartGateway connected to %s (signer: %s)", self.endpoint_url, self.public_endpoint_url)
             except Exception as init_err:
                 logger.warning("Failed to initialize boto3 S3 client (%s). Falling back to mock_mode=True.", init_err)
                 self.s3_client = None
@@ -146,8 +156,9 @@ class S3MultipartGateway(IObjectStorageGateway):
         upload_id = response["UploadId"]
         part_urls = []
 
+        signer = getattr(self, "signer_client", None) or self.s3_client
         for part_num in range(1, total_parts + 1):
-            raw_url = self.s3_client.generate_presigned_url(
+            presigned_url = signer.generate_presigned_url(
                 ClientMethod="upload_part",
                 Params={
                     "Bucket": self.bucket_name,
@@ -157,8 +168,8 @@ class S3MultipartGateway(IObjectStorageGateway):
                 },
                 ExpiresIn=3600
             )
-            rewritten_url = rewrite_presigned_url(raw_url, self.endpoint_url, self.public_endpoint_url)
-            part_urls.append({"part_number": part_num, "upload_url": rewritten_url})
+            presigned_url = rewrite_presigned_url(presigned_url, self.endpoint_url, self.public_endpoint_url)
+            part_urls.append({"part_number": part_num, "upload_url": presigned_url})
 
         return {
             "upload_id": upload_id,
