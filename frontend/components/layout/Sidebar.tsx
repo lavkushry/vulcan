@@ -10,6 +10,8 @@ import {
   ShieldCheck,
   ChevronLeft,
   ChevronRight,
+  Sparkles,
+  Table2,
 } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 
@@ -22,12 +24,14 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
+  { id: 'chat', label: 'AI Chat Assistant', icon: <Sparkles size={20} className="text-cyan-400" />, href: '/chat' },
+  { id: 'actions', label: 'Actions Catalog', icon: <Zap size={20} />, href: '/actions' },
+  { id: 'matrix', label: 'High-Filtered Tasks', icon: <Table2 size={20} />, href: '/matrix' },
+  { id: 'history', label: 'Execution History', icon: <History size={20} />, href: '/history' },
+  { id: 'rules', label: 'Automation Rules', icon: <GitBranch size={20} />, href: '/rules' },
+  { id: 'packs', label: 'Content Packs', icon: <Package size={20} />, href: '/packs' },
+  { id: 'audit', label: 'Audit & Compliance', icon: <ShieldCheck size={20} />, href: '/audit' },
   { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={20} />, href: '/dashboard' },
-  { id: 'actions', label: 'Actions', icon: <Zap size={20} />, href: '/actions' },
-  { id: 'history', label: 'History', icon: <History size={20} />, href: '/history' },
-  { id: 'rules', label: 'Rules', icon: <GitBranch size={20} />, href: '/rules' },
-  { id: 'packs', label: 'Packs', icon: <Package size={20} />, href: '/packs' },
-  { id: 'audit', label: 'Audit', icon: <ShieldCheck size={20} />, href: '/audit' },
 ];
 
 export function Sidebar() {
@@ -36,7 +40,12 @@ export function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
 
   const isActive = useCallback(
-    (href: string) => pathname === href || pathname.startsWith(href + '/'),
+    (href: string) => {
+      if (href === '/chat') {
+        return pathname === '/' || pathname === '/chat' || pathname.startsWith('/chat/');
+      }
+      return pathname === href || pathname.startsWith(href + '/');
+    },
     [pathname]
   );
 
