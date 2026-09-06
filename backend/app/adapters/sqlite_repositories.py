@@ -8,6 +8,7 @@ Auto-creates tables on first run via CREATE TABLE IF NOT EXISTS.
 """
 import json
 import logging
+import os
 import sqlite3
 import threading
 from datetime import datetime, timezone
