@@ -37,7 +37,7 @@ jobs:
       - name: Run Full PyTest Suite (Domain Invariants + Golden Injection + E2E)
         env:
           VULCAN_AUTH_DISABLED: "0"
-          VULCAN_API_TOKENS: '{"vlc_test_alice": "eng.alice", "vlc_test_bob": "lead.bob", "vlc_test_admin": "admin.dave", "vlc_test_sec": "sec.carol"}'
+          VULCAN_API_TOKENS: '{"vlc_test_alice": "eng.alice", "vlc_test_bob": "lead.bob", "vlc_test_admin": "admin.dave", "vlc_test_sec": "sec.carol", "vlc_test_charlie": "operator.charlie"}'
           NEXT_PUBLIC_VULCAN_API_TOKEN: "vlc_test_alice"
         run: |
           pytest tests/ -v --tb=short

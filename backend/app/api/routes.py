@@ -929,6 +929,7 @@ def trigger_execution(correlation_id: str, request: Request):
         )
 
     job.dispatched_by = actor
+    container.job_repo.save(job)
 
     # Synchronous write-before-execute audit record (Uncle Bob invariant)
     container.audit_logger.record(
