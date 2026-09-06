@@ -37,7 +37,7 @@ export function useJobStream(jobId: string | null) {
     };
 
     const connect = () => {
-      const token = process.env.NEXT_PUBLIC_VULCAN_API_TOKEN || "";
+      const token = (typeof window !== "undefined" ? window.localStorage.getItem("vulcan_api_token") : null) || process.env.NEXT_PUBLIC_VULCAN_API_TOKEN || "";
       const tokenParam = token ? `&token=${encodeURIComponent(token)}` : "";
       // last_seq => server replays buffered events first, then streams live
       ws = new WebSocket(`${getWsBaseUrl()}/api/v1/ws/jobs/${jobId}?last_seq=${lastSeq}${tokenParam}`);

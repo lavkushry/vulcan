@@ -8,7 +8,7 @@ export class ApiError extends Error {
 
 async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
   const base = getApiBaseUrl();
-  const token = process.env.NEXT_PUBLIC_VULCAN_API_TOKEN;
+  const token = (typeof window !== "undefined" ? window.localStorage.getItem("vulcan_api_token") : null) || process.env.NEXT_PUBLIC_VULCAN_API_TOKEN;
   const headers: Record<string, string> = {};
   if (body) {
     headers["Content-Type"] = "application/json";
