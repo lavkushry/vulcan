@@ -34,6 +34,7 @@ export interface ChatLaunchPayload {
 interface ChatAssistantProps {
   onDispatchTask: (payload: ChatLaunchPayload) => Promise<any>;
   onSelectTaskToView?: (correlationId: string) => void;
+  currentUser?: string;
 }
 
 interface Message {
@@ -54,7 +55,7 @@ const QUICK_PROMPTS = [
   "Rotate SSH authorized keys across prod bastions"
 ];
 
-export default function ChatAssistant({ onDispatchTask, onSelectTaskToView }: ChatAssistantProps) {
+export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, currentUser = 'eng.alice' }: ChatAssistantProps) {
   const [inputPrompt, setInputPrompt] = useState('');
   const [isThinking, setIsThinking] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
@@ -200,8 +201,8 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView }: Ch
         parameters: form.parameters,
         environment: form.environment,
         dry_run: form.dryRun,
-        requester_id: 'console.operator',
-        servicenow_chg: cardData.requires_maker_checker ? 'CHG-9942-AUTO' : undefined
+        requester_id: currentUser,
+        servicenow_chg: cardData.requires_chg || cardData.requires_maker_checker ? (cardData.servicenow_chg || `CHG-${Math.floor(100000 + Math.random() * 900000)}`) : undefined
       };
 
       const result = await onDispatchTask(payload);
