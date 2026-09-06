@@ -9,6 +9,7 @@ import {
   GitMerge,
   Package,
   ShieldCheck,
+  KeyRound,
   ChevronLeft,
   ChevronRight,
   Sparkles,
@@ -35,6 +36,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'rules', label: 'Automation Rules', icon: <GitBranch size={20} />, href: '/rules' },
   { id: 'packs', label: 'Content Packs', icon: <Package size={20} />, href: '/packs' },
   { id: 'integrations', label: 'Connectors & Integrations', icon: <Plug size={20} />, href: '/integrations' },
+  { id: 'policies', label: 'Roles & Policies', icon: <KeyRound size={20} />, href: '/policies' },
   { id: 'audit', label: 'Audit & Compliance', icon: <ShieldCheck size={20} />, href: '/audit' },
   { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={20} />, href: '/dashboard' },
 ];

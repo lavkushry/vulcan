@@ -124,12 +124,18 @@ export function Header({ currentUser, onUserChange, onOpenCommandPalette }: Head
 
         {/* Persona switcher */}
         <div className="flex items-center gap-2 border-l border-glass-border pl-3">
-          <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded border hidden sm:inline ${
-            currentUser === 'lead.bob'
+          <span className={`text-[10px] font-mono px-2 py-0.5 rounded border hidden sm:inline ${
+            currentUserObj.role === 'APPROVING_LEAD'
               ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+              : currentUserObj.role === 'SECURITY_ADMIN'
+              ? 'border-purple-500/30 bg-purple-500/10 text-purple-300'
+              : currentUserObj.role === 'PLATFORM_ADMIN'
+              ? 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+              : currentUserObj.role === 'AUDITOR'
+              ? 'border-blue-500/30 bg-blue-500/10 text-blue-300'
               : 'border-cyan-500/30 bg-cyan-500/10 text-cyan-300'
           }`}>
-            {currentUser === 'lead.bob' ? 'Approving Lead' : 'Engineer (Maker)'}
+            {currentUserObj.roleBadge ?? 'Operator'}
           </span>
           <Users size={13} className="text-slate-500" />
           <select
@@ -139,7 +145,7 @@ export function Header({ currentUser, onUserChange, onOpenCommandPalette }: Head
           >
             {DEMO_USERS.map((u) => (
               <option key={u.id} value={u.id} className="bg-canvas-void text-slate-200">
-                {u.label}
+                {u.label} ({u.roleBadge})
               </option>
             ))}
           </select>

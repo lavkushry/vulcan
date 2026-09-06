@@ -79,6 +79,17 @@ class DispatchTaskRequest(BaseModel):
     servicenow_chg: Optional[str] = None
     dry_run: bool = False
 
+class PolicyEvaluateRequest(BaseModel):
+    user_id: str = "eng.alice"
+    action_identifier: str
+    environment: str = "PROD"
+    parameters: Dict[str, Any] = Field(default_factory=dict)
+    risk_tier: str = "HIGH"
+    servicenow_chg: Optional[str] = None
+    is_freeze_active: bool = False
+    is_emergency: bool = False
+    approver_id: Optional[str] = None
+
 
 # =====================================================================
 # ROUTES
@@ -166,6 +177,56 @@ def list_schedules():
 def toggle_schedule(schedule_id: str):
     """Toggle a cron schedule between ACTIVE and PAUSED."""
     return workflow_engine.toggle_schedule(schedule_id)
+
+
+# =====================================================================
+# ROLES & POLICIES (RBAC / ABAC Policy-as-Code Engine)
+# =====================================================================
+
+from app.adapters.policy_manager import policy_manager
+
+@router.get("/roles")
+def list_roles():
+    """List enterprise banking roles, hierarchy, and capability mappings."""
+    return policy_manager.list_roles()
+
+
+@router.get("/roles/users")
+def list_role_users():
+    """List enterprise demo users mapped to roles with departments and titles."""
+    return policy_manager.list_demo_users()
+
+
+@router.get("/policies")
+def list_policies():
+    """List all active Policy-as-Code guardrail rules and Rego definitions."""
+    return policy_manager.list_policies()
+
+
+@router.post("/policies/{policy_id}/toggle")
+def toggle_policy(policy_id: str):
+    """Enable or disable an enterprise policy rule."""
+    return policy_manager.toggle_policy(policy_id)
+
+
+@router.post("/policies/evaluate")
+def evaluate_policy(req: PolicyEvaluateRequest):
+    """
+    Real-time Policy Evaluation Simulator:
+    Evaluates user, action, environment, parameters, and ServiceNow ticket
+    against all active policies (POL-001 through POL-006).
+    """
+    return policy_manager.evaluate_execution(
+        user_id=req.user_id,
+        action_identifier=req.action_identifier,
+        environment=req.environment,
+        parameters=req.parameters,
+        risk_tier=req.risk_tier,
+        servicenow_chg=req.servicenow_chg,
+        is_freeze_active=req.is_freeze_active,
+        is_emergency=req.is_emergency,
+        approver_id=req.approver_id,
+    )
 
 
 @router.get("/catalog")

@@ -53,3 +53,46 @@ export const FILTER_LABELS: Record<string, string> = {
   ALL: "All", PENDING_APPROVAL: "Pending", QUEUED: "Queued", RUNNING: "Running", VERIFYING: "Verifying",
   SUCCESS: "Success", FAILED: "Failed", REJECTED: "Rejected", TIMEOUT_DENIED: "Timeout",
 };
+
+export interface RoleDefinition {
+  role: string;
+  name: string;
+  permissions: string[];
+  total_permissions: number;
+  description: string;
+}
+
+export interface PolicyRule {
+  policy_id: string;
+  name: string;
+  description: string;
+  enforcement_level: 'MANDATORY_BLOCK' | 'APPROVAL_GATE' | 'AUDIT_FLAG';
+  rego_definition: string;
+  is_active: boolean;
+  tags: string[];
+}
+
+export interface PolicyEvaluationResult {
+  decision: 'ALLOW' | 'REQUIRE_APPROVAL' | 'DENY';
+  user_id: string;
+  user_role: string;
+  action_identifier: string;
+  environment: string;
+  passed_policies: string[];
+  gated_policies: string[];
+  denied_policies: string[];
+  reasons: string[];
+  evaluated_at: string;
+}
+
+export interface PolicySimulationRequest {
+  user_id: string;
+  action_identifier: string;
+  environment: string;
+  parameters?: Record<string, any>;
+  risk_tier?: string;
+  servicenow_chg?: string | null;
+  is_freeze_active?: boolean;
+  is_emergency?: boolean;
+  approver_id?: string | null;
+}

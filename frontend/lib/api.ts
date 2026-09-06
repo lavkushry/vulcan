@@ -41,10 +41,18 @@ export const api = {
     return job;
   },
   rejectJob: (id: string, approver_id: string) => req<Job>("POST", `/api/v1/jobs/${id}/reject`, { approver_id }),
+  listRoles: () => req<import("./types").RoleDefinition[]>("GET", "/api/v1/roles"),
+  listPolicies: () => req<import("./types").PolicyRule[]>("GET", "/api/v1/policies"),
+  togglePolicy: (id: string) => req<{ ok: boolean; message: string }>("POST", `/api/v1/policies/${id}/toggle`),
+  evaluatePolicy: (p: import("./types").PolicySimulationRequest) => req<import("./types").PolicyEvaluationResult>("POST", "/api/v1/policies/evaluate", p),
 };
 
-// Phase 4: replace with real SAML/OIDC identity.
+// Enterprise Banking Personas & RBAC Mapping
 export const DEMO_USERS = [
-  { id: "eng.alice", label: "Alice · Requesting Engineer" },
-  { id: "lead.bob", label: "Bob · Approving Lead" },
+  { id: "eng.alice", label: "Alice Cooper", role: "OPERATOR", roleBadge: "Operator", desc: "Requesting Engineer" },
+  { id: "lead.bob", label: "Bob Martin", role: "APPROVING_LEAD", roleBadge: "Approving Lead", desc: "Lead SRE / Approver" },
+  { id: "sec.carol", label: "Carol Danvers", role: "SECURITY_ADMIN", roleBadge: "Security Admin", desc: "InfoSec & Compliance" },
+  { id: "admin.dave", label: "Dave Bowman", role: "PLATFORM_ADMIN", roleBadge: "Platform Admin", desc: "Platform Architect" },
+  { id: "audit.emma", label: "Emma Watson", role: "AUDITOR", roleBadge: "Auditor", desc: "Regulatory SOX Auditor" },
 ];
+
