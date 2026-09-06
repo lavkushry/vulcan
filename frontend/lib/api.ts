@@ -45,6 +45,31 @@ export const api = {
   listPolicies: () => req<import("./types").PolicyRule[]>("GET", "/api/v1/policies"),
   togglePolicy: (id: string) => req<{ ok: boolean; message: string }>("POST", `/api/v1/policies/${id}/toggle`),
   evaluatePolicy: (p: import("./types").PolicySimulationRequest) => req<import("./types").PolicyEvaluationResult>("POST", "/api/v1/policies/evaluate", p),
+  // Curation Gate Endpoints (REG-01 / REG-02)
+  listCandidates: (filters?: { source?: string; status?: string; search?: string }) => {
+    const params = new URLSearchParams();
+    if (filters?.source) params.append("source", filters.source);
+    if (filters?.status) params.append("status", filters.status);
+    if (filters?.search) params.append("search", filters.search);
+    const qs = params.toString() ? `?${params.toString()}` : "";
+    return req<import("./types").CandidateItem[]>("GET", `/api/v1/curation/candidates${qs}`);
+  },
+  crawlCandidates: (tf_count = 10, galaxy_count = 10) =>
+    req<import("./types").CrawlResult>("POST", "/api/v1/curation/crawl", { tf_count, galaxy_count }),
+  draftCandidatePR: (id: string, target_internal_repo = "git@github.internal.bank.com:automation/catalog-modules.git") =>
+    req<import("./types").DraftPRResult>("POST", `/api/v1/curation/candidates/${encodeURIComponent(id)}/draft-pr`, { target_internal_repo }),
+  approveCandidate: (id: string, approver_id: string, internal_git_repo: string, internal_commit_sha: string) =>
+    req<import("./types").ApproveCandidateResult>("POST", `/api/v1/curation/candidates/${encodeURIComponent(id)}/approve`, {
+      approver_id,
+      internal_git_repo,
+      internal_commit_sha,
+    }),
+  rejectCandidate: (id: string, reviewer_id: string, reason: string) =>
+    req<{ status: string; identifier: string; curation_status: string; reason: string }>(
+      "POST",
+      `/api/v1/curation/candidates/${encodeURIComponent(id)}/reject`,
+      { reviewer_id, reason }
+    ),
 };
 
 // Enterprise Banking Personas & RBAC Mapping

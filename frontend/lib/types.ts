@@ -103,3 +103,68 @@ export interface PolicySimulationRequest {
   is_emergency?: boolean;
   approver_id?: string | null;
 }
+
+export interface CandidateProvenance {
+  source_registry: 'terraform_registry' | 'ansible_galaxy' | string;
+  upstream_url: string;
+  upstream_repo: string;
+  version: string;
+  downloads: number;
+  license: string;
+  license_compliant: boolean;
+  security_scan_status: string;
+  suggested_defaults?: Record<string, any>;
+  authors?: string[];
+}
+
+export interface CandidateItem {
+  id: string;
+  identifier: string;
+  name: string;
+  engine: 'ansible' | 'terraform' | string;
+  category: string;
+  risk_tier: string;
+  curation_status: 'CANDIDATE' | 'DRAFTED_PR' | 'CURATED' | 'REJECTED';
+  description: string;
+  tags: string[];
+  provenance: CandidateProvenance;
+  input_schema?: Record<string, any>;
+}
+
+export interface CrawlResult {
+  status: string;
+  crawled_count: number;
+  candidates: Array<{
+    identifier: string;
+    name: string;
+    engine: string;
+    license: string;
+    license_compliant: boolean;
+  }>;
+}
+
+export interface DraftPRResult {
+  status: string;
+  identifier: string;
+  target_internal_repo: string;
+  branch: string;
+  pr_title: string;
+  tarball_sha256: string;
+  security_checklist: Record<string, string>;
+  curation_status: string;
+}
+
+export interface ApproveCandidateResult {
+  status: string;
+  identifier: string;
+  curation_status: string;
+  internal_git_repo: string;
+  internal_commit_sha: string;
+  approver_id: string;
+  promoted_catalog_item: {
+    identifier: string;
+    name: string;
+    engine: string;
+    risk_tier: string;
+  };
+}
