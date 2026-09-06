@@ -28,6 +28,9 @@ logger = logging.getLogger("vulcan.sqlite")
 
 def _get_connection(db_path: str) -> sqlite3.Connection:
     """Create a SQLite connection with WAL mode for concurrent reads."""
+    dir_path = os.path.dirname(db_path)
+    if dir_path:
+        os.makedirs(dir_path, exist_ok=True)
     conn = sqlite3.connect(db_path, check_same_thread=False)
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")

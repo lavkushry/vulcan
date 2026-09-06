@@ -78,6 +78,8 @@ services:
       SIMULATION_MODE: "true"
     ports:
       - "8000:8000"
+    volumes:
+      - backend_data:/app/data
     depends_on:
       postgres:
         condition: service_healthy
@@ -104,3 +106,4 @@ volumes:
   postgres_data:
   redis_data:
   minio_data:
+  backend_data:

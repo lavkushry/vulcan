@@ -37,7 +37,11 @@ class AppContainer:
 
     def __init__(self):
         # 0. Configuration
-        self.database_url = os.getenv("DATABASE_URL", "data/vulcan.db")
+        raw_db_url = os.getenv("DATABASE_URL", "data/vulcan.db")
+        if raw_db_url.startswith("postgresql://") or raw_db_url.startswith("postgres://"):
+            self.database_url = "data/vulcan.db"
+        else:
+            self.database_url = raw_db_url
         self.redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
         self.simulation_mode = os.getenv("SIMULATION_MODE", "true").lower() == "true"
 
