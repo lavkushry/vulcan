@@ -80,6 +80,7 @@ const QUICK_PROMPTS = [
 export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, currentUser = 'eng.alice' }: ChatAssistantProps) {
   const [inputPrompt, setInputPrompt] = useState('');
   const [isThinking, setIsThinking] = useState(false);
+  const [tokenomics, setTokenomics] = useState<{tokens_used?: number, latency_ms?: number} | null>(null);
   const [openThoughts, setOpenThoughts] = useState<Record<string, boolean>>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -175,6 +176,12 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
       }
 
       const resolveData = await res.json();
+      if (resolveData.tokens_used || resolveData.latency_ms) {
+        setTokenomics({ tokens_used: resolveData.tokens_used, latency_ms: resolveData.latency_ms });
+      }
+      const toks = resolveData.tokens_used || null;
+      const lat = resolveData.latency_ms || null;
+      const newTokData = { promptTokens: toks ? Math.floor(toks*0.8) : 840, completionTokens: toks ? Math.ceil(toks*0.2) : 180, latencyMs: lat ? lat : Math.round(parseFloat(elapsed) * 1000) };
 
       // Check for semantic ambivalence / disambiguation gate (CHAT-08)
       if (resolveData.status === "DISAMBIGUATION" || (resolveData.disambiguation && resolveData.disambiguation.candidates?.length > 0)) {
@@ -471,9 +478,9 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
                         {/* Andrej Karpathy's LLM OS Working Memory Tokenomics HUD */}
                         <TokenomicsHUD
                           maxTokens={2500}
-                          promptTokens={840}
-                          completionTokens={180}
-                          latencyMs={Math.round(parseFloat(msg.thoughtProcess.time || "0.8") * 1000)}
+                          promptTokens={tokenomics?.tokens_used ? Math.floor(tokenomics.tokens_used * 0.8) : 840}
+                          completionTokens={tokenomics?.tokens_used ? Math.ceil(tokenomics.tokens_used * 0.2) : 180}
+                          latencyMs={tokenomics?.latency_ms ? tokenomics.latency_ms : Math.round(parseFloat(msg.thoughtProcess.time || "0.8") * 1000)}
                           ttftMs={48}
                           decodeSpeedTokPerSec={122}
                           intentConfidencePercent={msg.cardData ? Math.round(msg.cardData.confidence * 100) : 99}

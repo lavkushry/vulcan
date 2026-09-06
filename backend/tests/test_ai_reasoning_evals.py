@@ -161,6 +161,35 @@ class TestAIReasoningSubsystem(unittest.TestCase):
         self.assertGreater(resp.prompt_tokens, 0)
         self.assertLess(resp.latency_ms, 100.0)
 
+    def test_token_budget_calculator_pure_python(self):
+        """BKND-28: Verifies TokenBudgetCalculator counts tokens and flags overflow."""
+        from app.use_cases.tokenizer import TokenBudgetCalculator
+        calc = TokenBudgetCalculator(limit=2500)
+        tokens = calc.count_tokens("Renew SSL certificate for f5-edge-01.pnc.com in prod")
+        self.assertGreater(tokens, 5)
+        self.assertLessEqual(tokens, 25)
+
+        # Working memory distribution
+        mem = calc.calculate_working_memory(
+            system_prompt="System instructions",
+            user_prompt="Renew SSL on host.pnc.com",
+            catalog_schema={"type": "object", "properties": {"host": {"type": "string"}}},
+            extracted_slots={"host": "host.pnc.com"},
+            base_overhead=400
+        )
+        self.assertFalse(mem["exceeded"])
+        self.assertGreater(mem["total_tokens"], 400)
+
+        # Overflow test
+        huge_prompt = "word " * 3000
+        huge_mem = calc.calculate_working_memory(
+            system_prompt="System",
+            user_prompt=huge_prompt,
+            base_overhead=400
+        )
+        self.assertTrue(huge_mem["exceeded"])
+        self.assertGreater(huge_mem["total_tokens"], 2500)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

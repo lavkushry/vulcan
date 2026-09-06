@@ -103,7 +103,7 @@ def get_health():
         "status": "OPERATIONAL",
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "catalog_size": len(container.catalog),
-        "active_jobs_count": len(container.jobs),
+        "active_jobs_count": len(container.job_repo.list_jobs(limit=1000)),
         "audit_chain_valid": is_audit_valid,
         "audit_tip_hash": container.audit_logger.get_last_hash(),
     }
@@ -300,7 +300,7 @@ def list_tasks_filtered(
     counts_by_engine = {"ansible": 0, "terraform": 0}
     counts_by_category = {}
 
-    for job in container.jobs.values():
+    for job in container.job_repo.list_jobs(limit=1000):
         st = job.status.value
         eng = job.catalog_item.engine.value
         cat = getattr(job.catalog_item, "category", "general")
@@ -354,7 +354,7 @@ def list_tasks_filtered(
 
     return {
         "tasks": paginated,
-        "total_count": len(container.jobs),
+        "total_count": len(container.job_repo.list_jobs(limit=1000)),
         "filtered_count": len(all_tasks),
         "counts_by_status": counts_by_status,
         "counts_by_engine": counts_by_engine,
@@ -394,6 +394,7 @@ def dispatch_task(req: DispatchTaskRequest):
         job.parse()
         job.request_approval(datetime.now(timezone.utc))
         container.jobs[correlation_id] = job
+        container.job_repo.save(job)
         ws_hub.emit_log(correlation_id, f"\033[1;33m[GOVERNANCE]\033[0m Task submitted. Awaiting Maker-Checker sign-off (CHG: {req.servicenow_chg or 'AUTO-REQ'}).")
         return {
             "job_id": job.id,
@@ -410,6 +411,7 @@ def dispatch_task(req: DispatchTaskRequest):
     job.transition_to(JobStatus.LOCKED, "Distributed lock acquired")
     job.transition_to(JobStatus.RUNNING, "Execution initiated")
     container.jobs[correlation_id] = job
+    container.job_repo.save(job)
 
     def run_simulation():
         import time
@@ -448,6 +450,7 @@ def dispatch_task(req: DispatchTaskRequest):
         job.transition_to(JobStatus.VERIFYING, "Verifying health probes")
         job.transition_to(JobStatus.SUCCESS, "Completed execution")
         job.completed_at = datetime.now(timezone.utc)
+        container.job_repo.save(job)
         ws_hub.emit_log(correlation_id, f"\033[1;32m[COMPLETE]\033[0m Task {correlation_id} finished successfully with exit code 0.")
 
     thread = threading.Thread(target=run_simulation, daemon=True)
@@ -461,6 +464,21 @@ def dispatch_task(req: DispatchTaskRequest):
         "requires_approval": False,
         "message": f"Task {job.correlation_id} dispatched and executing live."
     }
+
+
+def _lookup_job(key: str) -> Optional[ExecutionJob]:
+    """Retrieve job from in-memory cache or durable SQLite repository."""
+    job = container.jobs.get(key)
+    if job:
+        return job
+    for j in container.jobs.values():
+        if j.id == key or j.correlation_id == key:
+            return j
+    job = container.job_repo.get_by_id(key)
+    if job:
+        container.jobs[job.correlation_id] = job
+        return job
+    return None
 
 
 @router.get("/tasks/{correlation_id}/logs")
@@ -482,7 +500,7 @@ def get_task_logs(correlation_id: str):
         }
 
     # 2. If pre-seeded task, generate realistic logs
-    job = container.jobs.get(correlation_id)
+    job = _lookup_job(correlation_id)
     if not job:
         raise HTTPException(status_code=404, detail="Task correlation ID not found.")
 
@@ -683,7 +701,10 @@ def resolve_intent(req: ResolveIntentRequest):
 def list_jobs(request: Request, current_user: Optional[str] = Query(None)):
     """List all jobs in the control plane."""
     user = current_user or request.headers.get("x-vulcan-user")
-    return [_format_job_response(job, current_user=user) for job in container.jobs.values()]
+    all_jobs = container.job_repo.list_jobs(limit=1000)
+    if not all_jobs:
+        all_jobs = list(container.jobs.values())
+    return [_format_job_response(job, current_user=user) for job in all_jobs]
 
 
 @router.post("/jobs")
@@ -739,15 +760,14 @@ def create_job(req: CreateJobRequest):
         job.request_approval(datetime.now(timezone.utc))
 
     container.jobs[correlation_id] = job
+    container.job_repo.save(job)
     return _format_job_response(job, current_user=req.requester_id)
 
 
 @router.get("/jobs/{correlation_id}")
 def get_job(correlation_id: str, request: Request, current_user: Optional[str] = Query(None)):
     """Fetch job state and execution progress."""
-    job = container.jobs.get(correlation_id) or next(
-        (j for j in container.jobs.values() if j.id == correlation_id or j.correlation_id == correlation_id), None
-    )
+    job = _lookup_job(correlation_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found.")
 
@@ -761,9 +781,7 @@ def approve_job(correlation_id: str, req: ApproveJobRequest):
     Maker-Checker Sign-off Gate:
     Enforces Maker != Checker inequality and 15-minute fail-closed timeout.
     """
-    job = container.jobs.get(correlation_id) or next(
-        (j for j in container.jobs.values() if j.id == correlation_id or j.correlation_id == correlation_id), None
-    )
+    job = _lookup_job(correlation_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found.")
 
@@ -801,6 +819,7 @@ def approve_job(correlation_id: str, req: ApproveJobRequest):
     except DomainError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+    container.job_repo.save(job)
     ws_hub.publish(job.correlation_id, "status", {
         "status": job.status.value,
         "message": f"Approved by {req.approver_id}"
@@ -817,9 +836,7 @@ def reject_job(correlation_id: str, req: RejectJobRequest):
     Maker-Checker Rejection Gate:
     Rejects the job and marks status REJECTED.
     """
-    job = container.jobs.get(correlation_id) or next(
-        (j for j in container.jobs.values() if j.id == correlation_id or j.correlation_id == correlation_id), None
-    )
+    job = _lookup_job(correlation_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found.")
 
@@ -842,6 +859,7 @@ def reject_job(correlation_id: str, req: RejectJobRequest):
     except DomainError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+    container.job_repo.save(job)
     ws_hub.publish(job.correlation_id, "status", {
         "status": job.status.value,
         "message": f"Rejected by {req.approver_id}: {decision.reason}"
@@ -857,9 +875,7 @@ def trigger_execution(correlation_id: str):
     """
     Triggers BaseJobRunner Template Method in background thread with live WebSocket streaming.
     """
-    job = container.jobs.get(correlation_id) or next(
-        (j for j in container.jobs.values() if j.id == correlation_id or j.correlation_id == correlation_id), None
-    )
+    job = _lookup_job(correlation_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found.")
 
@@ -878,8 +894,10 @@ def trigger_execution(correlation_id: str):
         try:
             ws_hub.publish(job.correlation_id, "status", {"status": "RUNNING", "message": "Worker spawned"})
             runner.run(job)
+            container.job_repo.save(job)
             ws_hub.publish(job.correlation_id, "status", {"status": job.status.value, "message": "Execution complete"})
         except Exception as e:
+            container.job_repo.save(job)
             ws_hub.emit_log(job.correlation_id, f"\033[1;31m[EXECUTION ERROR]\033[0m {str(e)}", "stderr")
             ws_hub.publish(job.correlation_id, "status", {"status": job.status.value, "message": str(e)})
             try:
@@ -901,9 +919,7 @@ def diagnose_job_failure(correlation_id: str):
     AI SRE Failure Diagnostic Subsystem:
     Extracts 50-line log window and provides root-cause analysis in <3.0s.
     """
-    job = container.jobs.get(correlation_id) or next(
-        (j for j in container.jobs.values() if j.id == correlation_id or j.correlation_id == correlation_id), None
-    )
+    job = _lookup_job(correlation_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found.")
 

@@ -29,9 +29,14 @@ class WebSocketLogHub:
         self.connections: Dict[str, Set[WebSocket]] = {}
         self._lock = threading.Lock()
         self._loop: Optional[asyncio.AbstractEventLoop] = None
+        self._redis: Optional[Any] = None
 
     def set_event_loop(self, loop: asyncio.AbstractEventLoop):
         self._loop = loop
+
+    def set_redis_client(self, redis_client: Any):
+        """Enable Redis Pub/Sub backplane for distributed multi-worker broadcast."""
+        self._redis = redis_client
 
     def publish(self, correlation_id: str, type_: str, data: Any):
         """
@@ -59,6 +64,7 @@ class WebSocketLogHub:
 
             active_sockets = list(self.connections.get(correlation_id, set()))
 
+        # Broadcast to local connected WebSockets
         if active_sockets:
             loop = self._loop
             if not loop or not loop.is_running():
@@ -71,6 +77,13 @@ class WebSocketLogHub:
                     self._broadcast_to_sockets(active_sockets, entry),
                     loop
                 )
+
+        # Broadcast to Redis Pub/Sub backplane for multi-worker topology
+        if self._redis:
+            try:
+                self._redis.publish(f"vulcan:ws:{correlation_id}", json.dumps(entry))
+            except Exception as e:
+                logger.debug(f"Redis pub/sub publish failed: {e}")
 
     def emit_log(self, correlation_id: str, line: str, stream: str = "stdout"):
         """

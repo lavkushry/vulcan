@@ -13,6 +13,8 @@ import unicodedata
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.domain.entities import CatalogItem, ExecutionEngineType, RiskTier
+from app.ports.interfaces import IChatModelProvider
+from app.use_cases.tokenizer import token_calculator
 
 
 class IntentResolutionResult:
@@ -103,8 +105,9 @@ class IntentResolver:
         r"ghp_[a-zA-Z0-9]{36}",
     ]
 
-    def __init__(self, catalog: List[CatalogItem]):
+    def __init__(self, catalog: List[CatalogItem], chat_model_provider: Optional[IChatModelProvider] = None):
         self.catalog = catalog
+        self.chat_model_provider = chat_model_provider
 
     def _check_adversarial(self, prompt: str) -> Optional[str]:
         """
@@ -319,11 +322,16 @@ class IntentResolver:
         missing = [req for req in required if req not in extracted]
 
         # Token usage calculation (BKND-28: honest token budgeting without tautological clamping)
-        prompt_tokens = len(prompt.split()) * 2
-        schema_tokens = len(str(schema).split())
-        total_tokens = 400 + prompt_tokens + schema_tokens + 150
+        memory_stats = token_calculator.calculate_working_memory(
+            system_prompt="You are Vulcan Intent Resolution Engine. Match catalog playbooks and extract parameters.",
+            user_prompt=prompt,
+            catalog_schema=schema,
+            extracted_slots=extracted,
+            base_overhead=400
+        )
+        total_tokens = memory_stats["total_tokens"]
 
-        if total_tokens > 2500:
+        if memory_stats["exceeded"]:
             return IntentResolutionResult(
                 status="REFUSED",
                 catalog_item=best_item,

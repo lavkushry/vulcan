@@ -189,14 +189,20 @@ export function JobDetail({ job, currentUser, onChanged }: {
                 {/* Predictive Rollback Micro-DAG Preview */}
                 <div className="p-3 rounded-lg bg-[#07090E] border border-slate-800 space-y-2">
                   <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">
-                    Synthesized Rollback Recovery DAG (3 Stages):
+                    Synthesized Rollback Recovery:
                   </span>
-                  <div className="flex items-center gap-2 text-[10px] text-slate-300">
-                    <span className="px-2 py-1 rounded bg-slate-900 border border-slate-700">1. Renew Vault Token</span>
+                  <div className="flex items-center gap-2 text-[11px] font-mono text-cyan-300">
+                    <span className="px-2.5 py-1 rounded bg-slate-900 border border-slate-700">
+                      Playbook: {job.identifier ? `rollback-${job.identifier}` : "rollback-orchestrator"}
+                    </span>
                     <span className="text-slate-600">➔</span>
-                    <span className="px-2 py-1 rounded bg-slate-900 border border-slate-700">2. Restore Prev Cert SHA</span>
+                    <span className="px-2.5 py-1 rounded bg-slate-900 border border-slate-700">
+                      Target: {(job.parameters?.target_resource as string) || job.target_resource || "cluster-node"}
+                    </span>
                     <span className="text-slate-600">➔</span>
-                    <span className="px-2 py-1 rounded bg-slate-900 border border-slate-700">3. TLS 1.3 Synthetic Probe</span>
+                    <span className="px-2.5 py-1 rounded bg-slate-900 border border-slate-700">
+                      Post-Rollback Health Probes
+                    </span>
                   </div>
                 </div>
 

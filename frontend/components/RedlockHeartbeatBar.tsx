@@ -18,11 +18,11 @@ interface RedlockProps {
 export const RedlockHeartbeatBar: React.FC<RedlockProps> = ({
   leaseTtlSeconds = 30,
   watchdogIntervalSeconds = 10,
-  fencingToken = 10482,
-  targetResource = 'prod-edge-vip',
-  quorumActive = 4,
-  quorumTotal = 5,
-  isHolding = true,
+  fencingToken = 0,
+  targetResource = 'unknown',
+  quorumActive = 0,
+  quorumTotal = 0,
+  isHolding = false,
   serverTtlMs,
   lastHeartbeatReceivedAt,
 }) => {

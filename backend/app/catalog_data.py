@@ -912,7 +912,7 @@ def _generate_synthetic_catalog_scale(count: int = 120) -> List[Dict[str, Any]]:
             cloud = clouds[idx % len(clouds)]
             region = regions[idx % len(regions)]
             resource = ["transit-gateway", "security-group", "route-table", "iam-role", "elasticache-cluster", "kms-key"][idx % 6]
-            identifier = f"cloud-{cloud}-{resource}-{region.replace('-', '')}"
+            identifier = f"cloud-{cloud}-{resource}-{region.replace('-', '')}-{idx:03d}"
             name = f"{cloud.upper()} {resource.replace('-', ' ').title()} ({region})"
             items.append({
                 "id": f"cat-cloud-{idx:03d}",
@@ -940,7 +940,7 @@ def _generate_synthetic_catalog_scale(count: int = 120) -> List[Dict[str, Any]]:
         elif c_type == 1:  # Database
             db = database_types[idx % len(database_types)]
             action = ["backup-snapshot", "failover-drill", "archive-purge", "tune-buffers", "connection-pool-scale"][idx % 5]
-            identifier = f"db-{db}-{action}"
+            identifier = f"db-{db}-{action}-{idx:03d}"
             name = f"{db.title()} Database {action.replace('-', ' ').title()}"
             items.append({
                 "id": f"cat-db-{idx:03d}",
@@ -967,7 +967,7 @@ def _generate_synthetic_catalog_scale(count: int = 120) -> List[Dict[str, Any]]:
         elif c_type == 2:  # Network
             net = network_types[idx % len(network_types)]
             action = ["config-backup", "acl-audit", "interface-reset", "traffic-shift", "bgp-neighbor-sync"][idx % 5]
-            identifier = f"net-{net}-{action}"
+            identifier = f"net-{net}-{action}-{idx:03d}"
             name = f"{net.upper()} Network {action.replace('-', ' ').title()}"
             items.append({
                 "id": f"cat-net-{idx:03d}",
@@ -994,7 +994,7 @@ def _generate_synthetic_catalog_scale(count: int = 120) -> List[Dict[str, Any]]:
         elif c_type == 3:  # OS Patching
             distro = ["rhel8", "rhel9", "ubuntu22", "rocky9", "win2022"][idx % 5]
             action = ["security-errata", "reboot-graceful", "auditd-sync", "ntp-time-sync", "logrotate-optimize"][idx % 5]
-            identifier = f"os-{distro}-{action}"
+            identifier = f"os-{distro}-{action}-{idx:03d}"
             name = f"{distro.upper()} Host {action.replace('-', ' ').title()}"
             items.append({
                 "id": f"cat-os-{idx:03d}",
@@ -1020,7 +1020,7 @@ def _generate_synthetic_catalog_scale(count: int = 120) -> List[Dict[str, Any]]:
             })
         elif c_type == 4:  # Kubernetes
             k8s_action = ["pod-autoscaler-hpa", "network-policy-lockdown", "storageclass-provision", "taint-toleration-sync", "secret-vault-reloader"][idx % 5]
-            identifier = f"k8s-{k8s_action}"
+            identifier = f"k8s-{k8s_action}-{idx:03d}"
             name = f"Kubernetes {k8s_action.replace('-', ' ').title()}"
             items.append({
                 "id": f"cat-k8s-{idx:03d}",
@@ -1047,7 +1047,7 @@ def _generate_synthetic_catalog_scale(count: int = 120) -> List[Dict[str, Any]]:
             })
         else:  # Security
             sec_action = ["pam-sudoers-sync", "firewalld-zone-lockdown", "crowdstrike-agent-update", "qualys-sensor-scan", "waf-rate-burst-tune"][idx % 5]
-            identifier = f"sec-{sec_action}"
+            identifier = f"sec-{sec_action}-{idx:03d}"
             name = f"Security {sec_action.replace('-', ' ').title()}"
             items.append({
                 "id": f"cat-sec-{idx:03d}",

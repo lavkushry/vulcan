@@ -24,40 +24,22 @@ export default function UniversalCommandPalette({
   onSelectPlaybook
 }: CommandPaletteProps) {
   const [query, setQuery] = useState('');
-  const [items, setItems] = useState<CatalogItem[]>([
-    {
-      id: 'cat-f5-renew',
-      identifier: 'net-f5-cert-renew',
-      name: 'F5 BIG-IP SSL Certificate Renewal',
-      engine: 'ansible',
-      risk_tier: 'HIGH',
-      git_commit_sha: 'a1b2c3d4e5f67890123456789abcdef012345678'
-    },
-    {
-      id: 'cat-db-expand',
-      identifier: 'db-expand-tablespace',
-      name: 'Database Tablespace Disk Expansion',
-      engine: 'ansible',
-      risk_tier: 'HIGH',
-      git_commit_sha: 'b2c3d4e5f67890123456789abcdef01234567890'
-    },
-    {
-      id: 'cat-vpc-peer',
-      identifier: 'cloud-vpc-peering',
-      name: 'Cross-Account AWS VPC Peering Connection',
-      engine: 'terraform',
-      risk_tier: 'MEDIUM',
-      git_commit_sha: 'c3d4e5f67890123456789abcdef0123456789012'
-    },
-    {
-      id: 'cat-os-patch',
-      identifier: 'os-kernel-patch',
-      name: 'Enterprise Linux Kernel Patching (10GB ISO)',
-      engine: 'ansible',
-      risk_tier: 'HIGH',
-      git_commit_sha: 'd4e5f67890123456789abcdef012345678901234'
-    }
-  ]);
+  const [items, setItems] = useState<CatalogItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [selectedIndex, setSelectedIndex] = useState(0);
+
+  
+  useEffect(() => {
+    if (!isOpen) return;
+    setLoading(true);
+    fetch(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'}/api/v1/catalog`)
+      .then(res => res.json())
+      .then(data => {
+        setItems(data.items || data);
+      })
+      .catch(err => console.error("Failed to fetch catalog:", err))
+      .finally(() => setLoading(false));
+  }, [isOpen]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -67,6 +49,21 @@ export default function UniversalCommandPalette({
       }
       if (e.key === 'Escape') {
         onClose();
+      }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSelectedIndex(prev => Math.min(prev + 1, filtered.length - 1));
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSelectedIndex(prev => Math.max(prev - 1, 0));
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        if (filtered[selectedIndex]) {
+          onSelectPlaybook(filtered[selectedIndex]);
+          onClose();
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -91,7 +88,7 @@ export default function UniversalCommandPalette({
             type="text"
             placeholder="Type a natural language intent or playbook key (e.g. 'renew cert' or 'f5')..."
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => { setQuery(e.target.value); setSelectedIndex(0); }}
             autoFocus
             className="flex-1 bg-transparent text-sm text-white placeholder-slate-500 focus:outline-none font-mono"
           />
@@ -102,19 +99,32 @@ export default function UniversalCommandPalette({
 
         {/* Results List */}
         <div className="max-h-80 overflow-y-auto p-2 space-y-1">
-          {filtered.length === 0 ? (
+          {loading ? (
+            <div className="p-4 space-y-3">
+              {[1,2,3].map(i => (
+                <div key={i} className="animate-pulse flex gap-3 p-2">
+                  <div className="w-8 h-8 bg-cyan-900/30 rounded"></div>
+                  <div className="flex-1 space-y-2">
+                    <div className="h-3 bg-slate-700/50 rounded w-1/3"></div>
+                    <div className="h-2 bg-slate-800/50 rounded w-1/4"></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : filtered.length === 0 ? (
             <div className="text-center py-8 text-xs font-mono text-slate-500">
               No matching playbooks found in catalog.
             </div>
           ) : (
-            filtered.map((item) => (
+            filtered.map((item, index) => (
               <div
                 key={item.id}
+                data-selected={index === selectedIndex}
                 onClick={() => {
                   onSelectPlaybook(item);
                   onClose();
                 }}
-                className="flex items-center justify-between p-3 rounded-lg hover:bg-glass-raised border border-transparent hover:border-cyan-500/30 cursor-pointer transition-all group"
+                className={`flex items-center justify-between p-3 rounded-lg hover:bg-glass-raised border cursor-pointer transition-all group ${index === selectedIndex ? "bg-glass-raised border-cyan-500/50 shadow-glow-cyan" : "border-transparent hover:border-cyan-500/30"}`}
               >
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 rounded bg-cyan-950/60 border border-cyan-500/30 flex items-center justify-center text-cyan-400 group-hover:shadow-glow-cyan">
@@ -151,7 +161,7 @@ export default function UniversalCommandPalette({
 
         {/* Footer */}
         <div className="border-t border-glass-border px-4 py-2 bg-canvas-void text-[11px] font-mono text-slate-500 flex items-center justify-between">
-          <span>HNSW Cosine + BM25 Hybrid Ranker Active</span>
+          <span>{filtered.length} of {items.length} playbooks</span>
           <span>Press ESC to exit</span>
         </div>
       </div>

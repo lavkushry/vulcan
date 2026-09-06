@@ -48,6 +48,20 @@ services:
     volumes:
       - minio_data:/data
 
+  # Ephemeral MinIO Bucket Bootstrap Provisioner (INFRA-07)
+  minio-init:
+    image: minio/mc:latest
+    container_name: vulcan-minio-init
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      until /usr/bin/mc alias set local http://minio:9000 vulcan_minio_admin vulcan_minio_secret_2026; do echo 'Waiting for MinIO...'; sleep 1; done;
+      /usr/bin/mc mb local/vulcan-artifacts || true;
+      /usr/bin/mc anonymous set download local/vulcan-artifacts || true;
+      exit 0;
+      "
+
   # FastAPI Backend Control Plane
   backend:
     build:
@@ -69,6 +83,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      minio:
+        condition: service_started
 
   # Next.js 15 Obsidian Glass Web Console
   frontend:

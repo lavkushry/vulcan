@@ -43,10 +43,23 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    # Universal Correlation ID Middleware (INFRA-25 / BKND-19)
+    @app.middleware("http")
+    async def correlation_id_middleware(request: Request, call_next):
+        corr_id = (
+            request.headers.get("x-vulcan-correlation-id")
+            or request.headers.get("x-correlation-id")
+            or f"VULC-{uuid.uuid4().hex[:8].upper()}"
+        )
+        request.state.correlation_id = corr_id
+        response = await call_next(request)
+        response.headers["X-Vulcan-Correlation-Id"] = corr_id
+        return response
+
     # Standardized Consistent Error Envelope (BKND-18)
     @app.exception_handler(HTTPException)
     async def http_exception_handler(request: Request, exc: HTTPException):
-        correlation_id = request.headers.get("x-vulcan-correlation-id", f"ERR-{uuid.uuid4().hex[:8]}")
+        correlation_id = getattr(request.state, "correlation_id", None) or request.headers.get("x-vulcan-correlation-id", f"ERR-{uuid.uuid4().hex[:8]}")
         error_code = f"ERR_{exc.status_code}"
         msg = str(exc.detail)
         return JSONResponse(
