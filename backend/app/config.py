@@ -48,10 +48,8 @@ class AppContainer:
 
         # 1. Infrastructure Adapters
         redis_nodes = self._detect_redis()
+        self.redis_nodes = redis_nodes
         self.lock_manager = RedlockManager(redis_nodes=redis_nodes)
-        if redis_nodes:
-            from app.api.websockets import ws_hub
-            ws_hub.set_redis_client(redis_nodes[0])
         self.audit_logger = MerkleAuditLogger(persistence_file="data/audit_ledger.jsonl")
         self.secret_provider = CyberArkPAMProvider(mock_mode=True)
         self.snow_gateway = ServiceNowGateway(mock_mode=True)

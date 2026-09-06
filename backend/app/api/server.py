@@ -24,6 +24,8 @@ async def lifespan(app: FastAPI):
     # Set the running event loop on the WebSocket hub for thread-safe worker broadcasts
     loop = asyncio.get_running_loop()
     ws_hub.set_event_loop(loop)
+    if hasattr(container, "redis_nodes") and container.redis_nodes:
+        ws_hub.set_redis_client(container.redis_nodes[0])
     yield
 
 
