@@ -387,7 +387,36 @@ Phase 3: Multi-Engine Scale & AI Intelligence (Days 61 – 90)
 
 ---
 
-## 8. EXECUTIVE APPROVAL & SIGN-OFF
+## 8. OPERATIONAL GOVERNANCE & PRODUCTION CONSOLE SPECIFICATION
+
+### 8.1 Dual-Core Operational Paradigm
+To reconcile developer velocity with rigid banking governance, Project Vulcan establishes two primary interaction surfaces:
+1. **The #1 Primary Landing Canvas (`/chat` & `/`):** AI Chat Assistant powered by natural language intent matching across 100+ playbooks, dynamic slot-filling cards, and live side-by-side terminal log streaming.
+2. **The High-Filtered Fleet Window (`/matrix`):** 10-column sortable table with multi-dimensional filtering and 1-click CSV compliance export.
+
+### 8.2 The 11 Production Operational Views
+| # | Route | Title | Description |
+|---|---|---|---|
+| 1 | `/chat` & `/` | `✨ AI Chat Assistant` | Primary natural language intent resolution + live execution terminal. |
+| 2 | `/matrix` | `🎛️ High-Filtered Tasks` | 10-column high-filtered sortable task table with multi-select and CSV export. |
+| 3 | `/policies` | `🔑 Roles & Policies` | Interactive 5-role capability matrix, active OPA/Rego policy guardrails, and live policy simulator. |
+| 4 | `/workflows` | `🔀 Workflows & Cron` | Multi-step DAG pipelines with failure rollback branches + Redis Redlock distributed cron scheduler. |
+| 5 | `/integrations` | `🔌 Connectors & Hub` | Native bi-directional sync: ServiceNow, Red Hat AAP, GitHub/Bitbucket GitOps, Jira, Vault. |
+| 6 | `/actions` | `⚡ Actions Catalog` | 3-column pack tree and dynamic schema-driven form runner. |
+| 7 | `/history` | `📜 Execution History` | Reverse-chronological master-detail execution feed with terminal replay. |
+| 8 | `/rules` | `⚡ Automation Rules` | Event triggers (Datadog Alert, Kafka, Prometheus) → Criteria → Actions. |
+| 9 | `/packs` | `📦 Content Packs` | Bundles for Network, Cloud, Database, OS Patching with dependency health. |
+| 10 | `/audit` | `🛡️ Audit & Compliance` | SHA-256 Merkle chain block ledger, SoD violations, ServiceNow reconciliation. |
+| 11 | `/dashboard` | `📊 Telemetry Dashboard` | Active runners, catalog size, pending approvals, 24h failure rate. |
+
+### 8.3 Enterprise RBAC & ABAC Policy-as-Code
+- **5 Banking Roles:** `OPERATOR` (Alice), `APPROVING_LEAD` (Bob), `SECURITY_ADMIN` (Carol), `PLATFORM_ADMIN` (Dave), `AUDITOR` (Emma).
+- **6 Active Guardrails:** `POL-001` (Maker-Checker `requester != approver`), `POL-002` (ServiceNow CHG window gate), `POL-003` (Zero plaintext credential linting), `POL-004` (Target mutual exclusion via Redlock), `POL-005` (Operational freeze window protection), `POL-006` (Fleet concurrency throttling).
+- **Interactive Simulator:** Real-time pre-flight evaluation tool predicting deterministic decisions (`ALLOW`, `REQUIRE_APPROVAL`, `DENY`).
+
+---
+
+## 9. EXECUTIVE APPROVAL & SIGN-OFF
 
 By signing below, the stakeholders endorse this Business Requirements Document as the definitive specification for the **Enterprise Automation Control Plane (Project Vulcan)**.
 
@@ -399,3 +428,4 @@ By signing below, the stakeholders endorse this Business Requirements Document a
 
 **Information Security & Risk:** __________________________  Date: ____________  
 *(Chief Information Security Officer Representative)*
+

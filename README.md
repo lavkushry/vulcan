@@ -61,27 +61,28 @@ vulcan-control-plane/
 
 ---
 
-## The 10 Production Operational Views
+## The 11 Production Operational Views
 
 | # | Route | View Name | Key Capabilities |
 |---|---|---|---|
 | 1 | **`/chat` & `/`** | **`✨ AI Chat Assistant`** | **The #1 Primary Screen**: Dual-pane workspace with natural language intent resolution across 100+ playbooks, dynamic slot-filling cards, and live xterm.js terminal stream. |
 | 2 | **`/matrix`** | **`🎛️ High-Filtered Tasks`** | **Enterprise Task Window**: 10-column sortable table with multi-dimensional filtering and CSV export. |
-| 3 | **`/workflows`** | **`🔀 Workflows & Cron`** | **DAG Pipelines & Distributed Cron**: Multi-step sequential/parallel pipelines with rollback compensation + Redis Redlock distributed cron scheduler. |
-| 4 | **`/integrations`** | **`🔌 Connectors & Hub`** | **Enterprise Connectors**: Native bi-directional sync with ServiceNow (ITSM/CHG), Red Hat AAP (Tower/AWX), GitHub/Bitbucket GitOps, Jira Software, and HashiCorp Vault. |
-| 5 | **`/actions`** | **`⚡ Actions Catalog`** | **StackStorm Pack Tree**: Category/pack browser with schema-driven forms (enums, booleans, numeric sliders, ServiceNow CHG). |
-| 6 | **`/history`** | **`📜 Execution History`** | **Master-Detail Feed**: Reverse-chronological execution feed with status filters, terminal replay, approval deck, and AI diagnostics. |
-| 7 | **`/rules`** | **`⚡ Automation Rules`** | **Datadog / StackStorm Event Rules**: Trigger (Datadog Alert, Kafka, Prometheus) → Filter criteria → Action mapping with Jinja2 interpolation. |
-| 8 | **`/packs`** | **`📦 Content Packs`** | **Backstage / Port IDP Ecosystem**: Bundles for Network, Cloud, Database, Kubernetes, and OS Patching with dependency health validation. |
-| 9 | **`/audit`** | **`🛡️ Audit & Compliance`** | **Digital.ai & Banking SOX Governance**: Cryptographic Merkle chain proof ledger (Genesis to Tip SHA-256), Separation of Duties verification, and ServiceNow CHG reconciliation. |
-| 10 | **`/dashboard`** | **`📊 Telemetry Dashboard`** | **Operational Overview**: KPI cards (Active Runners, Catalog Size, Pending Approvals, Failures 24h, Merkle Chain), top failing playbooks, and recent activity. |
+| 3 | **`/policies`** | **`🔑 Roles & Policies`** | **Enterprise Governance & Simulator**: Interactive 5-role capability matrix, active OPA/Rego policy-as-code guardrails, and real-time execution policy simulator. |
+| 4 | **`/workflows`** | **`🔀 Workflows & Cron`** | **DAG Pipelines & Distributed Cron**: Multi-step sequential/parallel pipelines with rollback compensation + Redis Redlock distributed cron scheduler. |
+| 5 | **`/integrations`** | **`🔌 Connectors & Hub`** | **Enterprise Connectors**: Native bi-directional sync with ServiceNow (ITSM/CHG), Red Hat AAP (Tower/AWX), GitHub/Bitbucket GitOps, Jira Software, and HashiCorp Vault. |
+| 6 | **`/actions`** | **`⚡ Actions Catalog`** | **StackStorm Pack Tree**: Category/pack browser with schema-driven forms (enums, booleans, numeric sliders, ServiceNow CHG). |
+| 7 | **`/history`** | **`📜 Execution History`** | **Master-Detail Feed**: Reverse-chronological execution feed with status filters, terminal replay, approval deck, and AI diagnostics. |
+| 8 | **`/rules`** | **`⚡ Automation Rules`** | **Datadog / StackStorm Event Rules**: Trigger (Datadog Alert, Kafka, Prometheus) → Filter criteria → Action mapping with Jinja2 interpolation. |
+| 9 | **`/packs`** | **`📦 Content Packs`** | **Backstage / Port IDP Ecosystem**: Bundles for Network, Cloud, Database, Kubernetes, and OS Patching with dependency health validation. |
+| 10 | **`/audit`** | **`🛡️ Audit & Compliance`** | **Digital.ai & Banking SOX Governance**: Cryptographic Merkle chain proof ledger (Genesis to Tip SHA-256), Separation of Duties verification, and ServiceNow CHG reconciliation. |
+| 11 | **`/dashboard`** | **`📊 Telemetry Dashboard`** | **Operational Overview**: KPI cards (Active Runners, Catalog Size, Pending Approvals, Failures 24h, Merkle Chain), top failing playbooks, and recent activity. |
 
 ---
 
 ## Verification & Test Results
 
-- **Backend Unit Tests**: **53/53 passing** in 1.978s (`PYTHONPATH=backend backend/.venv/bin/python3 -m unittest discover backend/tests`).
-- **Frontend Production Build**: **14 static routes compiled cleanly** with zero TypeScript errors (`npm run build`).
+- **Backend Unit Tests**: **60/60 passing** in 1.834s (`PYTHONPATH=backend backend/.venv/bin/python3 -m unittest discover backend/tests`).
+- **Frontend Production Build**: **15 static routes compiled cleanly** with zero TypeScript errors (`npm run build`).
 - **All Routes Return HTTP 200 OK**: Verified live on port 3000.
 - **Git Repository**: Pushed to `origin/main` at `https://github.com/lavkushry/vulcan.git`.
 

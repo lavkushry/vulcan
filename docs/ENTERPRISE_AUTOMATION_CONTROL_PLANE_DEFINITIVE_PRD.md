@@ -1352,29 +1352,31 @@ vulcan-control-plane/
 
 ---
 
-### 2. The 10 Production Operational Views
+### 2. The 11 Production Operational Views
 
 | # | Route | View Name | Key Capabilities |
 |---|---|---|---|
 | 1 | **`/chat` & `/`** | **`✨ AI Chat Assistant`** | **The Primary Landing Experience**: Left pane features natural language intent resolution across 100+ playbooks with slot-filling and thought accordions; right pane features real-time task cards and live xterm.js terminal streaming. |
 | 2 | **`/matrix`** | **`🎛️ High-Filtered Tasks`** | **The Enterprise Task Window**: 10-column sortable table with multi-dimensional filtering (Engine, Category, Environment, Status, Risk, Search) and 1-click CSV export. |
-| 3 | **`/workflows`** | **`🔀 Workflows & Cron`** | **DAG Pipelines & Distributed Cron**: Multi-step sequential/parallel pipelines with failure rollback branches, plus periodic cron schedules protected by Redis Redlock distributed mutexes. |
-| 4 | **`/integrations`** | **`🔌 Connectors & Hub`** | **Enterprise Integrations**: Native bi-directional sync with ServiceNow (ITSM/CHG), Red Hat AAP (Tower/AWX), GitHub/Bitbucket GitOps, Jira Software, and HashiCorp Vault. |
-| 5 | **`/actions`** | **`⚡ Actions Catalog`** | **StackStorm Pack Tree**: Category/pack browser with schema-driven dynamic forms (enums, booleans, numeric sliders, ServiceNow CHG). |
-| 6 | **`/history`** | **`📜 Execution History`** | **Master-Detail Feed**: Reverse-chronological execution feed with status filters, terminal replay, approval deck, and AI diagnostics. |
-| 7 | **`/rules`** | **`⚡ Automation Rules`** | **Datadog / StackStorm Event Rules**: Trigger (Datadog Alert, Kafka, Prometheus) → Filter criteria → Action mapping with Jinja2 interpolation. |
-| 8 | **`/packs`** | **`📦 Content Packs`** | **Backstage / Port IDP Ecosystem**: Bundles for Network, Cloud, Database, Kubernetes, and OS Patching with dependency health validation. |
-| 9 | **`/audit`** | **`🛡️ Audit & Compliance`** | **Digital.ai & Banking SOX Governance**: Cryptographic Merkle chain proof ledger (Genesis to Tip SHA-256), Separation of Duties verification, and ServiceNow CHG reconciliation. |
-| 10 | **`/dashboard`** | **`📊 Telemetry Dashboard`** | **Operational Overview**: KPI cards (Active Runners, Catalog Size, Pending Approvals, Failures 24h, Merkle Chain), top failing playbooks, and recent activity. |
+| 3 | **`/policies`** | **`🔑 Roles & Policies`** | **Enterprise Governance & Simulator**: Interactive 5-role capability matrix, active OPA/Rego policy-as-code guardrails, and real-time execution policy simulator. |
+| 4 | **`/workflows`** | **`🔀 Workflows & Cron`** | **DAG Pipelines & Distributed Cron**: Multi-step sequential/parallel pipelines with failure rollback branches, plus periodic cron schedules protected by Redis Redlock distributed mutexes. |
+| 5 | **`/integrations`** | **`🔌 Connectors & Hub`** | **Enterprise Integrations**: Native bi-directional sync with ServiceNow (ITSM/CHG), Red Hat AAP (Tower/AWX), GitHub/Bitbucket GitOps, Jira Software, and HashiCorp Vault. |
+| 6 | **`/actions`** | **`⚡ Actions Catalog`** | **StackStorm Pack Tree**: Category/pack browser with schema-driven dynamic forms (enums, booleans, numeric sliders, ServiceNow CHG). |
+| 7 | **`/history`** | **`📜 Execution History`** | **Master-Detail Feed**: Reverse-chronological execution feed with status filters, terminal replay, approval deck, and AI diagnostics. |
+| 8 | **`/rules`** | **`⚡ Automation Rules`** | **Datadog / StackStorm Event Rules**: Trigger (Datadog Alert, Kafka, Prometheus) → Filter criteria → Action mapping with Jinja2 interpolation. |
+| 9 | **`/packs`** | **`📦 Content Packs`** | **Backstage / Port IDP Ecosystem**: Bundles for Network, Cloud, Database, Kubernetes, and OS Patching with dependency health validation. |
+| 10 | **`/audit`** | **`🛡️ Audit & Compliance`** | **Digital.ai & Banking SOX Governance**: Cryptographic Merkle chain proof ledger (Genesis to Tip SHA-256), Separation of Duties verification, and ServiceNow CHG reconciliation. |
+| 11 | **`/dashboard`** | **`📊 Telemetry Dashboard`** | **Operational Overview**: KPI cards (Active Runners, Catalog Size, Pending Approvals, Failures 24h, Merkle Chain), top failing playbooks, and recent activity. |
 
 ---
 
 ### 3. Verification & Test Execution Results
 
 1. **Backend PyTest / Unittest Suite:**
-   - **53/53 tests passing** with zero errors or warnings (`Ran 53 tests in 1.978s`).
+   - **60/60 tests passing** with zero errors or warnings (`Ran 60 tests in 1.834s`).
    - Test suites execute:
      - `test_domain_invariants.py`: Invariant validation, regex bounds, parameter extraction, Maker-Checker anti-self-approval.
+     - `test_policy_engine.py`: 5 enterprise roles, 6 Policy-as-Code guardrails, secret linting, and freeze window overrides.
      - `test_redlock_concurrency.py`: Distributed mutual exclusion, owner token validation, watchdog heartbeat extension, clock drift tolerance.
      - `test_s3_multipart.py`: 10GB payload slicing, presigned URL generation, parallel chunk upload simulation.
      - `test_ai_reasoning_evals.py`: Hybrid pgvector search, grammar-constrained decoding, adversarial prompt injection rejection.
@@ -1382,12 +1384,14 @@ vulcan-control-plane/
      - `test_operator_console_vertical_slice.py`: End-to-end intent resolution to job execution and terminal log streaming.
 2. **Frontend Production Build:**
    - Next.js 15 App Router compilation: `Exit Code 0`.
-   - **14 static pages generated cleanly** with zero TypeScript or ESLint errors.
-   - All 10 application routes return `HTTP 200 OK`.
+   - **15 static pages generated cleanly** with zero TypeScript or ESLint errors.
+   - All 11 application routes return `HTTP 200 OK`.
 3. **Git Version Control & Deployment:**
    - Remote Repository: `https://github.com/lavkushry/vulcan.git`.
    - Branch: `main`.
    - Verified Commits:
+     - `73866c5`: *feat(governance): implement Enterprise Roles & Policy-as-Code Engine with live Policy Simulator*
+     - `780d5f2`: *docs: add full user requirements and complete implementation specification across all 10 views*
      - `dae19f6`: *feat(workflows): implement Multi-Step DAG Pipelines and Distributed Cron Scheduler with Redlock mutex*
      - `fceb872`: *feat(integrations): add Enterprise Connectors Hub for ServiceNow, AAP, GitHub, Jira, and Vault*
      - `ca55453`: *fix(ux): add smooth transitions, fix lead approval routing, and promote chat console to primary screen*
