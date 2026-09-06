@@ -20,6 +20,7 @@ from typing import Any, Dict, List, Optional
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE_DIR / "backend"))
 
+from app.adapters.embedding_providers import get_embedding_provider
 from app.adapters.postgres_catalog_repository import compute_hash_embedding
 from app.adapters.registry_crawler import RegistryCrawlerAgent
 from app.domain.entities import CatalogItem, CurationStatus
@@ -96,9 +97,13 @@ async def main():
     parser.add_argument("--tf-count", type=int, default=30, help="Number of Terraform modules to crawl")
     parser.add_argument("--galaxy-count", type=int, default=30, help="Number of Ansible Galaxy roles to crawl")
     parser.add_argument("--target-size", type=int, default=1000, help="Target corpus size for benchmark")
+    parser.add_argument("--embedding-provider", type=str, default="semantic", help="Embedding provider: semantic, hash, openai, gemini")
     parser.add_argument("--seed-db", action="store_true", help="Seed results directly into PostgreSQL pgvector")
     parser.add_argument("--db-url", type=str, default=None, help="PostgreSQL connection string")
     args = parser.parse_args()
+
+    provider = get_embedding_provider(args.embedding_provider)
+    logger.info("Using embedding provider: %s (dimension=%d)", provider.provider_name, provider.dimension)
 
     CORPUS_DIR.mkdir(parents=True, exist_ok=True)
     logger.info("Initializing RegistryCrawlerAgent...")
@@ -122,7 +127,7 @@ async def main():
     serializable = []
     for item in full_corpus:
         text = f"{item.name} {item.description} {item.identifier} {' '.join(item.tags)}"
-        emb = compute_hash_embedding(text)
+        emb = provider.embed_text(text)
         serializable.append({
             "id": item.id,
             "identifier": item.identifier,
@@ -151,7 +156,7 @@ async def main():
     if args.seed_db:
         from app.adapters.postgres_catalog_repository import PostgresCatalogRepository
         logger.info("Seeding corpus into PostgreSQL pgvector...")
-        pg_repo = PostgresCatalogRepository(db_url=args.db_url)
+        pg_repo = PostgresCatalogRepository(db_url=args.db_url, embedding_provider=provider)
         inserted = 0
         for data in serializable:
             item = CatalogItem(

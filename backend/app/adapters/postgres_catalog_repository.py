@@ -28,7 +28,9 @@ from app.domain.entities import (
     RiskTier,
 )
 from app.domain.exceptions import ParameterValidationError, PolicyViolationError
+from app.ports.interfaces import IEmbeddingProvider
 from app.ports.repositories import ICatalogRepository
+from app.adapters.embedding_providers import get_embedding_provider
 
 logger = logging.getLogger("vulcan.postgres_catalog")
 
@@ -69,13 +71,14 @@ class PostgresCatalogRepository(ICatalogRepository):
     Enforces strict typing, connection pooling, and banking governance rules.
     """
 
-    def __init__(self, db_url: Optional[str] = None):
+    def __init__(self, db_url: Optional[str] = None, embedding_provider: Optional[IEmbeddingProvider] = None):
         self.db_url = (
             db_url
             or os.getenv("POSTGRES_URL")
             or os.getenv("DATABASE_URL")
             or "postgresql://vulcan_admin:vulcan_secret_pnc_2026@localhost:5432/vulcan_control_plane"
         )
+        self.embedding_provider = embedding_provider or get_embedding_provider()
         self._ensure_tables()
 
     def _get_connection(self):
@@ -198,7 +201,7 @@ class PostgresCatalogRepository(ICatalogRepository):
         """
         if embedding is None:
             text_corpus = f"{item.name} {item.description} {item.identifier} {' '.join(item.tags)}"
-            embedding = compute_hash_embedding(text_corpus)
+            embedding = self.embedding_provider.embed_text(text_corpus)
 
         vec_literal = format_pgvector_literal(embedding)
         input_schema_json = json.dumps(item.input_schema)
@@ -392,7 +395,7 @@ class PostgresCatalogRepository(ICatalogRepository):
             return []
 
         if query_embedding is None:
-            query_embedding = compute_hash_embedding(query)
+            query_embedding = self.embedding_provider.embed_text(query)
 
         vec_literal = format_pgvector_literal(query_embedding)
 
@@ -526,3 +529,32 @@ class PostgresCatalogRepository(ICatalogRepository):
                 results.append((item, match["rrf_score"], meta))
 
         return results
+
+    def reembed_all(self, batch_size: int = 100) -> int:
+        """
+        Re-computes embeddings for all catalog items using the configured embedding provider.
+        Enables seamless model upgrades (e.g. hash -> semantic_cluster -> openai/text-embedding-3-small).
+        """
+        sql_fetch = "SELECT id, identifier, name, description, tags FROM catalog_items ORDER BY id ASC;"
+        with self._get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql_fetch)
+                rows = cur.fetchall()
+
+            total = len(rows)
+            for i in range(0, total, batch_size):
+                chunk = rows[i : i + batch_size]
+                texts = [
+                    f"{r['name']} {r.get('description') or ''} {r['identifier']} {' '.join(r.get('tags') or [])}"
+                    for r in chunk
+                ]
+                embeddings = self.embedding_provider.embed_batch(texts)
+                with conn.cursor() as cur:
+                    for r, emb in zip(chunk, embeddings):
+                        cur.execute(
+                            "UPDATE catalog_items SET embedding = %(emb)s::vector, updated_at = NOW() WHERE id = %(id)s;",
+                            {"emb": format_pgvector_literal(emb), "id": r["id"]}
+                        )
+                conn.commit()
+            return total
+

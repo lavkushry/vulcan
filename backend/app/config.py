@@ -74,8 +74,10 @@ class AppContainer:
             self.execution_engine = SimulationExecutionEngine(delay_per_step=0.02)
             logger.info("Initialized SimulationExecutionEngine.")
 
-        # 2. AI Chat Model Provider
+        # 2. AI Chat Model & Embedding Providers
         self.chat_provider = DeterministicFakeChatProvider()
+        from app.adapters.embedding_providers import get_embedding_provider
+        self.embedding_provider = get_embedding_provider()
 
         # 3. Seed Catalog (in-memory materialization)
         self.catalog = self._build_catalog()
@@ -89,7 +91,8 @@ class AppContainer:
             try:
                 from app.adapters.postgres_catalog_repository import PostgresCatalogRepository
                 pg_repo = PostgresCatalogRepository(
-                    db_url=os.getenv("POSTGRES_URL") or os.getenv("DATABASE_URL")
+                    db_url=os.getenv("POSTGRES_URL") or os.getenv("DATABASE_URL"),
+                    embedding_provider=self.embedding_provider,
                 )
                 self.catalog_repo = pg_repo
                 logger.info("Initialized PostgreSQL pgvector Catalog Repository.")
@@ -116,7 +119,13 @@ class AppContainer:
         self.jobs = self._load_jobs_from_db()
 
         # 8. AI & Domain Use Cases
-        self.intent_resolver = IntentResolver(catalog=self.catalog, chat_model_provider=self.chat_provider)
+        active_catalog_repo = self.catalog_repo if catalog_backend in ("postgres", "pgvector") else None
+        self.intent_resolver = IntentResolver(
+            catalog=self.catalog,
+            chat_model_provider=self.chat_provider,
+            catalog_repo=active_catalog_repo,
+            embedding_provider=self.embedding_provider,
+        )
         self.diagnostic_engine = FailureDiagnosticEngine()
 
     def _detect_redis(self) -> list:

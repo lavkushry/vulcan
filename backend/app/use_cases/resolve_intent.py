@@ -13,7 +13,8 @@ import unicodedata
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.domain.entities import CatalogItem, ExecutionEngineType, RiskTier
-from app.ports.interfaces import IChatModelProvider
+from app.ports.interfaces import IChatModelProvider, IEmbeddingProvider
+from app.ports.repositories import ICatalogRepository
 from app.use_cases.tokenizer import token_calculator
 
 
@@ -106,9 +107,17 @@ class IntentResolver:
         r"ghp_[a-zA-Z0-9]{36}",
     ]
 
-    def __init__(self, catalog: List[CatalogItem], chat_model_provider: Optional[IChatModelProvider] = None):
+    def __init__(
+        self,
+        catalog: List[CatalogItem],
+        chat_model_provider: Optional[IChatModelProvider] = None,
+        catalog_repo: Optional[ICatalogRepository] = None,
+        embedding_provider: Optional[IEmbeddingProvider] = None,
+    ):
         self.catalog = catalog
         self.chat_model_provider = chat_model_provider
+        self.catalog_repo = catalog_repo
+        self.embedding_provider = embedding_provider
         # Precompute search indices for sub-millisecond retrieval across 10,000+ items
         self._item_tokens: Dict[str, set] = {}
         self._item_texts: Dict[str, str] = {}
@@ -148,14 +157,22 @@ class IntentResolver:
         intersection = query_tokens.intersection(target_tokens)
         return len(intersection) / len(query_tokens)
 
+    STOP_WORDS = {
+        "a", "an", "the", "in", "on", "at", "to", "for", "of", "with", "by", "from",
+        "and", "or", "as", "is", "are", "was", "were", "it", "this", "that", "into",
+        "about", "over", "after", "before", "between", "under", "above", "zero", "all",
+        "any", "some", "without", "query"
+    }
+
     def _sparse_bm25_tokens(self, query_tokens: set, item_id: str) -> float:
-        """Fast pre-indexed token set overlap."""
-        if not query_tokens:
+        """Fast pre-indexed token set overlap excluding common stop-words."""
+        content_tokens = {t for t in query_tokens if t not in self.STOP_WORDS and len(t) > 2}
+        if not content_tokens:
             return 0.0
         target = self._item_tokens.get(item_id)
         if not target:
             return 0.0
-        return len(query_tokens.intersection(target)) / len(query_tokens)
+        return len(content_tokens.intersection(target)) / len(content_tokens)
 
     def _dense_similarity_score(self, query: str, item: CatalogItem) -> float:
         """Semantic term alignment score across actions and infrastructure domains."""
@@ -189,6 +206,15 @@ class IntentResolver:
         Two-Stage Reciprocal Rank Fusion (RRF) search combining Dense and Sparse signals.
         Enforces calibrated refusal gate: if dense < 0.35 and sparse == 0.0, returns empty list.
         """
+        if self.catalog_repo and hasattr(self.catalog_repo, "search_hybrid"):
+            try:
+                repo_results = self.catalog_repo.search_hybrid(query, top_k=10)
+                if repo_results:
+                    return [(item, score) for item, score, _ in repo_results]
+                return []
+            except Exception:
+                pass
+
         query_lower = query.lower()
         query_tokens = set(re.findall(r"\w+", query_lower))
 

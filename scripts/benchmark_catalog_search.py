@@ -30,6 +30,7 @@ sys.path.insert(0, str(BASE_DIR / "backend"))
 if Path("/app").exists():
     sys.path.insert(0, "/app")
 
+from app.adapters.embedding_providers import get_embedding_provider
 from app.adapters.postgres_catalog_repository import (
     PostgresCatalogRepository,
     compute_hash_embedding,
@@ -185,7 +186,7 @@ def run_benchmark_on_repo(
     # 2. Benchmark Queries
     for it in range(iterations):
         for q in BENCHMARK_QUERIES:
-            qvec = compute_hash_embedding(q)
+            qvec = repo.embedding_provider.embed_text(q)
 
             # Measure Dense HNSW
             t0 = time.perf_counter()
@@ -204,7 +205,7 @@ def run_benchmark_on_repo(
 
     # 3. HNSW Recall@10 Evaluation (over 15 representative queries)
     for q in BENCHMARK_QUERIES[:15]:
-        qvec = compute_hash_embedding(q)
+        qvec = repo.embedding_provider.embed_text(q)
         recall = measure_hnsw_recall_at_10(repo, qvec, curation_status=curation_status)
         hnsw_recalls.append(recall)
 
@@ -270,7 +271,7 @@ def seed_synthetic_candidates(repo: PostgresCatalogRepository, target_total: int
                     desc = f"Enterprise candidate automation module for {act} of {cp} {svc} in {env} tier."
                     tags = [cp, svc, act, env, "candidate", "synthetic"]
                     text = f"{name} {desc} {ident} {' '.join(tags)}"
-                    emb = compute_hash_embedding(text)
+                    emb = repo.embedding_provider.embed_text(text)
                     emb_str = "[" + ",".join(str(v) for v in emb) + "]"
 
                     cur.execute("""
@@ -423,6 +424,8 @@ def main():
     parser.add_argument("--db-url", type=str, default=None, help="PostgreSQL connection URL")
     parser.add_argument("--iterations", type=int, default=3, help="Number of query iterations")
     parser.add_argument("--scale-all", action="store_true", help="Scale and benchmark across 110, 1k, 5k, 10k tiers")
+    parser.add_argument("--embedding-provider", type=str, default="semantic", help="Embedding provider: semantic, hash, openai, gemini")
+    parser.add_argument("--reembed", action="store_true", help="Re-embed all items in PostgreSQL with active provider")
     parser.add_argument("--output-doc", type=str, default="docs/BENCHMARK_CATALOG_SEARCH.md", help="Markdown output path")
     args = parser.parse_args()
 
@@ -433,8 +436,16 @@ def main():
         or "postgresql://vulcan_admin:vulcan_secret_pnc_2026@localhost:5432/vulcan_control_plane"
     )
 
+    provider = get_embedding_provider(args.embedding_provider)
+    logger.info("Using embedding provider: %s (dim=%d)", provider.provider_name, provider.dimension)
+
     logger.info("Initializing PostgresCatalogRepository at %s...", db_url.split("@")[-1] if "@" in db_url else db_url)
-    repo = PostgresCatalogRepository(db_url=db_url)
+    repo = PostgresCatalogRepository(db_url=db_url, embedding_provider=provider)
+
+    if args.reembed:
+        logger.info("Re-embedding all catalog items using %s...", provider.provider_name)
+        reembedded = repo.reembed_all()
+        logger.info("Re-embedded %d catalog items.", reembedded)
 
     current_count = repo.count()
     curated_count = repo.count(curation_status="CURATED")

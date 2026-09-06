@@ -178,3 +178,30 @@ class IChatModelProvider(abc.ABC):
         """Streams completion tokens over Server-Sent Events or WebSocket."""
         pass
 
+
+class IEmbeddingProvider(abc.ABC):
+    """Port for text and query vector embedding generation (pgvector 1,536-dim)."""
+
+    @abc.abstractmethod
+    def embed_text(self, text: str) -> List[float]:
+        """Embeds a single text into a normalized float vector."""
+        pass
+
+    @abc.abstractmethod
+    def embed_batch(self, texts: List[str]) -> List[List[float]]:
+        """Embeds a batch of texts into normalized float vectors."""
+        pass
+
+    @property
+    @abc.abstractmethod
+    def dimension(self) -> int:
+        """Returns the vector dimensionality (typically 1,536)."""
+        pass
+
+    @property
+    @abc.abstractmethod
+    def provider_name(self) -> str:
+        """Returns the unique name or model identifier of the provider."""
+        pass
+
+
