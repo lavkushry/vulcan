@@ -94,8 +94,8 @@ def synthesize_synthetic_candidates(base_items: List[CatalogItem], target_count:
 
 async def main():
     parser = argparse.ArgumentParser(description="Vulcan Registry Crawler & Corpus Generator")
-    parser.add_argument("--tf-count", type=int, default=30, help="Number of Terraform modules to crawl")
-    parser.add_argument("--galaxy-count", type=int, default=30, help="Number of Ansible Galaxy roles to crawl")
+    parser.add_argument("--tf-count", type=int, default=250, help="Number of Terraform modules to crawl")
+    parser.add_argument("--galaxy-count", type=int, default=250, help="Number of Ansible Galaxy roles to crawl")
     parser.add_argument("--target-size", type=int, default=1000, help="Target corpus size for benchmark")
     parser.add_argument("--embedding-provider", type=str, default="semantic", help="Embedding provider: semantic, hash, openai, gemini")
     parser.add_argument("--seed-db", action="store_true", help="Seed results directly into PostgreSQL pgvector")
@@ -111,7 +111,7 @@ async def main():
 
     logger.info("Crawling public registries (TF: %d, Galaxy: %d)...", args.tf_count, args.galaxy_count)
     crawled = await agent.crawl_registries(tf_count=args.tf_count, galaxy_count=args.galaxy_count)
-    logger.info("Successfully crawled %d public candidates from upstream registries.", len(crawled))
+    logger.info("Successfully obtained %d candidates (TF + Galaxy).", len(crawled))
 
     if not crawled:
         # Load local candidate store if offline
@@ -122,12 +122,19 @@ async def main():
     full_corpus = synthesize_synthetic_candidates(crawled, max(args.target_size, len(crawled)))
     logger.info("Synthesized target corpus of %d candidates.", len(full_corpus))
 
-    # Export corpus to JSON
+    # Export corpus to JSON with batch embedding
     corpus_file = CORPUS_DIR / f"candidates_{len(full_corpus)}.json"
     serializable = []
-    for item in full_corpus:
-        text = f"{item.name} {item.description} {item.identifier} {' '.join(item.tags)}"
-        emb = provider.embed_text(text)
+
+    texts = [f"{item.name} {item.description} {item.identifier} {' '.join(item.tags)}" for item in full_corpus]
+    logger.info("Generating embeddings for %d candidates using %s...", len(texts), provider.provider_name)
+    batch_size = 100
+    all_embeddings = []
+    for i in range(0, len(texts), batch_size):
+        chunk = texts[i:i + batch_size]
+        all_embeddings.extend(provider.embed_batch(chunk))
+
+    for item, emb in zip(full_corpus, all_embeddings):
         serializable.append({
             "id": item.id,
             "identifier": item.identifier,
