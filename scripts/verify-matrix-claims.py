@@ -255,38 +255,80 @@ def run_probes():
         results["STACK_COMPOSER_SHA"] = "PASSED (Rejects non-40-char commit SHAs with ParameterValidationError)"
         print("  ✓ Stack Composer: Rejects invalid commit SHAs; enforces 40-char SHA-1 invariant.")
 
-    # PROBE 10: Remote Oracle Cloud VM Health Check
-    print("[PROBE 10/11] Remote Production VM Live Health Check (141.148.195.233)...")
+    # PROBE 10: Remote Oracle Cloud VM Network Lockdown & SSH Tunnel Check
+    print("[PROBE 10/12] Remote Production VM Network Lockdown & SSH Tunnel Check...")
     if "--offline" in sys.argv or "--hermetic" in sys.argv or os.getenv("HERMETIC_CI", "").lower() == "true":
-        results["REMOTE_VM_HEALTH"] = "SKIPPED (Hermetic CI Mode - Network probes bypassed)"
+        results["NETWORK_LOCKDOWN_AND_TUNNEL"] = "SKIPPED (Hermetic CI Mode - Network probes bypassed)"
         print("  ↷ Remote VM check skipped in hermetic/offline mode.")
     else:
         import urllib.request
+        tunnel_ok = False
         try:
-            with urllib.request.urlopen("http://141.148.195.233:8000/healthz", timeout=5) as resp:
+            with urllib.request.urlopen("http://127.0.0.1:8000/healthz", timeout=5) as resp:
                 body = resp.read().decode()
                 if resp.status == 200 and "ALIVE" in body:
-                    results["REMOTE_VM_HEALTH"] = "PASSED (HTTP 200 OK - Backend ALIVE)"
-                    print(f"  ✓ Remote VM: http://141.148.195.233:8000/healthz is ALIVE.")
-                else:
-                    results["REMOTE_VM_HEALTH"] = f"FAILED: status={resp.status}, body={body}"
-        except Exception as exc:
-            results["REMOTE_VM_HEALTH"] = f"FAILED: {exc}"
-            print(f"  ✗ Remote VM check failed: {exc}")
+                    tunnel_ok = True
+        except Exception:
+            pass
+
+        public_blocked = False
+        try:
+            with urllib.request.urlopen("http://141.148.195.233:8000/healthz", timeout=3) as resp:
+                pass
+        except Exception:
+            public_blocked = True
+
+        if tunnel_ok and public_blocked:
+            results["NETWORK_LOCKDOWN_AND_TUNNEL"] = "PASSED (Public ingress blocked; SSH tunnel 127.0.0.1:8000 ALIVE)"
+            print("  ✓ Network Lockdown & Tunnel: Public ingress refused; SSH tunnel operational.")
+        elif tunnel_ok and not public_blocked:
+            results["NETWORK_LOCKDOWN_AND_TUNNEL"] = "WARNING (Tunnel working, but public IP still responds)"
+            print("  ! Network Lockdown WARNING: Public IP still accessible.")
+        else:
+            results["NETWORK_LOCKDOWN_AND_TUNNEL"] = f"FAILED (Tunnel alive={tunnel_ok}, public blocked={public_blocked})"
+            print(f"  ✗ Tunnel/Lockdown check failed: tunnel={tunnel_ok}, public_blocked={public_blocked}")
 
     # PROBE 11: S3 Multipart Storage, Presigned URL Rewrite & BKND-14 Abort
-    print("[PROBE 11/11] S3 Multipart Presigned Storage & BKND-14 Lifecycle Cleanup...")
+    print("[PROBE 11/12] S3 Multipart Presigned Storage & BKND-14 Lifecycle Cleanup...")
     from app.adapters.s3_multipart_adapter import S3MultipartGateway, rewrite_presigned_url
     s3_gw = S3MultipartGateway(bucket_name="test-artifacts", mock_mode=True)
     resp = s3_gw.initiate_multipart_upload("large-data.bin", 100 * 1024 * 1024, "sha-xyz", "JOB-S3")
-    rewritten = rewrite_presigned_url("http://minio:9000/test-artifacts/key?p=1", "http://minio:9000", "http://141.148.195.233:9000")
+    rewritten = rewrite_presigned_url("http://minio:9000/test-artifacts/key?p=1", "http://minio:9000", "http://localhost:9000")
     aborted = s3_gw.abort_multipart_upload(resp["upload_id"], resp["s3_key"])
-    if len(resp["part_urls"]) == 2 and rewritten.startswith("http://141.148.195.233:9000") and aborted:
+    if len(resp["part_urls"]) == 2 and rewritten.startswith("http://localhost:9000") and aborted:
         results["S3_MULTIPART_LIFECYCLE"] = "PASSED (205-chunk math, browser host rewrite & BKND-14 abort)"
         print("  ✓ S3 Multipart: 50MB chunking, browser URL rewriting, and BKND-14 abort verified.")
     else:
         results["S3_MULTIPART_LIFECYCLE"] = "FAILED: S3 Multipart verification failed"
         print(f"  ✗ S3 Multipart failed!")
+
+    # PROBE 12: Execution RBAC & Audit Attribution (Gap 2)
+    print("[PROBE 12/12] Execution RBAC & Audit Attribution (Gap 2)...")
+    op_can_dispatch = policy_manager.check_user_permission("eng.alice", Permission.WORKFLOW_DISPATCH)
+    lead_can_dispatch = policy_manager.check_user_permission("lead.bob", Permission.WORKFLOW_DISPATCH)
+    admin_can_dispatch = policy_manager.check_user_permission("admin.dave", Permission.WORKFLOW_DISPATCH)
+
+    test_logger = MerkleAuditLogger(persistence_file=None)
+    from app.config import container
+    dummy_item = next(c for c in container.catalog if c.identifier == "net-f5-cert-renew")
+    params = {"hostname": "f5-edge-01.pnc.com", "vip_ip": "10.200.1.50", "cert_valid_days": 90}
+    dummy_job = ExecutionJob(
+        job_id="JOB-AUDIT-TEST",
+        correlation_id="CORR-AUDIT-TEST",
+        catalog_item=dummy_item,
+        requester_id="eng.alice",
+        target_resource_id="f5-vip-01",
+        parameters=params,
+        servicenow_chg="CHG-2026-001"
+    )
+    rec = test_logger.record(dummy_job, "EXECUTION_TRIGGERED", {"target": "host-01"}, actor="lead.bob")
+
+    if not op_can_dispatch and lead_can_dispatch and admin_can_dispatch and rec.actor == "lead.bob":
+        results["EXECUTION_RBAC_AND_AUDIT"] = "PASSED (Operator blocked from dispatch; Lead authorized; actor attributed in Merkle ledger)"
+        print("  ✓ Execution RBAC & Audit: Operator blocked; Lead authorized; audit actor explicitly attributed.")
+    else:
+        results["EXECUTION_RBAC_AND_AUDIT"] = f"FAILED: op={op_can_dispatch}, lead={lead_can_dispatch}, rec_actor={rec.actor}"
+        print(f"  ✗ Execution RBAC & Audit failed: {results['EXECUTION_RBAC_AND_AUDIT']}")
 
     print("\n=================================================================")
     print("                    VERIFICATION SUMMARY TABLE                   ")

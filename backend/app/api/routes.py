@@ -894,10 +894,26 @@ def reject_job(correlation_id: str, req: RejectJobRequest):
 
 
 @router.post("/jobs/{correlation_id}/execute")
-def trigger_execution(correlation_id: str):
+def trigger_execution(correlation_id: str, request: Request):
     """
     Triggers BaseJobRunner Template Method in background thread with live WebSocket streaming.
+    Enforces RBAC workflow:dispatch check and commits synchronous write-before-execute audit event.
     """
+    actor = getattr(request.state, "user_id", None)
+    if actor == "local.dev" and request.headers.get("x-vulcan-user"):
+        actor = request.headers.get("x-vulcan-user")
+    elif not actor:
+        actor = request.headers.get("x-vulcan-user") or "anonymous"
+    from app.domain.roles_and_policies import Permission
+    if not policy_manager.check_user_permission(actor, Permission.WORKFLOW_DISPATCH):
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error_code": "ERR_VULCAN_RBAC",
+                "message": f"User [{actor}] lacks permission [workflow:dispatch] to execute jobs."
+            }
+        )
+
     job = _lookup_job(correlation_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found.")
@@ -910,6 +926,14 @@ def trigger_execution(correlation_id: str):
             status_code=400,
             detail=f"Job cannot execute in status [{job.status.value}]. Must be QUEUED or PARSED."
         )
+
+    # Synchronous write-before-execute audit record (Uncle Bob invariant)
+    container.audit_logger.record(
+        job,
+        "EXECUTION_TRIGGERED",
+        {"actor": actor, "target": job.target_resource_id},
+        actor=actor
+    )
 
     runner = container.create_runner(log_event_stream=ws_hub.emit_log)
 

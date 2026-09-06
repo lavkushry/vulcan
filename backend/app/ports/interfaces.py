@@ -52,7 +52,7 @@ class ISecretProvider(abc.ABC):
 class IAuditLogger(abc.ABC):
     """Port for cryptographic immutable audit recording (Merkle hash chain)."""
     @abc.abstractmethod
-    def record(self, job: ExecutionJob, action: str, payload: Dict[str, Any]) -> AuditRecord:
+    def record(self, job: ExecutionJob, action: str, payload: Dict[str, Any], actor: Optional[str] = None) -> AuditRecord:
         """Commit an audit record synchronously before or after execution."""
         pass
 

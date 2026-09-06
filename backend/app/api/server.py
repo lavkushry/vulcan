@@ -4,6 +4,7 @@ Author: Alex Xu & Uncle Bob
 Configures lifespan, CORS middleware, WebSocket loop binding, and route registry.
 """
 import asyncio
+import os
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -12,6 +13,7 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse
 
+from app.api.auth import APIKeyMiddleware, load_token_map
 from app.api.routes import router, container
 from app.api.curation_routes import curation_router
 from app.api.websockets import ws_hub
@@ -36,6 +38,11 @@ def create_app() -> FastAPI:
         version="1.0.0",
         lifespan=lifespan
     )
+
+    # API Token Authentication Middleware (Step-1 Hardening)
+    token_map = load_token_map()
+    auth_disabled = os.getenv("VULCAN_AUTH_DISABLED", "0").lower() in ("1", "true", "yes")
+    app.add_middleware(APIKeyMiddleware, token_map=token_map, allow_disabled=auth_disabled)
 
     # Allow cross-origin requests from Jordan Walke's Next.js 15 Obsidian Glass frontend
     app.add_middleware(

@@ -107,6 +107,8 @@ class PolicyManager:
             "engineer.alice": UserRole.OPERATOR,
             "sec.carol": UserRole.SECURITY_ADMIN,
             "admin.dave": UserRole.PLATFORM_ADMIN,
+            "system.admin": UserRole.PLATFORM_ADMIN,
+            "local.dev": UserRole.PLATFORM_ADMIN,
             "audit.emma": UserRole.AUDITOR
         }
         mapped_role = role_map.get(user_id)

@@ -73,13 +73,14 @@ class MerkleAuditLogger(IAuditLogger):
         except Exception:
             return len(self.ledger), self._last_hash
 
-    def record(self, job: ExecutionJob, action: str, payload: Dict[str, Any]) -> AuditRecord:
+    def record(self, job: ExecutionJob, action: str, payload: Dict[str, Any], actor: Optional[str] = None) -> AuditRecord:
         """
         Transactional, cross-process safe Merkle audit record commit.
         Acquires exclusive file lock to prevent chain forking when multiple workers execute concurrently.
         """
         import fcntl
         now_str = datetime.now(timezone.utc).isoformat()
+        actor_id = actor or job.requester_id
 
         with self._lock:
             # If disk persistence is enabled, use exclusive advisory lock across worker processes
@@ -97,7 +98,7 @@ class MerkleAuditLogger(IAuditLogger):
                         current_hash = AuditRecord.compute_hash(
                             job.correlation_id,
                             now_str,
-                            job.requester_id,
+                            actor_id,
                             action,
                             payload,
                             true_last_hash
@@ -107,7 +108,7 @@ class MerkleAuditLogger(IAuditLogger):
                             id=rec_id,
                             correlation_id=job.correlation_id,
                             timestamp=now_str,
-                            actor=job.requester_id,
+                            actor=actor_id,
                             action=action,
                             payload=payload,
                             prev_hash=true_last_hash,
@@ -139,7 +140,7 @@ class MerkleAuditLogger(IAuditLogger):
                 current_hash = AuditRecord.compute_hash(
                     job.correlation_id,
                     now_str,
-                    job.requester_id,
+                    actor_id,
                     action,
                     payload,
                     self._last_hash
@@ -148,7 +149,7 @@ class MerkleAuditLogger(IAuditLogger):
                     id=rec_id,
                     correlation_id=job.correlation_id,
                     timestamp=now_str,
-                    actor=job.requester_id,
+                    actor=actor_id,
                     action=action,
                     payload=payload,
                     prev_hash=self._last_hash,
