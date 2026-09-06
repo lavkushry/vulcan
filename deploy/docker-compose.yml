@@ -5,6 +5,7 @@ services:
   postgres:
     image: pgvector/pgvector:pg16
     container_name: vulcan-postgres
+    restart: unless-stopped
     environment:
       POSTGRES_DB: vulcan_control_plane
       POSTGRES_USER: vulcan_admin
@@ -23,6 +24,7 @@ services:
   redis:
     image: redis:7.2-alpine
     container_name: vulcan-redis
+    restart: unless-stopped
     ports:
       - "6379:6379"
     command: ["redis-server", "--appendonly", "yes"]
@@ -38,6 +40,7 @@ services:
   minio:
     image: minio/minio:latest
     container_name: vulcan-minio
+    restart: unless-stopped
     environment:
       MINIO_ROOT_USER: vulcan_minio_admin
       MINIO_ROOT_PASSWORD: vulcan_minio_secret_2026
@@ -68,6 +71,7 @@ services:
       context: ../backend
       dockerfile: Dockerfile
     container_name: vulcan-backend
+    restart: unless-stopped
     environment:
       DATABASE_URL: postgresql://vulcan_admin:vulcan_secure_password_2026@postgres:5432/vulcan_control_plane
       REDIS_URL: redis://redis:6379/0
@@ -94,6 +98,7 @@ services:
       context: ../frontend
       dockerfile: Dockerfile
     container_name: vulcan-frontend
+    restart: unless-stopped
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:8000
       NEXT_PUBLIC_WS_URL: ws://localhost:8000
