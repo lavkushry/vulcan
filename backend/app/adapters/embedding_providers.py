@@ -169,28 +169,27 @@ class SemanticClusterEmbeddingProvider(IEmbeddingProvider):
 
         vec = [0.0] * self._dim
 
-        # 1. Project tokens into their semantic cluster subspaces
         for token in tokens:
-            # Check cluster membership
             for cluster_id, config in self.CLUSTER_DEFINITIONS.items():
                 if token in config["terms"]:
                     base_offset = cluster_id * self._cluster_size
                     weight = config["weight"]
-                    # 1a. Activate shared concept centroid basis (first 32 dimensions)
-                    for i in range(32):
-                        vec[base_offset + i] += weight
-                    # 1b. Distribute token-specific activation within remaining 96 dimensions
+                    # 1a. Activate shared concept centroid basis (8 dimensions per cluster)
+                    for i in range(8):
+                        vec[base_offset + i] += weight * 1.0
+                    # 1b. Distribute token-specific activation within remaining 120 dimensions
                     h = int(hashlib.sha256(token.encode("utf-8")).hexdigest(), 16)
-                    for i in range(4):
-                        sub_idx = 32 + ((h >> (i * 8)) % 96)
-                        sign = 1.0 if ((h >> (24 + i)) & 1) else -1.0
+                    for i in range(8):
+                        sub_idx = 8 + ((h >> (i * 4)) % 120)
+                        sign = 1.0 if ((h >> (16 + i)) & 1) else -1.0
                         vec[base_offset + sub_idx] += sign * (weight * 0.5)
 
-            # 2. General lexical projection into remaining 640 dimensions
+            # 2. Balanced lexical projection into remaining 640 dimensions
             h_lex = int(hashlib.sha256(f"lex_{token}".encode("utf-8")).hexdigest(), 16)
-            lex_idx = self._lexical_offset + (h_lex % self._lexical_dim)
-            lex_sign = 1.0 if ((h_lex >> 16) & 1) else -1.0
-            vec[lex_idx] += lex_sign * 0.5
+            for i in range(16):
+                lex_idx = self._lexical_offset + ((h_lex >> (i * 4)) % self._lexical_dim)
+                lex_sign = 1.0 if ((h_lex >> (20 + i)) & 1) else -1.0
+                vec[lex_idx] += lex_sign * 1.0
 
         return _l2_normalize(vec)
 
