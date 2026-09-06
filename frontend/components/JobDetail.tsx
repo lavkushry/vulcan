@@ -6,10 +6,12 @@ import { Terminal } from "./Terminal";
 import { STATUS_STYLE } from "@/lib/types";
 import type { Job } from "@/lib/types";
 import { timeAgo } from "@/lib/util";
+import { useVulcan } from "@/lib/context";
 
 export function JobDetail({ job, currentUser, onChanged }: {
   job: Job | null; currentUser: string; onChanged: () => void;
 }) {
+  const { setCurrentUser } = useVulcan();
   const [error, setError] = useState<string | null>(null);
   const stream = useJobStream(job ? (job.correlation_id ?? job.id) : null);
 
@@ -77,13 +79,7 @@ export function JobDetail({ job, currentUser, onChanged }: {
                   <span className="text-slate-500 font-mono">Routed to: <strong className="text-amber-300">Approving Lead (Bob)</strong></span>
                   <button
                     type="button"
-                    onClick={() => {
-                      const sel = document.querySelector('select');
-                      if (sel) {
-                        sel.value = 'lead.bob';
-                        sel.dispatchEvent(new Event('change', { bubbles: true }));
-                      }
-                    }}
+                    onClick={() => setCurrentUser('lead.bob')}
                     className="px-2.5 py-1 rounded bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 font-mono text-[11px] transition-colors"
                   >
                     Switch to Bob (Approving Lead) →
@@ -92,8 +88,15 @@ export function JobDetail({ job, currentUser, onChanged }: {
               </div>
             ) : (
               <div className="mt-3 space-y-3">
-                <div className="p-2.5 rounded bg-cyan-950/30 border border-cyan-500/30 text-xs text-cyan-200 font-mono">
-                  ✍️ Signed in as <strong className="text-emerald-400">{currentUser} (Approving Lead)</strong>. You have authority to review and approve this change.
+                <div className="p-2.5 rounded bg-cyan-950/30 border border-cyan-500/30 text-xs text-cyan-200 font-mono flex items-center justify-between">
+                  <span>✍️ Signed in as <strong className="text-emerald-400">{currentUser} (Approving Lead)</strong>.</span>
+                  <button
+                    type="button"
+                    onClick={() => setCurrentUser('eng.alice')}
+                    className="text-[10px] text-slate-400 hover:text-cyan-300 underline font-mono"
+                  >
+                    Switch back to Alice ←
+                  </button>
                 </div>
                 <div className="flex gap-2">
                   <button onClick={() => decide("approveJob")}
