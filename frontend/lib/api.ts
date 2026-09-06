@@ -1,6 +1,5 @@
 import type { IntentResult, Job } from "./types";
-
-const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+import { getApiBaseUrl } from "./env";
 
 export class ApiError extends Error {
   status: number;
@@ -8,7 +7,8 @@ export class ApiError extends Error {
 }
 
 async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
+  const base = getApiBaseUrl();
+  const res = await fetch(`${base}${path}`, {
     method,
     headers: body ? { "Content-Type": "application/json" } : undefined,
     body: body ? JSON.stringify(body) : undefined,

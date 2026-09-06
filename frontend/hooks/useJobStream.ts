@@ -1,8 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import type { WsEvent } from "@/lib/types";
-
-const WS_BASE = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000").replace(/^http/, "ws");
+import { getWsBaseUrl } from "@/lib/env";
 
 export function useJobStream(jobId: string | null) {
   const [events, setEvents] = useState<WsEvent[]>([]);
@@ -39,7 +38,7 @@ export function useJobStream(jobId: string | null) {
 
     const connect = () => {
       // last_seq => server replays buffered events first, then streams live
-      ws = new WebSocket(`${WS_BASE}/api/v1/ws/jobs/${jobId}?last_seq=${lastSeq}`);
+      ws = new WebSocket(`${getWsBaseUrl()}/api/v1/ws/jobs/${jobId}?last_seq=${lastSeq}`);
       ws.onopen = () => {
         setLive(true);
         retryCount = 0;
