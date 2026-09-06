@@ -20,9 +20,9 @@ COPY . .
 # Set strict permissions on Ansible private keys
 RUN if [ -f /app/ansible/keys/id_ed25519 ]; then chmod 600 /app/ansible/keys/id_ed25519; fi
 
-# Install Ansible roles and collections from requirements.yml
+# Install Ansible collections from requirements.yml (roles are vendored locally)
 RUN if [ -f /app/ansible/requirements.yml ]; then \
-    ansible-galaxy install -r /app/ansible/requirements.yml -p /app/ansible/roles --ignore-errors || true; \
+    ansible-galaxy collection install -r /app/ansible/requirements.yml --ignore-errors || true; \
     fi
 
 RUN mkdir -p /app/data /tmp/vulcan-ansible

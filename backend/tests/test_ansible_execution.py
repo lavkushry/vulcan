@@ -18,6 +18,8 @@ class TestAnsibleCatalogRegistration:
         item_map = {item.identifier: item for item in items}
 
         real_identifiers = [
+            "claw-openclaw-deploy",
+            "infra-docker-setup",
             "os-sandbox-ping",
             "db-postgres-provision",
             "ci-jenkins-deploy",
@@ -33,6 +35,7 @@ class TestAnsibleCatalogRegistration:
             assert ident in item_map, f"Missing real playbook: {ident}"
             item = item_map[ident]
             assert item.engine == ExecutionEngineType.ANSIBLE
+            assert item.git_repo.startswith("local://content-packs/")
             assert item.playbook_or_module_path.startswith("ansible/playbooks/")
             assert "type" in item.input_schema
             assert item.input_schema["type"] == "object"
@@ -86,6 +89,16 @@ class TestAnsibleIntentResolution:
         assert res["matched"] is True
         assert res["identifier"] == "sec-system-hardening"
 
+    def test_openclaw_intent(self):
+        res = find_matching_playbook("deploy openclaw hardened bot agent with tailscale")
+        assert res["matched"] is True
+        assert res["identifier"] == "claw-openclaw-deploy"
+
+    def test_docker_intent(self):
+        res = find_matching_playbook("install docker runtime engine and compose daemon")
+        assert res["matched"] is True
+        assert res["identifier"] == "infra-docker-setup"
+
 
 class TestAnsibleRunnerExecutionEngine:
     """Tests verifying AnsibleRunnerExecutionEngine path resolution and execution flow."""
@@ -100,6 +113,20 @@ class TestAnsibleRunnerExecutionEngine:
         resolved = engine._resolve_playbook_path("ansible/playbooks/ping_check.yml")
         assert resolved is not None
         assert resolved.endswith("ping_check.yml")
+        assert os.path.isfile(resolved)
+
+    def test_openclaw_playbook_path_resolution(self):
+        engine = AnsibleRunnerExecutionEngine()
+        resolved = engine._resolve_playbook_path("ansible/playbooks/openclaw_deploy.yml")
+        assert resolved is not None
+        assert resolved.endswith("openclaw_deploy.yml")
+        assert os.path.isfile(resolved)
+
+    def test_docker_playbook_path_resolution(self):
+        engine = AnsibleRunnerExecutionEngine()
+        resolved = engine._resolve_playbook_path("ansible/playbooks/docker_setup.yml")
+        assert resolved is not None
+        assert resolved.endswith("docker_setup.yml")
         assert os.path.isfile(resolved)
 
     def test_inventory_path_resolution(self):

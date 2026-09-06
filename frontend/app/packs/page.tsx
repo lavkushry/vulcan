@@ -28,6 +28,37 @@ interface PackItem {
 
 const PACKS_CATALOG: PackItem[] = [
   {
+    id: 'pack-openclaw-infra',
+    name: 'openclaw-infrastructure-bundle',
+    version: '2.0.0',
+    category: 'infrastructure',
+    author: 'OpenClaw & Vulcan Architecture Community',
+    repository: 'local://content-packs/openclaw-infrastructure-bundle',
+    description: 'Hermetic, offline-ready Ansible Content Pack combining OpenClaw Agent, PostgreSQL 16, Jenkins CI/CD, GitLab CE, Docker Engine, and Linux System Hardening.',
+    installed: true,
+    actions_count: 10,
+    rules_count: 4,
+    engine_support: ['ansible'],
+    status: 'HEALTHY',
+    dependencies: [
+      { name: 'ansible.posix', version: '>=1.5.0', satisfied: true },
+      { name: 'community.general', version: '>=8.0.0', satisfied: true },
+      { name: 'community.crypto', version: '>=2.15.0', satisfied: true }
+    ],
+    actions: [
+      { identifier: 'claw-openclaw-deploy', name: 'OpenClaw Hardened Bot & Agent Deployment', engine: 'ansible', risk: 'MEDIUM' },
+      { identifier: 'infra-docker-setup', name: 'Docker CE Runtime & Container Daemon Provisioning', engine: 'ansible', risk: 'MEDIUM' },
+      { identifier: 'db-postgres-provision', name: 'PostgreSQL Cluster Deployment & Database Provisioning', engine: 'ansible', risk: 'HIGH' },
+      { identifier: 'ci-jenkins-deploy', name: 'Jenkins CI/CD Automation Server Deployment', engine: 'ansible', risk: 'MEDIUM' },
+      { identifier: 'git-gitlab-stage', name: 'GitLab Enterprise CE/EE Infrastructure Setup', engine: 'ansible', risk: 'HIGH' },
+      { identifier: 'k8s-node-provision', name: 'Kubernetes Node Provisioning & Container Runtime Setup', engine: 'ansible', risk: 'HIGH' },
+      { identifier: 'web-nginx-deploy', name: 'High-Performance Nginx Web Server & Reverse Proxy', engine: 'ansible', risk: 'LOW' },
+      { identifier: 'cache-redis-deploy', name: 'Redis In-Memory Cache & Key-Value Store Deployment', engine: 'ansible', risk: 'MEDIUM' },
+      { identifier: 'sec-system-hardening', name: 'Linux Server Security Hardening & SSH Audit Policy', engine: 'ansible', risk: 'MEDIUM' },
+      { identifier: 'os-sandbox-ping', name: 'Sandbox Ping & Facts Gathering Probe', engine: 'ansible', risk: 'LOW' }
+    ]
+  },
+  {
     id: 'pack-network',
     name: 'network-enterprise',
     version: '1.4.2',
@@ -148,7 +179,8 @@ const CATEGORY_ICONS: Record<string, React.ReactNode> = {
   database: <Database size={16} />,
   kubernetes: <Boxes size={16} />,
   os_patching: <Monitor size={16} />,
-  security: <Shield size={16} />
+  security: <Shield size={16} />,
+  infrastructure: <Layers size={16} />
 };
 
 function PacksContent() {

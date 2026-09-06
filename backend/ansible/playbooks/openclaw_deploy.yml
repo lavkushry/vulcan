@@ -1,0 +1,22 @@
+---
+- name: Deploy OpenClaw Hardened Bot Agent & Tailscale Stack
+  hosts: "{{ target_host | default('sandbox') }}"
+  gather_facts: true
+  vars:
+    openclaw_port: "{{ port | default(3000) | int }}"
+    openclaw_user: "{{ username | default('openclaw') }}"
+    openclaw_install_mode: "{{ install_mode | default('release') }}"
+    tailscale_enabled: "{{ enable_tailscale | default(false) | bool }}"
+    ci_test: true
+  roles:
+    - role: openclaw
+  post_tasks:
+    - name: Verify OpenClaw Configuration
+      ansible.builtin.debug:
+        msg:
+          - "OpenClaw agent deployed successfully!"
+          - "Port: {{ openclaw_port }}"
+          - "System User: {{ openclaw_user }}"
+          - "Install Mode: {{ openclaw_install_mode }}"
+          - "Tailscale VPN Active: {{ tailscale_enabled }}"
+          - "Target Host: {{ inventory_hostname }}"

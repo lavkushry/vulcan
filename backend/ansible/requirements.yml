@@ -1,21 +1,6 @@
 ---
-roles:
-  - name: geerlingguy.postgresql
-    src: https://github.com/geerlingguy/ansible-role-postgresql
-    version: master
-
-  - name: geerlingguy.jenkins
-    src: https://github.com/geerlingguy/ansible-role-jenkins
-    version: master
-
-  - name: geerlingguy.gitlab
-    src: https://github.com/geerlingguy/ansible-role-gitlab
-    version: master
-
-  - name: geerlingguy.docker
-    src: https://github.com/geerlingguy/ansible-role-docker
-    version: master
-
+# Content Pack: openclaw-infrastructure-bundle
+# Note: Roles are vendored locally in backend/ansible/roles/ (no external git dependencies)
 collections:
   - name: ansible.posix
   - name: community.general

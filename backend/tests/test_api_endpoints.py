@@ -104,7 +104,11 @@ class TestAPIEndpoints(unittest.TestCase):
         self.assertEqual(exec_res.status_code, 200)
 
         # Allow background thread worker to complete
-        time.sleep(0.5)
+        for _ in range(30):
+            time.sleep(0.1)
+            get_res = self.client.get(f"/api/v1/jobs/{corr_id}")
+            if get_res.status_code == 200 and get_res.json().get("status") == "SUCCESS":
+                break
 
         # 5. Verify Job Finished Successfully
         get_res = self.client.get(f"/api/v1/jobs/{corr_id}")

@@ -25,14 +25,61 @@ K8S_SHA = "f67890123456789abcdef0123456789012345678"
 
 RAW_CATALOG_DEFINITIONS: List[Dict[str, Any]] = [
     # =========================================================================
-    # 0. REAL ANSIBLE GITHUB PLAYBOOKS & ROLES (SANDBOX TARGET)
+    # 0. REAL ANSIBLE LOCAL CONTENT PACK (OPENCLAW INFRASTRUCTURE BUNDLE)
     # =========================================================================
+    {
+        "id": "cat-real-010",
+        "identifier": "claw-openclaw-deploy",
+        "name": "OpenClaw Hardened Bot & Agent Deployment",
+        "engine": ExecutionEngineType.ANSIBLE,
+        "git_repo": "local://content-packs/openclaw-infrastructure-bundle",
+        "git_commit_sha": DEFAULT_SHA,
+        "playbook_or_module_path": "ansible/playbooks/openclaw_deploy.yml",
+        "risk_tier": RiskTier.MEDIUM,
+        "requires_maker_checker": False,
+        "requires_chg": False,
+        "category": "cloud",
+        "description": "Automated deployment of OpenClaw hardened bot agent with optional Tailscale VPN, UFW firewall rules, and process supervision (openclaw-ansible).",
+        "tags": ["openclaw", "clawdbot", "bot", "agent", "tailscale", "ai", "automation"],
+        "input_schema": {
+            "type": "object",
+            "required": ["port", "username"],
+            "properties": {
+                "port": {"type": "integer", "default": 3000, "minimum": 1024, "maximum": 65535, "description": "OpenClaw listening port"},
+                "username": {"type": "string", "default": "openclaw", "description": "System service user account"},
+                "install_mode": {"type": "string", "default": "release", "enum": ["release", "development"], "description": "Installation mode"},
+                "enable_tailscale": {"type": "boolean", "default": False, "description": "Enable Tailscale VPN mesh network"}
+            }
+        }
+    },
+    {
+        "id": "cat-real-011",
+        "identifier": "infra-docker-setup",
+        "name": "Docker CE Runtime & Container Daemon Provisioning",
+        "engine": ExecutionEngineType.ANSIBLE,
+        "git_repo": "local://content-packs/openclaw-infrastructure-bundle",
+        "git_commit_sha": DEFAULT_SHA,
+        "playbook_or_module_path": "ansible/playbooks/docker_setup.yml",
+        "risk_tier": RiskTier.MEDIUM,
+        "requires_maker_checker": False,
+        "requires_chg": False,
+        "category": "cloud",
+        "description": "Installs and provisions Docker CE engine, containerd daemon, and Docker Compose plugin (geerlingguy.docker).",
+        "tags": ["docker", "container", "runtime", "compose", "geerlingguy"],
+        "input_schema": {
+            "type": "object",
+            "required": ["target_user"],
+            "properties": {
+                "target_user": {"type": "string", "default": "vulcan", "description": "User to add to the docker group"}
+            }
+        }
+    },
     {
         "id": "cat-real-001",
         "identifier": "os-sandbox-ping",
         "name": "Sandbox Ping & Facts Gathering Probe",
         "engine": ExecutionEngineType.ANSIBLE,
-        "git_repo": "https://github.com/adithyakhamithkar/ansible-playbooks.git",
+        "git_repo": "local://content-packs/openclaw-infrastructure-bundle",
         "git_commit_sha": OS_SHA,
         "playbook_or_module_path": "ansible/playbooks/ping_check.yml",
         "risk_tier": RiskTier.LOW,
@@ -54,7 +101,7 @@ RAW_CATALOG_DEFINITIONS: List[Dict[str, Any]] = [
         "identifier": "db-postgres-provision",
         "name": "PostgreSQL Cluster Deployment & Database Provisioning",
         "engine": ExecutionEngineType.ANSIBLE,
-        "git_repo": "https://github.com/geerlingguy/ansible-role-postgresql.git",
+        "git_repo": "local://content-packs/openclaw-infrastructure-bundle",
         "git_commit_sha": DB_SHA,
         "playbook_or_module_path": "ansible/playbooks/postgres_setup.yml",
         "risk_tier": RiskTier.HIGH,
@@ -80,7 +127,7 @@ RAW_CATALOG_DEFINITIONS: List[Dict[str, Any]] = [
         "identifier": "ci-jenkins-deploy",
         "name": "Jenkins CI/CD Automation Server Deployment",
         "engine": ExecutionEngineType.ANSIBLE,
-        "git_repo": "https://github.com/geerlingguy/ansible-role-jenkins.git",
+        "git_repo": "local://content-packs/openclaw-infrastructure-bundle",
         "git_commit_sha": CLOUD_SHA,
         "playbook_or_module_path": "ansible/playbooks/jenkins_setup.yml",
         "risk_tier": RiskTier.MEDIUM,
@@ -103,7 +150,7 @@ RAW_CATALOG_DEFINITIONS: List[Dict[str, Any]] = [
         "identifier": "git-gitlab-stage",
         "name": "GitLab Enterprise CE/EE Infrastructure Setup",
         "engine": ExecutionEngineType.ANSIBLE,
-        "git_repo": "https://github.com/geerlingguy/ansible-role-gitlab.git",
+        "git_repo": "local://content-packs/openclaw-infrastructure-bundle",
         "git_commit_sha": CLOUD_SHA,
         "playbook_or_module_path": "ansible/playbooks/gitlab_setup.yml",
         "risk_tier": RiskTier.HIGH,
@@ -126,7 +173,7 @@ RAW_CATALOG_DEFINITIONS: List[Dict[str, Any]] = [
         "identifier": "k8s-node-provision",
         "name": "Kubernetes Node Provisioning & Container Runtime Setup",
         "engine": ExecutionEngineType.ANSIBLE,
-        "git_repo": "https://github.com/geerlingguy/ansible-for-kubernetes.git",
+        "git_repo": "local://content-packs/openclaw-infrastructure-bundle",
         "git_commit_sha": K8S_SHA,
         "playbook_or_module_path": "ansible/playbooks/k8s_node_setup.yml",
         "risk_tier": RiskTier.HIGH,
@@ -149,7 +196,7 @@ RAW_CATALOG_DEFINITIONS: List[Dict[str, Any]] = [
         "identifier": "web-nginx-deploy",
         "name": "High-Performance Nginx Web Server & Reverse Proxy",
         "engine": ExecutionEngineType.ANSIBLE,
-        "git_repo": "https://github.com/lework/Ansible-roles.git",
+        "git_repo": "local://content-packs/openclaw-infrastructure-bundle",
         "git_commit_sha": OS_SHA,
         "playbook_or_module_path": "ansible/playbooks/nginx_deploy.yml",
         "risk_tier": RiskTier.LOW,
@@ -173,7 +220,7 @@ RAW_CATALOG_DEFINITIONS: List[Dict[str, Any]] = [
         "identifier": "cache-redis-deploy",
         "name": "Redis In-Memory Cache & Key-Value Store Deployment",
         "engine": ExecutionEngineType.ANSIBLE,
-        "git_repo": "https://github.com/lework/Ansible-roles.git",
+        "git_repo": "local://content-packs/openclaw-infrastructure-bundle",
         "git_commit_sha": DB_SHA,
         "playbook_or_module_path": "ansible/playbooks/redis_deploy.yml",
         "risk_tier": RiskTier.MEDIUM,
@@ -197,7 +244,7 @@ RAW_CATALOG_DEFINITIONS: List[Dict[str, Any]] = [
         "identifier": "sec-system-hardening",
         "name": "Linux Server Security Hardening & SSH Audit Policy",
         "engine": ExecutionEngineType.ANSIBLE,
-        "git_repo": "https://github.com/adithyakhamithkar/ansible-playbooks.git",
+        "git_repo": "local://content-packs/openclaw-infrastructure-bundle",
         "git_commit_sha": SEC_SHA,
         "playbook_or_module_path": "ansible/playbooks/system_hardening.yml",
         "risk_tier": RiskTier.MEDIUM,
@@ -221,7 +268,7 @@ RAW_CATALOG_DEFINITIONS: List[Dict[str, Any]] = [
         "identifier": "sec-create-operator",
         "name": "Enterprise Unix Operator User & Sudo Provisioning",
         "engine": ExecutionEngineType.ANSIBLE,
-        "git_repo": "https://github.com/adithyakhamithkar/ansible-playbooks.git",
+        "git_repo": "local://content-packs/openclaw-infrastructure-bundle",
         "git_commit_sha": SEC_SHA,
         "playbook_or_module_path": "ansible/playbooks/create_user.yml",
         "risk_tier": RiskTier.MEDIUM,
@@ -1393,7 +1440,9 @@ def find_matching_playbook(user_query: str, ambient_params: Optional[Dict[str, A
         "gitlab": ["gitlab", "repo", "git", "omnibus"],
         "nginx": ["nginx", "reverse proxy", "web server"],
         "user": ["create user", "new user", "operator", "sudo user", "provision user"],
-        "hardening": ["harden", "hardening", "ssh hardening", "security updates"]
+        "hardening": ["harden", "hardening", "ssh hardening", "security updates"],
+        "openclaw": ["openclaw", "clawdbot", "bot", "agent", "tailscale"],
+        "docker": ["docker", "container", "containerd", "runtime"]
     }
     
     scored_candidates = []

@@ -1,0 +1,23 @@
+---
+- name: Deploy Docker CE Engine & Containerd Runtime
+  hosts: "{{ target_host | default('sandbox') }}"
+  gather_facts: true
+  vars:
+    docker_users: ["{{ target_user | default('vulcan') }}"]
+    docker_install_compose_plugin: true
+  roles:
+    - role: geerlingguy.docker
+  post_tasks:
+    - name: Verify Docker version
+      ansible.builtin.command: docker --version
+      register: docker_ver
+      changed_when: false
+      ignore_errors: yes
+
+    - name: Docker Provisioning Summary
+      ansible.builtin.debug:
+        msg:
+          - "Docker CE Runtime deployed successfully!"
+          - "Version: {{ docker_ver.stdout | default('N/A') }}"
+          - "Docker Users: {{ docker_users }}"
+          - "Target Host: {{ inventory_hostname }}"

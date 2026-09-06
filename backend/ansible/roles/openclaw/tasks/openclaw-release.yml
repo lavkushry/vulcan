@@ -1,0 +1,90 @@
+---
+# Release mode installation - Install via pnpm from npm registry
+
+- name: Check existing OpenClaw release installation
+  ansible.builtin.shell:
+    cmd: openclaw --version
+    executable: /bin/bash
+  become: true
+  become_user: "{{ openclaw_user }}"
+  environment:
+    PNPM_HOME: "{{ openclaw_home }}/.local/share/pnpm"
+    PATH: >-
+      {{
+        [
+          openclaw_home ~ '/.local/bin',
+          openclaw_home ~ '/.local/share/pnpm/bin',
+          openclaw_home ~ '/.local/share/pnpm',
+          '/usr/local/bin',
+          '/usr/bin',
+          '/bin'
+        ] | join(':')
+      }}
+    HOME: "{{ openclaw_home }}"
+  register: openclaw_existing
+  changed_when: false
+  failed_when: false
+
+- name: Install OpenClaw globally as openclaw user (using pnpm)
+  ansible.builtin.shell:
+    cmd: pnpm install -g openclaw@latest
+    executable: /bin/bash
+  become: true
+  become_user: "{{ openclaw_user }}"
+  environment:
+    PNPM_HOME: "{{ openclaw_home }}/.local/share/pnpm"
+    PATH: >-
+      {{
+        [
+          openclaw_home ~ '/.local/bin',
+          openclaw_home ~ '/.local/share/pnpm/bin',
+          openclaw_home ~ '/.local/share/pnpm',
+          '/usr/local/bin',
+          '/usr/bin',
+          '/bin'
+        ] | join(':')
+      }}
+    HOME: "{{ openclaw_home }}"
+  register: openclaw_install
+  changed_when: false
+
+- name: Verify openclaw installation
+  ansible.builtin.shell:
+    cmd: openclaw --version
+    executable: /bin/bash
+  become: true
+  become_user: "{{ openclaw_user }}"
+  environment:
+    PNPM_HOME: "{{ openclaw_home }}/.local/share/pnpm"
+    PATH: >-
+      {{
+        [
+          openclaw_home ~ '/.local/bin',
+          openclaw_home ~ '/.local/share/pnpm/bin',
+          openclaw_home ~ '/.local/share/pnpm',
+          '/usr/local/bin',
+          '/usr/bin',
+          '/bin'
+        ] | join(':')
+      }}
+    HOME: "{{ openclaw_home }}"
+  register: openclaw_version
+  changed_when: >-
+    openclaw_existing.rc != 0 or
+    openclaw_existing.stdout | default('') != openclaw_version.stdout
+
+- name: Ensure pnpm tree ownership after OpenClaw release install
+  ansible.builtin.file:
+    path: "{{ openclaw_home }}/.local/share/pnpm"
+    state: directory
+    owner: "{{ openclaw_user }}"
+    group: "{{ openclaw_user }}"
+    recurse: true
+  changed_when: false
+  when: >-
+    openclaw_existing.rc != 0 or
+    openclaw_existing.stdout | default('') != openclaw_version.stdout
+
+- name: Display installed OpenClaw version (release)
+  ansible.builtin.debug:
+    msg: "OpenClaw installed from npm: {{ openclaw_version.stdout }}"
