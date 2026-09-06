@@ -27,7 +27,7 @@ class AnsibleRunnerExecutionEngine(IExecutionEngine):
         os.makedirs(self.private_data_dir, exist_ok=True)
 
     def _resolve_playbook_path(self, path: str) -> Optional[str]:
-        """Resolve playbook path across candidate root locations."""
+        """Resolve playbook path across candidate root locations as absolute path."""
         candidates = [
             path,
             os.path.join(os.getcwd(), path),
@@ -41,11 +41,11 @@ class AnsibleRunnerExecutionEngine(IExecutionEngine):
         for c in candidates:
             norm = os.path.normpath(c)
             if os.path.isfile(norm):
-                return norm
+                return os.path.abspath(norm)
         return None
 
     def _resolve_inventory_path(self) -> str:
-        """Resolve inventory file path."""
+        """Resolve inventory file path as absolute path."""
         candidates = [
             os.path.join(os.getcwd(), "ansible/inventory/hosts"),
             os.path.join("/app/ansible/inventory/hosts"),
@@ -55,11 +55,11 @@ class AnsibleRunnerExecutionEngine(IExecutionEngine):
         for c in candidates:
             norm = os.path.normpath(c)
             if os.path.isfile(norm):
-                return norm
-        return "ansible/inventory/hosts"
+                return os.path.abspath(norm)
+        return os.path.abspath("ansible/inventory/hosts")
 
     def _resolve_ansible_cfg(self) -> Optional[str]:
-        """Resolve ansible.cfg path."""
+        """Resolve ansible.cfg path as absolute path."""
         candidates = [
             os.path.join(os.getcwd(), "ansible/ansible.cfg"),
             os.path.join("/app/ansible/ansible.cfg"),
@@ -69,11 +69,11 @@ class AnsibleRunnerExecutionEngine(IExecutionEngine):
         for c in candidates:
             norm = os.path.normpath(c)
             if os.path.isfile(norm):
-                return norm
+                return os.path.abspath(norm)
         return None
 
     def _resolve_private_key(self) -> Optional[str]:
-        """Resolve the SSH private key for sandbox authentication."""
+        """Resolve the SSH private key for sandbox authentication as absolute path."""
         candidates = [
             "/app/ansible/keys/id_ed25519",
             os.path.join(os.getcwd(), "ansible/keys/id_ed25519"),
@@ -83,7 +83,7 @@ class AnsibleRunnerExecutionEngine(IExecutionEngine):
         for c in candidates:
             norm = os.path.normpath(c)
             if os.path.isfile(norm):
-                return norm
+                return os.path.abspath(norm)
         return None
 
     def execute(
