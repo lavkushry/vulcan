@@ -99,7 +99,7 @@ services:
       VULCAN_AUTH_DISABLED: "${VULCAN_AUTH_DISABLED:-0}"
       VULCAN_CATALOG_BACKEND: "${VULCAN_CATALOG_BACKEND:-sqlite}"
     ports:
-      - "127.0.0.1:8000:8000"
+      - "8000:8000"
     volumes:
       - backend_data:/app/data
       - ../scripts:/app/scripts:ro
@@ -130,7 +130,7 @@ services:
       NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:-ws://localhost:8000}
       NEXT_PUBLIC_VULCAN_API_TOKEN: ${NEXT_PUBLIC_VULCAN_API_TOKEN:-}
     ports:
-      - "127.0.0.1:3000:3000"
+      - "3000:3000"
     depends_on:
       - backend
 
