@@ -33,10 +33,10 @@ class WebSocketLogHub:
     def set_event_loop(self, loop: asyncio.AbstractEventLoop):
         self._loop = loop
 
-    def emit_log(self, correlation_id: str, line: str, stream: str = "stdout"):
+    def publish(self, correlation_id: str, type_: str, data: Any):
         """
-        Emitted by worker runners. Thread-safe.
-        Pushes to ring buffer and schedules broadcast to active WebSockets.
+        Publishes structured WebSocket events (stdout, status, diagnostic).
+        Thread-safe. Pushes to ring buffer and broadcasts to active WebSockets.
         """
         with self._lock:
             if correlation_id not in self.buffers:
@@ -44,13 +44,14 @@ class WebSocketLogHub:
 
             buf = self.buffers[correlation_id]
             seq = len(buf) + 1
+            payload_data = data if isinstance(data, dict) else {"data": str(data)}
             entry = {
-                "event": "stdout",
-                "job_id": correlation_id,
                 "seq": seq,
+                "type": type_,
+                "event": type_,
+                "job_id": correlation_id,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
-                "stream": stream,
-                "data": line + "\r\n"
+                "data": payload_data,
             }
             buf.append(entry)
             if len(buf) > self.max_buffer_lines:
@@ -58,11 +59,29 @@ class WebSocketLogHub:
 
             active_sockets = list(self.connections.get(correlation_id, set()))
 
-        if active_sockets and self._loop and self._loop.is_running():
-            asyncio.run_coroutine_threadsafe(
-                self._broadcast_to_sockets(active_sockets, entry),
-                self._loop
-            )
+        if active_sockets:
+            loop = self._loop
+            if not loop or not loop.is_running():
+                try:
+                    loop = asyncio.get_running_loop()
+                except RuntimeError:
+                    loop = None
+            if loop and loop.is_running():
+                asyncio.run_coroutine_threadsafe(
+                    self._broadcast_to_sockets(active_sockets, entry),
+                    loop
+                )
+
+    def emit_log(self, correlation_id: str, line: str, stream: str = "stdout"):
+        """
+        Emitted by worker runners. Thread-safe.
+        Pushes to ring buffer and schedules broadcast to active WebSockets.
+        """
+        self.publish(correlation_id, "stdout", {
+            "line": line,
+            "data": line + "\r\n",
+            "stream": stream,
+        })
 
     async def _broadcast_to_sockets(self, sockets: List[WebSocket], message: Dict):
         payload = json.dumps(message)

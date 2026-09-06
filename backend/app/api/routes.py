@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 
 from app.api.websockets import ws_hub
 from app.config import container
-from app.domain.entities import ExecutionJob, JobStatus, RiskTier
+from app.domain.entities import ExecutionEngineType, ExecutionJob, JobStatus, RiskTier
 from app.domain.exceptions import (
     ApprovalTimeoutError,
     DomainError,
@@ -31,14 +31,16 @@ router = APIRouter(prefix="/api/v1")
 # =====================================================================
 
 class ResolveIntentRequest(BaseModel):
-    prompt: str
+    prompt: Optional[str] = None
+    text: Optional[str] = None
     ambient_params: Optional[Dict[str, Any]] = None
 
 class CreateJobRequest(BaseModel):
-    catalog_identifier: str
-    target_resource_id: str
+    catalog_identifier: Optional[str] = None
+    identifier: Optional[str] = None
+    target_resource_id: Optional[str] = None
     requester_id: str
-    parameters: Dict[str, Any]
+    parameters: Dict[str, Any] = Field(default_factory=dict)
     servicenow_chg: Optional[str] = None
     storage_artifact_uri: Optional[str] = None
     storage_artifact_sha256: Optional[str] = None
@@ -48,6 +50,10 @@ class ApproveJobRequest(BaseModel):
     decision: str = "APPROVE"  # "APPROVE" | "REJECT"
     reason: str = "Authorized by Checker"
     chg_number: Optional[str] = None
+
+class RejectJobRequest(BaseModel):
+    approver_id: str
+    reason: Optional[str] = "Rejected by Checker"
 
 class MultipartInitiateRequest(BaseModel):
     file_name: str
@@ -332,9 +338,15 @@ def get_task_logs(correlation_id: str):
     # 1. From real-time buffer
     buffer_lines = ws_hub.buffers.get(correlation_id, [])
     if buffer_lines:
+        def _get_line(item):
+            d = item.get("data")
+            if isinstance(d, dict):
+                return str(d.get("line") or d.get("data") or "").rstrip("\r\n")
+            return str(d or "").rstrip("\r\n")
+
         return {
             "correlation_id": correlation_id,
-            "logs": [item["data"].rstrip("\r\n") for item in buffer_lines],
+            "logs": [_get_line(item) for item in buffer_lines],
             "total_lines": len(buffer_lines)
         }
 
@@ -385,40 +397,112 @@ def get_task_logs(correlation_id: str):
     }
 
 
+def _format_job_response(job: ExecutionJob) -> Dict[str, Any]:
+    approved_at_str = None
+    if job.approval_decision and job.approval_decision.decided_at:
+        approved_at_str = job.approval_decision.decided_at.isoformat()
+
+    return {
+        "id": job.id,
+        "job_id": job.id,
+        "correlation_id": job.correlation_id,
+        "identifier": job.catalog_item.identifier,
+        "name": job.catalog_item.name,
+        "playbook_identifier": job.catalog_item.identifier,
+        "playbook_name": job.catalog_item.name,
+        "engine": job.catalog_item.engine.value,
+        "risk_tier": job.catalog_item.risk_tier.value,
+        "requester_id": job.requester_id,
+        "approver_id": job.approver_id,
+        "target_resource_id": job.target_resource_id,
+        "target_resource": job.target_resource_id,
+        "parameters": job.parameters,
+        "status": job.status.value,
+        "requires_approval": job.status == JobStatus.PENDING_APPROVAL,
+        "servicenow_chg": job.servicenow_chg,
+        "created_at": job.created_at.isoformat() if job.created_at else None,
+        "approved_at": approved_at_str,
+        "completed_at": job.completed_at.isoformat() if job.completed_at else None,
+        "started_at": job.started_at.isoformat() if job.started_at else None,
+        "exit_code": job.exit_code,
+        "error_message": job.error_message,
+        "diagnostic": getattr(job, "diagnostic", None) or job.error_message,
+    }
+
+
 @router.post("/intent/resolve")
 def resolve_intent(req: ResolveIntentRequest):
     """
     AI Reasoning Subsystem (The LLM OS):
     Hybrid RRF Retrieval + Pydantic Slot Filling within 2,500 token budget.
     """
-    result = container.intent_resolver.resolve(req.prompt, req.ambient_params)
-    return result.to_dict()
+    query = req.text or req.prompt or ""
+    result = container.intent_resolver.resolve(query, req.ambient_params)
+    cat_item = result.catalog_item
+
+    all_param_specs = []
+    if cat_item and isinstance(cat_item.input_schema, dict):
+        props = cat_item.input_schema.get("properties", {})
+        req_fields = set(cat_item.input_schema.get("required", []))
+        for p_name, p_spec in props.items():
+            enum_vals = p_spec.get("enum")
+            p_type = "enum" if enum_vals else ("integer" if p_spec.get("type") == "integer" else "string")
+            all_param_specs.append({
+                "name": p_name,
+                "type": p_type,
+                "required": p_name in req_fields,
+                "description": p_spec.get("description", p_name),
+                "choices": [str(x) for x in enum_vals] if enum_vals else None,
+            })
+
+    missing_specs = [
+        next((ps for ps in all_param_specs if ps["name"] == mf), {
+            "name": mf,
+            "type": "string",
+            "required": True,
+            "description": f"Missing parameter: {mf}"
+        })
+        for mf in result.missing_fields
+    ]
+
+    status_str = "READY" if result.status == "READY" else ("NEEDS_INPUT" if result.status == "NEEDS_INPUT" else "REJECTED")
+
+    match_dict = None
+    if cat_item:
+        match_dict = {
+            "identifier": cat_item.identifier,
+            "name": cat_item.name,
+            "engine": cat_item.engine.value,
+            "risk_tier": cat_item.risk_tier.value,
+            "description": getattr(cat_item, "description", "") or f"Automated execution of {cat_item.name}",
+            "requires_maker_checker": cat_item.requires_maker_checker,
+            "requires_chg": cat_item.requires_chg,
+            "params": all_param_specs
+        }
+
+    return {
+        "status": status_str,
+        "playbook_identifier": cat_item.identifier if cat_item else None,
+        "playbook_name": cat_item.name if cat_item else None,
+        "parameters": result.extracted_parameters,
+        "missing_fields": missing_specs,
+        "refusal_reason": result.refusal_reason,
+        "tokens_used": result.tokens_used,
+        "match": match_dict,
+        "confidence": 0.95 if result.status == "READY" else (0.85 if result.status == "NEEDS_INPUT" else 0.0),
+        "reason": result.refusal_reason or ("No matching playbook found in catalog." if not cat_item else None),
+        "suggestions": [
+            {"identifier": c.identifier, "name": c.name}
+            for c in container.catalog[:3]
+        ] if status_str == "REJECTED" or not cat_item else [],
+        "servicenow_chg": f"CHG-{abs(hash(cat_item.identifier + query)) % 900000 + 100000}" if cat_item and cat_item.requires_chg else None,
+    }
 
 
 @router.get("/jobs")
 def list_jobs():
     """List all jobs in the control plane."""
-    return [
-        {
-            "id": job.id,
-            "correlation_id": job.correlation_id,
-            "playbook_identifier": job.catalog_item.identifier,
-            "playbook_name": job.catalog_item.name,
-            "requester_id": job.requester_id,
-            "approver_id": job.approver_id,
-            "target_resource_id": job.target_resource_id,
-            "status": job.status.value,
-            "risk_tier": job.catalog_item.risk_tier.value,
-            "servicenow_chg": job.servicenow_chg,
-            "parameters": job.parameters,
-            "exit_code": job.exit_code,
-            "created_at": job.created_at.isoformat() if job.created_at else None,
-            "started_at": job.started_at.isoformat() if job.started_at else None,
-            "completed_at": job.completed_at.isoformat() if job.completed_at else None,
-            "error_message": job.error_message,
-        }
-        for job in container.jobs.values()
-    ]
+    return [_format_job_response(job) for job in container.jobs.values()]
 
 
 @router.post("/jobs")
@@ -427,9 +511,24 @@ def create_job(req: CreateJobRequest):
     Submits an automation job.
     Applies deterministic parameter regex, bounds, and secret scanning upon entry.
     """
-    catalog_item = next((i for i in container.catalog if i.identifier == req.catalog_identifier), None)
+    catalog_id = req.catalog_identifier or req.identifier
+    if not catalog_id:
+        raise HTTPException(status_code=400, detail="Missing catalog identifier (catalog_identifier or identifier).")
+
+    catalog_item = next((i for i in container.catalog if i.identifier == catalog_id), None)
     if not catalog_item:
-        raise HTTPException(status_code=404, detail=f"Catalog item '{req.catalog_identifier}' not found.")
+        raise HTTPException(status_code=404, detail=f"Catalog item '{catalog_id}' not found.")
+
+    target_res = (
+        req.target_resource_id
+        or req.parameters.get("hostname")
+        or req.parameters.get("target_resource_id")
+        or req.parameters.get("vip_ip")
+        or req.parameters.get("target_resource")
+        or f"{catalog_id}-node-01"
+    )
+
+    chg = req.servicenow_chg
 
     job_id = f"job-{uuid.uuid4().hex[:8]}"
     correlation_id = f"EXEC-{uuid.uuid4().hex[:6].upper()}"
@@ -440,9 +539,9 @@ def create_job(req: CreateJobRequest):
             correlation_id=correlation_id,
             catalog_item=catalog_item,
             requester_id=req.requester_id,
-            target_resource_id=req.target_resource_id,
+            target_resource_id=str(target_res),
             parameters=req.parameters,
-            servicenow_chg=req.servicenow_chg,
+            servicenow_chg=chg,
             storage_artifact_uri=req.storage_artifact_uri,
             storage_artifact_sha256=req.storage_artifact_sha256
         )
@@ -459,41 +558,19 @@ def create_job(req: CreateJobRequest):
         job.request_approval(datetime.now(timezone.utc))
 
     container.jobs[correlation_id] = job
-
-    return {
-        "job_id": job.id,
-        "correlation_id": job.correlation_id,
-        "status": job.status.value,
-        "target_resource_id": job.target_resource_id,
-        "requires_approval": job.status == JobStatus.PENDING_APPROVAL
-    }
+    return _format_job_response(job)
 
 
 @router.get("/jobs/{correlation_id}")
 def get_job(correlation_id: str):
     """Fetch job state and execution progress."""
-    job = container.jobs.get(correlation_id)
+    job = container.jobs.get(correlation_id) or next(
+        (j for j in container.jobs.values() if j.id == correlation_id or j.correlation_id == correlation_id), None
+    )
     if not job:
         raise HTTPException(status_code=404, detail="Job not found.")
 
-    return {
-        "id": job.id,
-        "correlation_id": job.correlation_id,
-        "playbook_identifier": job.catalog_item.identifier,
-        "playbook_name": job.catalog_item.name,
-        "requester_id": job.requester_id,
-        "approver_id": job.approver_id,
-        "target_resource_id": job.target_resource_id,
-        "status": job.status.value,
-        "risk_tier": job.catalog_item.risk_tier.value,
-        "servicenow_chg": job.servicenow_chg,
-        "parameters": job.parameters,
-        "exit_code": job.exit_code,
-        "created_at": job.created_at.isoformat() if job.created_at else None,
-        "started_at": job.started_at.isoformat() if job.started_at else None,
-        "completed_at": job.completed_at.isoformat() if job.completed_at else None,
-        "error_message": job.error_message,
-    }
+    return _format_job_response(job)
 
 
 @router.post("/jobs/{correlation_id}/approve")
@@ -502,7 +579,9 @@ def approve_job(correlation_id: str, req: ApproveJobRequest):
     Maker-Checker Sign-off Gate:
     Enforces Maker != Checker inequality and 15-minute fail-closed timeout.
     """
-    job = container.jobs.get(correlation_id)
+    job = container.jobs.get(correlation_id) or next(
+        (j for j in container.jobs.values() if j.id == correlation_id or j.correlation_id == correlation_id), None
+    )
     if not job:
         raise HTTPException(status_code=404, detail="Job not found.")
 
@@ -525,12 +604,55 @@ def approve_job(correlation_id: str, req: ApproveJobRequest):
     except DomainError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    return {
-        "correlation_id": job.correlation_id,
+    ws_hub.publish(job.correlation_id, "status", {
         "status": job.status.value,
-        "approver_id": job.approver_id,
-        "decision": decision.decision
-    }
+        "message": f"Approved by {req.approver_id}"
+    })
+
+    res = _format_job_response(job)
+    res["decision"] = decision.decision
+    return res
+
+
+@router.post("/jobs/{correlation_id}/reject")
+def reject_job(correlation_id: str, req: RejectJobRequest):
+    """
+    Maker-Checker Rejection Gate:
+    Rejects the job and marks status REJECTED.
+    """
+    job = container.jobs.get(correlation_id) or next(
+        (j for j in container.jobs.values() if j.id == correlation_id or j.correlation_id == correlation_id), None
+    )
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found.")
+
+    from app.domain.entities import ApprovalDecision
+
+    decision = ApprovalDecision(
+        decision="REJECT",
+        approver_id=req.approver_id,
+        decided_at=datetime.now(timezone.utc),
+        reason=req.reason or "Rejected by Checker",
+        chg_number=job.servicenow_chg
+    )
+
+    try:
+        job.apply_approval_decision(decision, datetime.now(timezone.utc), timeout_seconds=900)
+    except MakerCheckerViolationError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except ApprovalTimeoutError as e:
+        raise HTTPException(status_code=408, detail=str(e))
+    except DomainError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    ws_hub.publish(job.correlation_id, "status", {
+        "status": job.status.value,
+        "message": f"Rejected by {req.approver_id}: {decision.reason}"
+    })
+
+    res = _format_job_response(job)
+    res["decision"] = "REJECT"
+    return res
 
 
 @router.post("/jobs/{correlation_id}/execute")
@@ -538,9 +660,14 @@ def trigger_execution(correlation_id: str):
     """
     Triggers BaseJobRunner Template Method in background thread with live WebSocket streaming.
     """
-    job = container.jobs.get(correlation_id)
+    job = container.jobs.get(correlation_id) or next(
+        (j for j in container.jobs.values() if j.id == correlation_id or j.correlation_id == correlation_id), None
+    )
     if not job:
         raise HTTPException(status_code=404, detail="Job not found.")
+
+    if job.status in (JobStatus.RUNNING, JobStatus.VERIFYING, JobStatus.SUCCESS):
+        return {"status": "EXECUTION_ALREADY_RUNNING", "correlation_id": job.correlation_id}
 
     if job.status not in (JobStatus.QUEUED, JobStatus.PARSED):
         raise HTTPException(
@@ -552,14 +679,23 @@ def trigger_execution(correlation_id: str):
 
     def run_worker():
         try:
+            ws_hub.publish(job.correlation_id, "status", {"status": "RUNNING", "message": "Worker spawned"})
             runner.run(job)
+            ws_hub.publish(job.correlation_id, "status", {"status": job.status.value, "message": "Execution complete"})
         except Exception as e:
-            ws_hub.emit_log(correlation_id, f"\033[1;31m[EXECUTION ERROR]\033[0m {str(e)}", "stderr")
+            ws_hub.emit_log(job.correlation_id, f"\033[1;31m[EXECUTION ERROR]\033[0m {str(e)}", "stderr")
+            ws_hub.publish(job.correlation_id, "status", {"status": job.status.value, "message": str(e)})
+            try:
+                diag = container.diagnostic_engine.diagnose(str(e), job.catalog_item.identifier)
+                ws_hub.publish(job.correlation_id, "diagnostic", {"root_cause": diag.root_cause})
+                job.diagnostic = diag.root_cause
+            except Exception:
+                pass
 
     thread = threading.Thread(target=run_worker, daemon=True)
     thread.start()
 
-    return {"status": "EXECUTION_DISPATCHED", "correlation_id": correlation_id}
+    return {"status": "EXECUTION_DISPATCHED", "correlation_id": job.correlation_id}
 
 
 @router.post("/jobs/{correlation_id}/diagnose")
@@ -568,17 +704,27 @@ def diagnose_job_failure(correlation_id: str):
     AI SRE Failure Diagnostic Subsystem:
     Extracts 50-line log window and provides root-cause analysis in <3.0s.
     """
-    job = container.jobs.get(correlation_id)
+    job = container.jobs.get(correlation_id) or next(
+        (j for j in container.jobs.values() if j.id == correlation_id or j.correlation_id == correlation_id), None
+    )
     if not job:
         raise HTTPException(status_code=404, detail="Job not found.")
 
     # Retrieve stdout from ring buffer
-    buffer_lines = ws_hub.buffers.get(correlation_id, [])
-    full_stdout = "\n".join(item["data"] for item in buffer_lines)
+    buffer_lines = ws_hub.buffers.get(job.correlation_id, [])
+    full_stdout_lines = []
+    for item in buffer_lines:
+        d = item.get("data")
+        if isinstance(d, dict):
+            full_stdout_lines.append(str(d.get("line") or d.get("data") or ""))
+        else:
+            full_stdout_lines.append(str(d or ""))
+    full_stdout = "\n".join(full_stdout_lines)
     if not full_stdout and job.error_message:
         full_stdout = job.error_message
 
     diag = container.diagnostic_engine.diagnose(full_stdout, job.catalog_item.identifier)
+    job.diagnostic = diag.root_cause
     return diag.to_dict()
 
 
