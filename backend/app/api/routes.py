@@ -141,6 +141,18 @@ def sync_integration_data(key: str):
     return integrations_manager.trigger_sync(key)
 
 
+@router.put("/integrations/{key}")
+@router.post("/integrations/{key}/configure")
+def update_integration_config(key: str, payload: Dict[str, Any]):
+    """Update connector configuration, endpoint URL, or authentication credentials."""
+    try:
+        return integrations_manager.update_config(key, payload)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Integration connector [{key}] not found.")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 # =====================================================================
 # WORKFLOWS & CRON SCHEDULES (DAG Pipelines & Periodic Jobs)
 # =====================================================================

@@ -454,3 +454,139 @@ class SQLiteCatalogRepository(ICatalogRepository):
             description=row["description"] or "",
             tags=json.loads(row["tags"]) if row["tags"] else [],
         )
+
+
+# ===========================================================================
+# INTEGRATION REPOSITORY
+# ===========================================================================
+
+class SQLiteIntegrationRepository:
+    """Durable enterprise connector settings persistence using SQLite."""
+
+    def __init__(self, db_path: str = "data/vulcan.db"):
+        self.db_path = db_path
+        self._lock = threading.Lock()
+        self._conn = _get_connection(db_path)
+        self._create_tables()
+
+    def _create_tables(self) -> None:
+        self._conn.executescript("""
+            CREATE TABLE IF NOT EXISTS integration_connectors (
+                key TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                category TEXT NOT NULL,
+                icon TEXT NOT NULL,
+                description TEXT NOT NULL,
+                endpoint_url TEXT NOT NULL,
+                auth_type TEXT DEFAULT 'NONE',
+                auth_token TEXT,
+                username TEXT,
+                status TEXT DEFAULT 'DISCONNECTED',
+                latency_ms INTEGER DEFAULT 0,
+                version TEXT,
+                last_sync_at TEXT,
+                config_summary TEXT DEFAULT '{}',
+                capabilities TEXT DEFAULT '[]'
+            );
+        """)
+        self._conn.commit()
+
+    def list_all(self) -> List[Dict[str, Any]]:
+        with self._lock:
+            cursor = self._conn.execute("SELECT * FROM integration_connectors ORDER BY name ASC")
+            rows = cursor.fetchall()
+            return [self._row_to_dict(r) for r in rows]
+
+    def get(self, key: str) -> Optional[Dict[str, Any]]:
+        with self._lock:
+            cursor = self._conn.execute("SELECT * FROM integration_connectors WHERE key = ?", (key,))
+            row = cursor.fetchone()
+            return self._row_to_dict(row) if row else None
+
+    def save(self, data: Dict[str, Any]) -> None:
+        with self._lock:
+            self._conn.execute("""
+                INSERT INTO integration_connectors (
+                    key, name, category, icon, description, endpoint_url,
+                    auth_type, auth_token, username, status, latency_ms,
+                    version, last_sync_at, config_summary, capabilities
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(key) DO UPDATE SET
+                    name = excluded.name,
+                    category = excluded.category,
+                    icon = excluded.icon,
+                    description = excluded.description,
+                    endpoint_url = excluded.endpoint_url,
+                    auth_type = excluded.auth_type,
+                    auth_token = CASE 
+                        WHEN excluded.auth_token IS NOT NULL AND excluded.auth_token != '' 
+                        THEN excluded.auth_token 
+                        ELSE integration_connectors.auth_token 
+                    END,
+                    username = excluded.username,
+                    status = excluded.status,
+                    latency_ms = excluded.latency_ms,
+                    version = excluded.version,
+                    last_sync_at = excluded.last_sync_at,
+                    config_summary = excluded.config_summary,
+                    capabilities = excluded.capabilities
+            """, (
+                data["key"],
+                data["name"],
+                data["category"],
+                data["icon"],
+                data["description"],
+                data["endpoint_url"],
+                data.get("auth_type", "NONE"),
+                data.get("auth_token"),
+                data.get("username"),
+                data.get("status", "DISCONNECTED"),
+                data.get("latency_ms", 0),
+                data.get("version", "v1.0"),
+                data.get("last_sync_at", datetime.now(timezone.utc).isoformat()),
+                json.dumps(data.get("config_summary", {})),
+                json.dumps(data.get("capabilities", [])),
+            ))
+            self._conn.commit()
+
+    def seed_if_empty(self, defaults: List[Dict[str, Any]]) -> int:
+        with self._lock:
+            cursor = self._conn.execute("SELECT COUNT(*) FROM integration_connectors")
+            if cursor.fetchone()[0] > 0:
+                return 0
+            for d in defaults:
+                self._conn.execute("""
+                    INSERT INTO integration_connectors (
+                        key, name, category, icon, description, endpoint_url,
+                        auth_type, auth_token, username, status, latency_ms,
+                        version, last_sync_at, config_summary, capabilities
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    d["key"], d["name"], d["category"], d["icon"], d["description"],
+                    d["endpoint_url"], d.get("auth_type", "NONE"), d.get("auth_token"),
+                    d.get("username"), d.get("status", "CONNECTED"), d.get("latency_ms", 20),
+                    d.get("version", "v1.0"), datetime.now(timezone.utc).isoformat(),
+                    json.dumps(d.get("config_summary", {})),
+                    json.dumps(d.get("capabilities", []))
+                ))
+            self._conn.commit()
+            return len(defaults)
+
+    def _row_to_dict(self, row: sqlite3.Row) -> Dict[str, Any]:
+        return {
+            "key": row["key"],
+            "name": row["name"],
+            "category": row["category"],
+            "icon": row["icon"],
+            "description": row["description"],
+            "endpoint_url": row["endpoint_url"],
+            "auth_type": row["auth_type"] or "NONE",
+            "auth_token": row["auth_token"],
+            "username": row["username"],
+            "status": row["status"] or "DISCONNECTED",
+            "latency_ms": row["latency_ms"] or 0,
+            "version": row["version"] or "v1.0",
+            "last_sync_at": row["last_sync_at"],
+            "config_summary": json.loads(row["config_summary"]) if row["config_summary"] else {},
+            "capabilities": json.loads(row["capabilities"]) if row["capabilities"] else [],
+        }
