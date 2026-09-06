@@ -8,7 +8,7 @@ import json
 import logging
 import threading
 from datetime import datetime, timezone
-from typing import Dict, List, Set
+from typing import Any, Dict, List, Optional, Set
 from fastapi import WebSocket
 
 logger = logging.getLogger("vulcan.ws")
