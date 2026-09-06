@@ -8,6 +8,7 @@ import {
 import { AppShell } from '@/components/layout/AppShell';
 import { api } from '@/lib/api';
 import type { Job } from '@/lib/types';
+import { getApiBaseUrl } from '@/lib/env';
 
 interface HealthData {
   status: string;
@@ -24,7 +25,7 @@ function AuditContent() {
   const [verificationResult, setVerificationResult] = useState<string | null>(null);
   const [tab, setTab] = useState<'merkle' | 'sod' | 'servicenow'>('merkle');
 
-  const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
+  const BASE = getApiBaseUrl();
 
   const loadData = useCallback(async () => {
     try {

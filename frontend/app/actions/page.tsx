@@ -11,6 +11,7 @@ import { useVulcan } from '@/lib/context';
 import { api } from '@/lib/api';
 import type { Job } from '@/lib/types';
 import { useSearchParams } from 'next/navigation';
+import { getApiBaseUrl } from '@/lib/env';
 
 interface CatalogItem {
   id: string;
@@ -52,7 +53,7 @@ function ActionsContent() {
 
   // Fetch catalog
   useEffect(() => {
-    const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
+    const BASE = getApiBaseUrl();
     fetch(`${BASE}/api/v1/catalog`)
       .then((r) => r.json())
       .then((items) => {

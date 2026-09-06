@@ -7,6 +7,7 @@ import {
   RotateCcw, ArrowRight, Shield, ToggleLeft, ToggleRight,
   Search, RefreshCw, Cpu, Layers, Database, ChevronRight, Check
 } from 'lucide-react';
+import { getApiBaseUrl } from '@/lib/env';
 
 interface WorkflowStep {
   step_id: string;
@@ -57,7 +58,7 @@ function WorkflowsContent() {
   const [runningWf, setRunningWf] = useState<string | null>(null);
   const [wfRunResult, setWfRunResult] = useState<string | null>(null);
 
-  const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
+  const BASE = getApiBaseUrl();
 
   const loadData = useCallback(async () => {
     try {

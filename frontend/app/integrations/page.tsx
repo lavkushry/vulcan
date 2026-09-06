@@ -7,6 +7,7 @@ import {
   Shield, Cpu, GitBranch, Layers, Lock, Activity,
   Search, ArrowRight, Play, AlertCircle, Key
 } from 'lucide-react';
+import { getApiBaseUrl } from '@/lib/env';
 
 interface IntegrationConnector {
   key: string;
@@ -40,7 +41,7 @@ function IntegrationsContent() {
   const [syncingKey, setSyncingKey] = useState<string | null>(null);
   const [search, setSearch] = useState('');
 
-  const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
+  const BASE = getApiBaseUrl();
 
   const loadConnectors = useCallback(async () => {
     try {

@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { RoleDefinition, PolicyRule, PolicyEvaluationResult } from '@/lib/types';
 import { DEMO_USERS } from '@/lib/api';
+import { getApiBaseUrl } from '@/lib/env';
 
 const PERMISSION_COLUMNS = [
   { key: 'catalog:read', label: 'Discover Catalog' },
@@ -44,7 +45,7 @@ function PoliciesContent() {
   const [evalResult, setEvalResult] = useState<PolicyEvaluationResult | null>(null);
   const [evaluating, setEvaluating] = useState<boolean>(false);
 
-  const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
+  const BASE = getApiBaseUrl();
 
   const fetchData = useCallback(async () => {
     setLoading(true);

@@ -7,6 +7,7 @@ import { useVulcan } from '@/lib/context';
 import { api } from '@/lib/api';
 import type { Job } from '@/lib/types';
 import { useRouter } from 'next/navigation';
+import { getApiBaseUrl } from '@/lib/env';
 
 function MatrixContent() {
   const { currentUser } = useVulcan();
@@ -17,7 +18,7 @@ function MatrixContent() {
   const loadTasks = useCallback(async () => {
     setLoading(true);
     try {
-      const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
+      const BASE = getApiBaseUrl();
       const res = await fetch(`${BASE}/api/v1/tasks`);
       if (res.ok) {
         const data = await res.json();

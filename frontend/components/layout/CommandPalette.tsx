@@ -5,6 +5,7 @@ import { Search, Zap, History, ArrowRight, Sparkles, X } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { IntentResult, Job } from '@/lib/types';
 import { useRouter } from 'next/navigation';
+import { getApiBaseUrl } from '@/lib/env';
 
 interface CommandPaletteProps {
   open: boolean;
@@ -58,7 +59,7 @@ export function CommandPalette({ open, onClose, currentUser }: CommandPalettePro
     setLoading(true);
     try {
       // Fetch matching catalog items
-      const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
+      const BASE = getApiBaseUrl();
       const res = await fetch(`${BASE}/api/v1/catalog?search=${encodeURIComponent(query.trim())}`);
       if (res.ok) {
         const items = await res.json();

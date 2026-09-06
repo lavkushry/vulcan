@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Search, Users, Activity, Shield, Database, Command, Bell, CheckCircle2 } from 'lucide-react';
 import { DEMO_USERS, api } from '@/lib/api';
 import { useRouter } from 'next/navigation';
+import { getApiBaseUrl } from '@/lib/env';
 
 interface HeaderProps {
   currentUser: string;
@@ -25,7 +26,7 @@ export function Header({ currentUser, onUserChange, onOpenCommandPalette }: Head
   const [pendingCount, setPendingCount] = useState(0);
 
   useEffect(() => {
-    const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
+    const BASE = getApiBaseUrl();
     const fetchHealthAndJobs = async () => {
       try {
         const [h, jobs] = await Promise.all([

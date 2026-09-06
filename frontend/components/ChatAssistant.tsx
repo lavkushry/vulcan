@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 import { TokenomicsHUD } from './TokenomicsHUD';
 import { DisambiguationBentoCard, DisambiguationCandidate } from './DisambiguationBentoCard';
+import { getApiBaseUrl } from '@/lib/env';
 
 
 export interface ChatLaunchPayload {
@@ -144,7 +145,7 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
     const startTime = performance.now();
 
     try {
-      const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
+      const API_BASE = getApiBaseUrl();
       const res = await fetch(`${API_BASE}/api/v1/intent/resolve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

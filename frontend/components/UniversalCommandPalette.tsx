@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Search, Terminal, Database, Cloud, HardDrive, ArrowRight, ShieldCheck, X } from 'lucide-react';
+import { getApiBaseUrl } from '@/lib/env';
 
 interface CatalogItem {
   id: string;
@@ -32,7 +33,7 @@ export default function UniversalCommandPalette({
   useEffect(() => {
     if (!isOpen) return;
     setLoading(true);
-    fetch(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'}/api/v1/catalog`)
+    fetch(`${getApiBaseUrl()}/api/v1/catalog`)
       .then(res => res.json())
       .then(data => {
         setItems(data.items || data);
