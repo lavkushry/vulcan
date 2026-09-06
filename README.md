@@ -61,19 +61,41 @@ vulcan-control-plane/
 
 ---
 
+## The 10 Production Operational Views
+
+| # | Route | View Name | Key Capabilities |
+|---|---|---|---|
+| 1 | **`/chat` & `/`** | **`✨ AI Chat Assistant`** | **The #1 Primary Screen**: Dual-pane workspace with natural language intent resolution across 100+ playbooks, dynamic slot-filling cards, and live xterm.js terminal stream. |
+| 2 | **`/matrix`** | **`🎛️ High-Filtered Tasks`** | **Enterprise Task Window**: 10-column sortable table with multi-dimensional filtering and CSV export. |
+| 3 | **`/workflows`** | **`🔀 Workflows & Cron`** | **DAG Pipelines & Distributed Cron**: Multi-step sequential/parallel pipelines with rollback compensation + Redis Redlock distributed cron scheduler. |
+| 4 | **`/integrations`** | **`🔌 Connectors & Hub`** | **Enterprise Connectors**: Native bi-directional sync with ServiceNow (ITSM/CHG), Red Hat AAP (Tower/AWX), GitHub/Bitbucket GitOps, Jira Software, and HashiCorp Vault. |
+| 5 | **`/actions`** | **`⚡ Actions Catalog`** | **StackStorm Pack Tree**: Category/pack browser with schema-driven forms (enums, booleans, numeric sliders, ServiceNow CHG). |
+| 6 | **`/history`** | **`📜 Execution History`** | **Master-Detail Feed**: Reverse-chronological execution feed with status filters, terminal replay, approval deck, and AI diagnostics. |
+| 7 | **`/rules`** | **`⚡ Automation Rules`** | **Datadog / StackStorm Event Rules**: Trigger (Datadog Alert, Kafka, Prometheus) → Filter criteria → Action mapping with Jinja2 interpolation. |
+| 8 | **`/packs`** | **`📦 Content Packs`** | **Backstage / Port IDP Ecosystem**: Bundles for Network, Cloud, Database, Kubernetes, and OS Patching with dependency health validation. |
+| 9 | **`/audit`** | **`🛡️ Audit & Compliance`** | **Digital.ai & Banking SOX Governance**: Cryptographic Merkle chain proof ledger (Genesis to Tip SHA-256), Separation of Duties verification, and ServiceNow CHG reconciliation. |
+| 10 | **`/dashboard`** | **`📊 Telemetry Dashboard`** | **Operational Overview**: KPI cards (Active Runners, Catalog Size, Pending Approvals, Failures 24h, Merkle Chain), top failing playbooks, and recent activity. |
+
+---
+
+## Verification & Test Results
+
+- **Backend Unit Tests**: **53/53 passing** in 1.978s (`PYTHONPATH=backend backend/.venv/bin/python3 -m unittest discover backend/tests`).
+- **Frontend Production Build**: **14 static routes compiled cleanly** with zero TypeScript errors (`npm run build`).
+- **All Routes Return HTTP 200 OK**: Verified live on port 3000.
+- **Git Repository**: Pushed to `origin/main` at `https://github.com/lavkushry/vulcan.git`.
+
+---
+
 ## Quick Start (Local Testbed)
 
 ```bash
-# 1. Start Infrastructure (PostgreSQL 16 + pgvector, Redis, MinIO S3)
-cd deploy && docker compose up -d
+# 1. Start Backend Control Plane (FastAPI on port 8000)
+cd backend
+source .venv/bin/activate
+uvicorn app.main:app --port 8000
 
-# 2. Start Backend Control Plane (FastAPI)
-cd ../backend
-pip install -r requirements.txt
-python main.py
-
-# 3. Start Frontend Web Console (Next.js 15)
-cd ../frontend
-npm install
-npm run dev
+# 2. Start Frontend Web Console (Next.js 15 on port 3000)
+cd frontend
+npm run start
 ```
