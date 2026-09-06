@@ -17,7 +17,8 @@ import sys
 from datetime import datetime, timezone, timedelta
 
 # Ensure backend directory is in python path
-sys.path.insert(0, os.path.abspath("/Users/lavkushkumar/Desktop/Ideas/vulcan-control-plane/backend"))
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.join(REPO_ROOT, "backend"))
 
 from app.domain.entities import (
     JobStatus,

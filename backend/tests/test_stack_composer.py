@@ -9,6 +9,7 @@ Verifies:
 """
 import pytest
 from datetime import datetime, timezone
+from typing import Optional
 from unittest.mock import MagicMock
 
 from app.domain.entities import (
