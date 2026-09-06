@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   Activity, 
   Terminal as TerminalIcon, 
@@ -19,12 +19,16 @@ import {
   Users,
   Check,
   X,
-  Radio
+  Radio,
+  Columns
 } from 'lucide-react';
 
 import ChatAssistant, { ChatLaunchPayload } from '@/components/ChatAssistant';
 import TaskMatrixTable, { TaskRecord } from '@/components/TaskMatrixTable';
 import TerminalAuditWorkspace from '@/components/TerminalAuditWorkspace';
+import { TaskMonitor } from '@/components/TaskMonitor';
+import { JobDetail } from '@/components/JobDetail';
+import type { Job, JobStatus } from '@/lib/types';
 import { DEMO_USERS, api } from '@/lib/api';
 
 const API_BASE = 'http://localhost:8000/api/v1';
@@ -125,14 +129,61 @@ const INITIAL_FALLBACK_TASKS: TaskRecord[] = [
 ];
 
 export default function Home() {
-  // Active Tab View State
+  // Layout View Mode: 'split' (3-in-1 Operator Console) vs 'tabbed' (Full Dedicated Workspaces)
+  const [viewMode, setViewMode] = useState<'split' | 'tabbed'>('split');
+  // Active Tab View State (for Tabbed mode)
   const [activeTab, setActiveTab] = useState<TabId>('matrix');
   const [currentUser, setCurrentUser] = useState<string>(DEMO_USERS[0].id);
+
+  // Split View filter state
+  const [monitorStatusFilter, setMonitorStatusFilter] = useState<JobStatus | "ALL">("ALL");
+  const [monitorQuery, setMonitorQuery] = useState("");
 
   // Task & Telemetry Data
   const [tasks, setTasks] = useState<TaskRecord[]>(INITIAL_FALLBACK_TASKS);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>('EXEC-9821');
   const [isLoadingTasks, setIsLoadingTasks] = useState(false);
+
+  // Synchronized jobs representation for split view
+  const jobs: Job[] = useMemo(() => {
+    return tasks.map((t) => ({
+      id: t.id,
+      correlation_id: t.correlation_id,
+      identifier: t.identifier,
+      name: t.name,
+      engine: t.engine,
+      risk_tier: t.risk_tier,
+      requester_id: t.requester_id,
+      approver_id: t.approver_id ?? null,
+      parameters: t.parameters || {},
+      status: t.status as JobStatus,
+      servicenow_chg: t.servicenow_chg || null,
+      created_at: t.created_at,
+      approved_at: null,
+      completed_at: null,
+      exit_code: t.status === 'SUCCESS' ? 0 : t.status === 'FAILED' ? 1 : null,
+      diagnostic: t.diagnostic || t.error_message || null
+    }));
+  }, [tasks]);
+
+  const filteredJobs = useMemo(() => {
+    return jobs.filter((j) => {
+      if (monitorStatusFilter !== "ALL" && j.status !== monitorStatusFilter) return false;
+      if (monitorQuery.trim()) {
+        const q = monitorQuery.toLowerCase();
+        const matchName = j.name.toLowerCase().includes(q);
+        const matchCorr = j.correlation_id.toLowerCase().includes(q);
+        const matchChg = (j.servicenow_chg || "").toLowerCase().includes(q);
+        const matchEng = j.engine.toLowerCase().includes(q);
+        if (!matchName && !matchCorr && !matchChg && !matchEng) return false;
+      }
+      return true;
+    });
+  }, [jobs, monitorStatusFilter, monitorQuery]);
+
+  const selectedJob = useMemo(() => {
+    return jobs.find((j) => j.id === selectedTaskId || j.correlation_id === selectedTaskId) || jobs[0] || null;
+  }, [jobs, selectedTaskId]);
 
   const [telemetry, setTelemetry] = useState({
     catalogSize: 120,
@@ -312,55 +363,89 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Top Navigation Tabs */}
-        <nav className="flex items-center rounded-xl bg-[#07090E] border border-slate-800 p-1">
-          {/* Tab 1: Chat & Launch Assistant */}
-          <button
-            onClick={() => setActiveTab('chat')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-medium flex items-center gap-2 transition-all ${
-              activeTab === 'chat'
-                ? 'bg-cyan-600/20 text-cyan-300 border border-cyan-500/40 shadow-sm font-semibold'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-            <span>Chat Assistant</span>
-          </button>
+        {/* Top View Mode Switcher & Navigation Tabs */}
+        <div className="flex items-center gap-3">
+          {/* Mode Switcher */}
+          <div className="flex items-center rounded-xl bg-[#07090E] border border-slate-800 p-0.5">
+            <button
+              onClick={() => setViewMode('split')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all ${
+                viewMode === 'split'
+                  ? 'bg-cyan-600/25 text-cyan-300 border border-cyan-500/40 shadow-sm font-semibold'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+              title="3-Column Unified Console: Chat, Filtered Tasks & Live Terminal side-by-side"
+            >
+              <Columns className="w-3.5 h-3.5 text-cyan-400" />
+              <span className="hidden sm:inline">Split Console</span>
+            </button>
 
-          {/* Tab 2: High-Filtered Task & Inventory Matrix */}
-          <button
-            onClick={() => setActiveTab('matrix')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-medium flex items-center gap-2 transition-all ${
-              activeTab === 'matrix'
-                ? 'bg-cyan-600/20 text-cyan-300 border border-cyan-500/40 shadow-sm font-semibold'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <FileSpreadsheet className="w-3.5 h-3.5 text-blue-400" />
-            <span>Task Matrix</span>
-            {pendingCount > 0 && (
-              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
-                {pendingCount}
-              </span>
-            )}
-          </button>
+            <button
+              onClick={() => setViewMode('tabbed')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all ${
+                viewMode === 'tabbed'
+                  ? 'bg-cyan-600/25 text-cyan-300 border border-cyan-500/40 shadow-sm font-semibold'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+              title="Dedicated Full-Screen Workspaces with 10-Column Sortable Matrix & CSV Export"
+            >
+              <Layers className="w-3.5 h-3.5 text-cyan-400" />
+              <span className="hidden sm:inline">Tabbed Studio</span>
+            </button>
+          </div>
 
-          {/* Tab 3: Live Terminal & Audit Log */}
-          <button
-            onClick={() => setActiveTab('terminal')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-medium flex items-center gap-2 transition-all ${
-              activeTab === 'terminal'
-                ? 'bg-cyan-600/20 text-cyan-300 border border-cyan-500/40 shadow-sm font-semibold'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <TerminalIcon className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Live Terminal</span>
-            {runningCount > 0 && (
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            )}
-          </button>
-        </nav>
+          {/* Sub-tabs when in Tabbed Studio mode */}
+          {viewMode === 'tabbed' && (
+            <nav className="flex items-center rounded-xl bg-[#07090E] border border-slate-800 p-0.5 animate-in fade-in duration-200">
+              {/* Tab 1: Chat & Launch Assistant */}
+              <button
+                onClick={() => setActiveTab('chat')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-2 transition-all ${
+                  activeTab === 'chat'
+                    ? 'bg-cyan-600/20 text-cyan-300 border border-cyan-500/40 shadow-sm font-semibold'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Chat Assistant</span>
+              </button>
+
+              {/* Tab 2: High-Filtered Task & Inventory Matrix */}
+              <button
+                onClick={() => setActiveTab('matrix')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-2 transition-all ${
+                  activeTab === 'matrix'
+                    ? 'bg-cyan-600/20 text-cyan-300 border border-cyan-500/40 shadow-sm font-semibold'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-blue-400" />
+                <span>Task Matrix</span>
+                {pendingCount > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                    {pendingCount}
+                  </span>
+                )}
+              </button>
+
+              {/* Tab 3: Live Terminal & Audit Log */}
+              <button
+                onClick={() => setActiveTab('terminal')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-2 transition-all ${
+                  activeTab === 'terminal'
+                    ? 'bg-cyan-600/20 text-cyan-300 border border-cyan-500/40 shadow-sm font-semibold'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <TerminalIcon className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Live Terminal</span>
+                {runningCount > 0 && (
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                )}
+              </button>
+            </nav>
+          )}
+        </div>
 
         {/* Right: Persona Switcher (Alice / Bob) */}
         <div className="flex items-center gap-3">
@@ -383,47 +468,92 @@ export default function Home() {
       </header>
 
       {/* ===================================================================== */}
-      {/* ACTIVE TAB CONTENT WORKSPACE                                          */}
+      {/* ACTIVE CONTENT WORKSPACE (SPLIT CONSOLE OR TABBED STUDIO)              */}
       {/* ===================================================================== */}
       <div className="flex-1 overflow-hidden">
-        {/* TAB 1: Chat & Launch Assistant */}
-        {activeTab === 'chat' && (
-          <div className="h-full p-4 max-w-5xl mx-auto flex flex-col overflow-hidden">
-            <ChatAssistant
-              currentUser={currentUser}
-              onDispatchTask={handleDispatchTask}
-              onSelectTaskToView={(corrId) => {
-                setSelectedTaskId(corrId);
-                setActiveTab('terminal');
+        {/* VIEW 1: SPLIT CONSOLE (3-PANEL UNIFIED OPERATOR WORKSPACE) */}
+        {viewMode === 'split' ? (
+          <div className="flex h-full w-full overflow-hidden">
+            {/* Column 1: Chat Assistant (Launch studio with prompt chips & parameters) */}
+            <div className="w-[380px] xl:w-[430px] shrink-0 border-r border-slate-800/80 bg-[#0A0E16] flex flex-col h-full overflow-hidden p-2.5">
+              <ChatAssistant
+                currentUser={currentUser}
+                onDispatchTask={handleDispatchTask}
+                onSelectTaskToView={(corrId) => setSelectedTaskId(corrId)}
+              />
+            </div>
+
+            {/* Column 2: High-Filtered Task Monitor (Live jobs with status filters & search) */}
+            <TaskMonitor
+              jobs={filteredJobs}
+              allJobs={jobs}
+              selectedId={selectedJob ? selectedJob.id : null}
+              onSelect={(id) => {
+                const found = jobs.find((j) => j.id === id);
+                if (found) setSelectedTaskId(found.correlation_id || found.id);
+              }}
+              statusFilter={monitorStatusFilter}
+              setStatusFilter={setMonitorStatusFilter}
+              query={monitorQuery}
+              setQuery={setMonitorQuery}
+              onOpenFullMatrix={() => {
+                setViewMode('tabbed');
+                setActiveTab('matrix');
               }}
             />
+
+            {/* Column 3: Live Terminal, Details & Maker-Checker Deck */}
+            <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#07090E]">
+              <JobDetail
+                job={selectedJob}
+                currentUser={currentUser}
+                onChanged={loadData}
+              />
+            </div>
           </div>
-        )}
+        ) : (
+          /* VIEW 2: TABBED STUDIO (FULL-WIDTH WORKSPACES) */
+          <>
+            {/* TAB 1: Chat & Launch Assistant */}
+            {activeTab === 'chat' && (
+              <div className="h-full p-4 max-w-5xl mx-auto flex flex-col overflow-hidden">
+                <ChatAssistant
+                  currentUser={currentUser}
+                  onDispatchTask={handleDispatchTask}
+                  onSelectTaskToView={(corrId) => {
+                    setSelectedTaskId(corrId);
+                    setActiveTab('terminal');
+                  }}
+                />
+              </div>
+            )}
 
-        {/* TAB 2: High-Filtered Task & Inventory Matrix */}
-        {activeTab === 'matrix' && (
-          <TaskMatrixTable
-            tasks={tasks}
-            currentUser={currentUser}
-            onOpenTerminal={handleOpenTerminalForTask}
-            onApproveTask={handleApproveTask}
-            onRejectTask={handleRejectTask}
-            onRefresh={loadData}
-            isLoading={isLoadingTasks}
-          />
-        )}
+            {/* TAB 2: High-Filtered Task & Inventory Matrix */}
+            {activeTab === 'matrix' && (
+              <TaskMatrixTable
+                tasks={tasks}
+                currentUser={currentUser}
+                onOpenTerminal={handleOpenTerminalForTask}
+                onApproveTask={handleApproveTask}
+                onRejectTask={handleRejectTask}
+                onRefresh={loadData}
+                isLoading={isLoadingTasks}
+              />
+            )}
 
-        {/* TAB 3: Dedicated Live Terminal & Audit Log */}
-        {activeTab === 'terminal' && (
-          <TerminalAuditWorkspace
-            tasks={tasks}
-            selectedTaskId={selectedTaskId}
-            currentUser={currentUser}
-            onSelectTask={setSelectedTaskId}
-            onApproveTask={handleApproveTask}
-            onRejectTask={handleRejectTask}
-            auditChainTip={telemetry.lastAuditHash}
-          />
+            {/* TAB 3: Dedicated Live Terminal & Audit Log */}
+            {activeTab === 'terminal' && (
+              <TerminalAuditWorkspace
+                tasks={tasks}
+                selectedTaskId={selectedTaskId}
+                currentUser={currentUser}
+                onSelectTask={setSelectedTaskId}
+                onApproveTask={handleApproveTask}
+                onRejectTask={handleRejectTask}
+                auditChainTip={telemetry.lastAuditHash}
+              />
+            )}
+          </>
         )}
       </div>
     </div>

@@ -7,18 +7,30 @@ const FILTERS: (JobStatus | "ALL")[] = [
   "ALL", "PENDING_APPROVAL", "QUEUED", "RUNNING", "VERIFYING", "SUCCESS", "FAILED", "REJECTED", "TIMEOUT_DENIED",
 ];
 
-export function TaskMonitor({ jobs, allJobs, selectedId, onSelect, statusFilter, setStatusFilter, query, setQuery }: {
+export function TaskMonitor({ jobs, allJobs, selectedId, onSelect, statusFilter, setStatusFilter, query, setQuery, onOpenFullMatrix }: {
   jobs: Job[]; allJobs: Job[]; selectedId: string | null; onSelect: (id: string) => void;
   statusFilter: JobStatus | "ALL"; setStatusFilter: (s: JobStatus | "ALL") => void;
   query: string; setQuery: (q: string) => void;
+  onOpenFullMatrix?: () => void;
 }) {
   const count = (s: JobStatus | "ALL") =>
     s === "ALL" ? allJobs.length : allJobs.filter((j) => j.status === s).length;
 
   return (
-    <section className="hidden h-full min-h-0 w-[320px] shrink-0 flex-col border-r border-slate-800/80 bg-[#0A0E16] lg:flex">
+    <section className="flex h-full min-h-0 w-[320px] xl:w-[360px] shrink-0 flex-col border-r border-slate-800/80 bg-[#0A0E16]">
       <header className="border-b border-slate-800/80 px-4 py-3">
-        <h2 className="text-sm font-semibold text-slate-200">Task Monitor</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-slate-200">Task Monitor</h2>
+          {onOpenFullMatrix && (
+            <button
+              onClick={onOpenFullMatrix}
+              className="text-[11px] font-mono text-cyan-400 hover:text-cyan-300 underline underline-offset-2 flex items-center gap-1"
+              title="Open full-width sortable Task Matrix table with CSV export"
+            >
+              Full Table &amp; CSV &rarr;
+            </button>
+          )}
+        </div>
         <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="filter: id, playbook, CHG…"
           className="mt-2 w-full rounded-md border border-slate-700 bg-[#07090E] px-2.5 py-1.5 text-xs text-slate-200 placeholder:text-slate-600 focus:border-cyan-600 focus:outline-none" />
       </header>
