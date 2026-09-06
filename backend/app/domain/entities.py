@@ -271,6 +271,37 @@ class ExecutionJob:
         else:
             self.transition_to(JobStatus.REJECTED, f"Rejected by {decision.approver_id}: {decision.reason}")
 
+    def enforce_maker_checker(
+        self,
+        approver_id: str,
+        decided_at: Optional[datetime] = None,
+        timeout_seconds: int = 900
+    ):
+        """
+        Hard Banking Invariant 1: Universal Maker-Checker (Separation of Duties).
+        Blocks self-approval for ALL executions regardless of risk tier.
+        Requires state to be PENDING_APPROVAL before transitioning to QUEUED.
+        """
+        if self.status != JobStatus.PENDING_APPROVAL:
+            raise StateTransitionError(
+                f"Cannot enforce maker-checker approval when job is in [{self.status.value}] state (must be PENDING_APPROVAL)."
+            )
+
+        now = decided_at or datetime.now(timezone.utc)
+        if self.approval_requested_at is not None:
+            elapsed = (now - self.approval_requested_at).total_seconds()
+            if elapsed > timeout_seconds:
+                self.transition_to(JobStatus.TIMEOUT_DENIED, f"Approval timed out after {elapsed:.1f}s (> {timeout_seconds}s)")
+                raise ApprovalTimeoutError("Approval window expired. Request denied fail-closed.")
+
+        if approver_id == self.requester_id:
+            raise MakerCheckerViolationError(
+                f"MakerCheckerViolation: Requester [{self.requester_id}] cannot approve own execution."
+            )
+
+        self.approver_id = approver_id
+        self.transition_to(JobStatus.QUEUED, f"Approved by Checker [{approver_id}]")
+
     def _validate_parameters(self):
         """
         Hard Invariant 3: Parameter Regex, Bounds, Schema, and Secret Linting.
@@ -321,6 +352,12 @@ class ExecutionJob:
             elif val_type == "array":
                 if not isinstance(value, list):
                     raise ParameterValidationError(f"Parameter '{key}' must be a list")
+
+        # 3. ServiceNow Change Request validation
+        if self.catalog_item.requires_chg and not (self.servicenow_chg and self.servicenow_chg.strip()):
+            raise ParameterValidationError(
+                f"CatalogItem [{self.catalog_item.identifier}] requires a valid ServiceNow Change Request (CHG ticket)."
+            )
 
     @staticmethod
     def _lint_secret(key: str, value: str):

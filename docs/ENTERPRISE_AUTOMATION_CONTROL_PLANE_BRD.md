@@ -74,6 +74,10 @@ The **Enterprise Automation Control Plane** is a centralized, AI-native self-ser
 | **Software License Cost Avoidance (AAP + TFE)** | Commercial license fees avoided per year | **$1,800,000** |
 | **TOTAL ANNUAL QUANTIFIED VALUE** | **Direct Capacity & Cost Savings** | **$3,920,400 / year** |
 
+> [!NOTE]
+> **Financial Target Modeling Disclaimer:**
+> The \$3,920,400 annual savings model represents a projected business case and financial target model based on modeled organizational parameters (75 loaded engineers @ \$120/hr, 300 runs/week projected volume, and enterprise software list-price license displacement for Red Hat AAP and Terraform Enterprise). These figures serve as the strategic baseline for executive investment justification rather than empirically validated historical runtime telemetry. Realized capacity gains and cost offsets will be measured against live Prometheus telemetry during the pilot phase.
+
 ---
 
 ## 3. STAKEHOLDER ECOSYSTEM & USER PERSONAS

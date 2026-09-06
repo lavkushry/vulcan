@@ -51,15 +51,16 @@ class InMemoryLockManager(ILockManager):
         self._locks = set()
         self.release_call_count = 0
 
-    def acquire(self, resource_id: str, ttl_seconds: int = 1800) -> bool:
+    def acquire(self, resource_id: str, ttl_seconds: int = 1800, owner_token: Optional[str] = None) -> bool:
         if resource_id in self._locks:
             return False
         self._locks.add(resource_id)
         return True
 
-    def release(self, resource_id: str) -> None:
+    def release(self, resource_id: str, owner_token: Optional[str] = None) -> bool:
         self.release_call_count += 1
         self._locks.discard(resource_id)
+        return True
 
     def is_locked(self, resource_id: str) -> bool:
         return resource_id in self._locks
@@ -707,6 +708,285 @@ class TestVulcanCleanArchitectureSuite(unittest.TestCase):
             runner.run(job)
         self.assertIn("checksum mismatch", str(ctx.exception))
         self.assertFalse(self.lock_mgr.is_locked("f5-vip-01"))
+
+    # =============================================================
+    # AUDIT & BUG FIX VERIFICATION SUITE
+    # =============================================================
+
+    def test_maker_checker_enforce_method_universal_rejection_and_transition_guard(self):
+        """
+        Bug 3 Fix Verification:
+        1. enforce_maker_checker raises StateTransitionError if job not in PENDING_APPROVAL.
+        2. enforce_maker_checker rejects self-approval across ALL risk tiers (LOW, MEDIUM, HIGH).
+        3. Distinct approver cleanly transitions to QUEUED.
+        """
+        job = ExecutionJob(
+            job_id="j-mc-01",
+            correlation_id="EXEC-MC01",
+            catalog_item=self.catalog_item,
+            requester_id="operator.dan",
+            target_resource_id="f5-vip-01",
+            parameters=self.valid_params,
+            servicenow_chg="CHG001"
+        )
+        # Status is SUBMITTED: must reject transition
+        with self.assertRaises(StateTransitionError) as ctx:
+            job.enforce_maker_checker("lead.bob")
+        self.assertIn("must be PENDING_APPROVAL", str(ctx.exception))
+
+        # Transition to PENDING_APPROVAL
+        job.request_approval(datetime.now(timezone.utc))
+
+        # Universal rejection of self-approval
+        with self.assertRaises(MakerCheckerViolationError) as ctx:
+            job.enforce_maker_checker("operator.dan")
+        self.assertIn("cannot approve own execution", str(ctx.exception))
+        self.assertEqual(job.status, JobStatus.PENDING_APPROVAL)
+
+        # Distinct checker succeeds
+        job.enforce_maker_checker("lead.bob")
+        self.assertEqual(job.status, JobStatus.QUEUED)
+        self.assertEqual(job.approver_id, "lead.bob")
+
+    def test_catalog_item_requires_chg_enforcement(self):
+        """
+        Bug 6 Fix Verification:
+        If catalog_item.requires_chg=True, ExecutionJob instantiation MUST fail
+        if servicenow_chg is missing or whitespace.
+        """
+        with self.assertRaises(ParameterValidationError) as ctx:
+            ExecutionJob(
+                job_id="j-chg-01",
+                correlation_id="EXEC-CHG01",
+                catalog_item=self.catalog_item,  # requires_chg=True
+                requester_id="lavkush.kumar",
+                target_resource_id="f5-vip-01",
+                parameters=self.valid_params,
+                servicenow_chg=None
+            )
+        self.assertIn("requires a valid ServiceNow Change Request", str(ctx.exception))
+
+        with self.assertRaises(ParameterValidationError) as ctx:
+            ExecutionJob(
+                job_id="j-chg-02",
+                correlation_id="EXEC-CHG02",
+                catalog_item=self.catalog_item,
+                requester_id="lavkush.kumar",
+                target_resource_id="f5-vip-01",
+                parameters=self.valid_params,
+                servicenow_chg="   "
+            )
+        self.assertIn("requires a valid ServiceNow Change Request", str(ctx.exception))
+
+        # Supplying valid CHG passes
+        valid_job = ExecutionJob(
+            job_id="j-chg-03",
+            correlation_id="EXEC-CHG03",
+            catalog_item=self.catalog_item,
+            requester_id="lavkush.kumar",
+            target_resource_id="f5-vip-01",
+            parameters=self.valid_params,
+            servicenow_chg="CHG009988"
+        )
+        self.assertEqual(valid_job.servicenow_chg, "CHG009988")
+
+    def test_scenario_8_exec_blocked_audit_records_on_window_and_lock_failures(self):
+        """
+        Bug 5 Fix Verification (Scenario 8):
+        Lock acquisition and maintenance window checks must record EXEC_BLOCKED in audit ledger
+        before raising exceptions.
+        """
+        # 1. Maintenance window closed -> EXEC_BLOCKED recorded
+        self.snow.window_open = False
+        runner = AnsibleJobRunner(
+            engine_port=self.engine,
+            lock_manager=self.lock_mgr,
+            audit_logger=self.audit,
+            secret_provider=self.secrets,
+            snow_gateway=self.snow,
+            health_probe=self.health
+        )
+        job_mw = ExecutionJob(
+            job_id="j-blk-01",
+            correlation_id="EXEC-BLK01",
+            catalog_item=self.catalog_item,
+            requester_id="lavkush.kumar",
+            target_resource_id="f5-vip-01",
+            parameters=self.valid_params,
+            servicenow_chg="CHG001"
+        )
+        job_mw.parse()
+        job_mw.transition_to(JobStatus.QUEUED)
+
+        with self.assertRaises(MaintenanceWindowClosedError):
+            runner.run(job_mw)
+
+        blocked_records = [r for r in self.audit.ledger if r.action == "EXEC_BLOCKED"]
+        self.assertGreaterEqual(len(blocked_records), 1)
+        self.assertEqual(blocked_records[-1].payload["reason"], "MAINTENANCE_WINDOW_CLOSED")
+
+        # 2. Resource locked -> EXEC_BLOCKED recorded
+        self.snow.window_open = True
+        self.lock_mgr.acquire("f5-vip-01")  # Pre-lock resource
+
+        job_lock = ExecutionJob(
+            job_id="j-blk-02",
+            correlation_id="EXEC-BLK02",
+            catalog_item=self.catalog_item,
+            requester_id="lavkush.kumar",
+            target_resource_id="f5-vip-01",
+            parameters=self.valid_params,
+            servicenow_chg="CHG001"
+        )
+        job_lock.parse()
+        job_lock.transition_to(JobStatus.QUEUED)
+
+        with self.assertRaises(ResourceLockedError):
+            runner.run(job_lock)
+
+        lock_blocked = [r for r in self.audit.ledger if r.action == "EXEC_BLOCKED" and r.payload.get("reason") == "RESOURCE_LOCKED"]
+        self.assertGreaterEqual(len(lock_blocked), 1)
+        self.lock_mgr.release("f5-vip-01")
+
+    def test_degraded_state_preservation_when_no_rollback_configured(self):
+        """
+        Bug 4 Fix Verification (Part 1):
+        When health probe fails and catalog item has no rollback_path,
+        job status must remain DEGRADED (NOT clobbered to FAILED!).
+        """
+        health_probe_failing = InMemoryHealthProbeGateway(healthy=False)
+        runner = AnsibleJobRunner(
+            engine_port=self.engine,
+            lock_manager=self.lock_mgr,
+            audit_logger=self.audit,
+            secret_provider=self.secrets,
+            snow_gateway=self.snow,
+            health_probe=health_probe_failing
+        )
+        job = ExecutionJob(
+            job_id="j-deg-01",
+            correlation_id="EXEC-DEG01",
+            catalog_item=self.catalog_item,  # rollback_path is None
+            requester_id="lavkush.kumar",
+            target_resource_id="f5-vip-01",
+            parameters=self.valid_params,
+            servicenow_chg="CHG001"
+        )
+        job.parse()
+        job.transition_to(JobStatus.QUEUED)
+
+        with self.assertRaises(HealthProbeDegradedError):
+            runner.run(job)
+
+        # Assert status is strictly preserved as DEGRADED
+        self.assertEqual(job.status, JobStatus.DEGRADED)
+        self.assertFalse(self.lock_mgr.is_locked("f5-vip-01"))
+
+    def test_automated_rollback_reverting_to_reverted_when_probe_fails(self):
+        """
+        Bug 4 Fix Verification (Part 2):
+        When health probe fails and rollback_path IS defined,
+        runner automatically executes rollback: DEGRADED -> REVERTING -> REVERTED,
+        and logs EXEC_REVERTED in the audit ledger.
+        """
+        item_with_rollback = CatalogItem(
+            id="cat-rb-01",
+            identifier="f5-cert-renew-rb",
+            name="F5 SSL Certificate Renewal with Rollback",
+            engine=ExecutionEngineType.ANSIBLE,
+            git_repo="git@github.com:pnc/network-playbooks.git",
+            git_commit_sha="a1b2c3d4e5f67890123456789abcdef012345678",
+            playbook_or_module_path="playbooks/renew_f5_cert.yml",
+            risk_tier=RiskTier.HIGH,
+            requires_maker_checker=True,
+            requires_chg=True,
+            input_schema=self.catalog_item.input_schema,
+            rollback_path="playbooks/rollback_f5_cert.yml"
+        )
+        health_probe_failing = InMemoryHealthProbeGateway(healthy=False)
+        runner = AnsibleJobRunner(
+            engine_port=self.engine,
+            lock_manager=self.lock_mgr,
+            audit_logger=self.audit,
+            secret_provider=self.secrets,
+            snow_gateway=self.snow,
+            health_probe=health_probe_failing
+        )
+        job = ExecutionJob(
+            job_id="j-deg-02",
+            correlation_id="EXEC-DEG02",
+            catalog_item=item_with_rollback,
+            requester_id="lavkush.kumar",
+            target_resource_id="f5-vip-01",
+            parameters=self.valid_params,
+            servicenow_chg="CHG001"
+        )
+        job.parse()
+        job.transition_to(JobStatus.QUEUED)
+
+        with self.assertRaises(HealthProbeDegradedError):
+            runner.run(job)
+
+        # Assert status transitioned to REVERTED (NOT FAILED!)
+        self.assertEqual(job.status, JobStatus.REVERTED)
+        reverted_records = [r for r in self.audit.ledger if r.action == "EXEC_REVERTED"]
+        self.assertGreaterEqual(len(reverted_records), 1)
+        self.assertEqual(reverted_records[-1].payload["rollback_path"], "playbooks/rollback_f5_cert.yml")
+        self.assertFalse(self.lock_mgr.is_locked("f5-vip-01"))
+
+    def test_cross_process_merkle_audit_logger_concurrency(self):
+        """
+        Bug 2 Fix Verification:
+        MerkleAuditLogger persists chain head transactionally with advisory locking,
+        guaranteeing cross-process chain integrity without forking.
+        """
+        import os
+        import tempfile
+        from app.adapters.crypto_audit_adapter import MerkleAuditLogger
+
+        with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as tf:
+            temp_path = tf.name
+
+        try:
+            worker1 = MerkleAuditLogger(persistence_file=temp_path)
+            rec1 = worker1.record(
+                ExecutionJob(
+                    job_id="jw1",
+                    correlation_id="EXEC-W1",
+                    catalog_item=self.catalog_item,
+                    requester_id="worker.one",
+                    target_resource_id="r1",
+                    parameters=self.valid_params,
+                    servicenow_chg="CHG001"
+                ),
+                "EXEC_START",
+                {"step": 1}
+            )
+
+            worker2 = MerkleAuditLogger(persistence_file=temp_path)
+            rec2 = worker2.record(
+                ExecutionJob(
+                    job_id="jw2",
+                    correlation_id="EXEC-W2",
+                    catalog_item=self.catalog_item,
+                    requester_id="worker.two",
+                    target_resource_id="r2",
+                    parameters=self.valid_params,
+                    servicenow_chg="CHG002"
+                ),
+                "EXEC_START",
+                {"step": 2}
+            )
+
+            # Worker 2's prev_hash must strictly link to Worker 1's current_hash
+            self.assertEqual(rec2.prev_hash, rec1.current_hash)
+            self.assertTrue(worker2.verify_chain())
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+            lock_path = temp_path + ".lock"
+            if os.path.exists(lock_path):
+                os.remove(lock_path)
 
 
 if __name__ == "__main__":

@@ -64,6 +64,34 @@ class TestRedlockConcurrency(unittest.TestCase):
         self.assertGreater(mutex.fencing_token, 0)
         mutex.release()
 
+    def test_compare_and_delete_prevents_expired_lock_theft(self):
+        """
+        Critical Invariant: If Worker A's lock expires and Worker B acquires it,
+        Worker A's subsequent release() must NOT delete Worker B's lock!
+        """
+        resource = "prod-oracle-rac-01"
+        token_a = "worker-a-tok-123"
+        token_b = "worker-b-tok-456"
+
+        # Worker A acquires lock with very short TTL
+        self.assertTrue(self.lock_manager.acquire(resource, ttl_seconds=0.05, owner_token=token_a))
+        time.sleep(0.08)  # Lock expires
+
+        # Worker B acquires the now-expired lock
+        self.assertTrue(self.lock_manager.acquire(resource, ttl_seconds=10, owner_token=token_b))
+        self.assertTrue(self.lock_manager.is_locked(resource))
+
+        # Worker A attempts to release (e.g. slow worker waking up)
+        released_a = self.lock_manager.release(resource, owner_token=token_a)
+        self.assertFalse(released_a, "Worker A release must be rejected due to owner token mismatch")
+        # Resource must REMAIN locked by Worker B
+        self.assertTrue(self.lock_manager.is_locked(resource), "Resource must still be locked by Worker B")
+
+        # Worker B releases with correct token
+        released_b = self.lock_manager.release(resource, owner_token=token_b)
+        self.assertTrue(released_b, "Worker B release must succeed")
+        self.assertFalse(self.lock_manager.is_locked(resource), "Resource is now unlocked")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

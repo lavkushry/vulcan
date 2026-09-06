@@ -59,6 +59,9 @@ class AppContainer:
                 if req not in params:
                     props = cat_item.input_schema.get('properties', {}).get(req, {})
                     params[req] = props.get('default', 'test-val')
+            chg = s.get('servicenow_chg')
+            if cat_item.requires_chg and not chg:
+                chg = f"CHG-{s['id'].replace('task-', '')}"
             job = ExecutionJob(
                 job_id=s['id'],
                 correlation_id=s['correlation_id'],
@@ -66,6 +69,7 @@ class AppContainer:
                 requester_id=s['requester_id'],
                 target_resource_id=s['target_resource'],
                 parameters=params,
+                servicenow_chg=chg,
                 environment=s.get('environment', 'PROD')
             )
             job.status = JobStatus(s['status'])

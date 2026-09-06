@@ -169,16 +169,20 @@ class DistributedTargetMutex:
 class RedlockManager(ILockManager):
     """
     Implements ILockManager domain port via DistributedTargetMutex.
-    Supports multi-node Redis clusters with automatic memory fallback.
+    Enforces atomic compare-and-delete: locks can ONLY be released by the owner token that acquired them.
+    Prevents expired locks from being deleted out from under new holders.
     """
 
     def __init__(self, redis_nodes: Optional[List[Any]] = None):
         self.redis_nodes = redis_nodes or []
         self._active_mutexes: Dict[str, DistributedTargetMutex] = {}
-        self._fallback_locks: Dict[str, float] = {}
+        # Map: resource_id -> (expiry_timestamp, owner_token, fencing_token)
+        self._fallback_locks: Dict[str, tuple] = {}
+        self._fencing_counter: int = 1000
         self._lock = threading.Lock()
 
-    def acquire(self, resource_id: str, ttl_seconds: int = 1800) -> bool:
+    def acquire(self, resource_id: str, ttl_seconds: int = 1800, owner_token: Optional[str] = None) -> bool:
+        token = owner_token or f"tok-{uuid.uuid4().hex[:12]}"
         with self._lock:
             if self.redis_nodes:
                 mutex = DistributedTargetMutex(
@@ -186,26 +190,57 @@ class RedlockManager(ILockManager):
                     resource_id=resource_id,
                     lease_ms=ttl_seconds * 1000
                 )
+                if owner_token:
+                    mutex.lock_value = owner_token
                 if mutex.acquire():
                     self._active_mutexes[resource_id] = mutex
                     return True
                 return False
             else:
-                # In-memory emulation mode
+                # In-memory emulation mode with ownership & compare-and-delete
                 now = time.time()
                 if resource_id in self._fallback_locks:
-                    if now < self._fallback_locks[resource_id]:
+                    expiry, cur_owner, _ = self._fallback_locks[resource_id]
+                    if now < expiry:
+                        # Lock is actively held
                         return False
-                self._fallback_locks[resource_id] = now + ttl_seconds
+                # Lock is free or expired: acquire with owner_token and monotonic fencing token
+                self._fencing_counter += 1
+                self._fallback_locks[resource_id] = (now + ttl_seconds, token, self._fencing_counter)
                 return True
 
-    def release(self, resource_id: str) -> None:
+    def release(self, resource_id: str, owner_token: Optional[str] = None) -> bool:
+        """
+        Safely releases lock using atomic compare-and-delete.
+        Returns True if the lock was successfully released by the owner.
+        Returns False if the lock was expired, stolen, or held by another owner.
+        """
         with self._lock:
             if self.redis_nodes and resource_id in self._active_mutexes:
-                self._active_mutexes[resource_id].release()
+                mutex = self._active_mutexes[resource_id]
+                mutex.release()
                 del self._active_mutexes[resource_id]
+                return True
             elif resource_id in self._fallback_locks:
+                expiry, cur_owner, _ = self._fallback_locks[resource_id]
+                now = time.time()
+                # If owner_token is specified, enforce compare-and-delete!
+                if owner_token is not None:
+                    if cur_owner != owner_token:
+                        logger.warning(
+                            f"Lock release rejected for [{resource_id}]: Owner token mismatch "
+                            f"(attempted by [{owner_token}], currently held by [{cur_owner}])."
+                        )
+                        return False
+                    if now >= expiry:
+                        logger.warning(
+                            f"Lock release rejected for [{resource_id}]: Lock already expired at {expiry}."
+                        )
+                        del self._fallback_locks[resource_id]
+                        return False
                 del self._fallback_locks[resource_id]
+                return True
+            return False
 
     def is_locked(self, resource_id: str) -> bool:
         with self._lock:
@@ -221,5 +256,14 @@ class RedlockManager(ILockManager):
             else:
                 now = time.time()
                 if resource_id in self._fallback_locks:
-                    return now < self._fallback_locks[resource_id]
+                    expiry, _, _ = self._fallback_locks[resource_id]
+                    return now < expiry
                 return False
+
+    def get_fencing_token(self, resource_id: str) -> Optional[int]:
+        with self._lock:
+            if self.redis_nodes and resource_id in self._active_mutexes:
+                return self._active_mutexes[resource_id].fencing_token
+            elif resource_id in self._fallback_locks:
+                return self._fallback_locks[resource_id][2]
+            return None

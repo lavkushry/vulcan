@@ -15,15 +15,18 @@ from app.domain.entities import (
 
 
 class ILockManager(abc.ABC):
-    """Port for distributed resource mutual exclusion (e.g. Redis Redlock)."""
+    """Port for distributed resource mutual exclusion (e.g. Redis Redlock with fencing tokens)."""
     @abc.abstractmethod
-    def acquire(self, resource_id: str, ttl_seconds: int = 1800) -> bool:
-        """Atomically acquire a lock on resource_id. Returns True if acquired."""
+    def acquire(self, resource_id: str, ttl_seconds: int = 1800, owner_token: Optional[str] = None) -> bool:
+        """Atomically acquire a lock on resource_id with an ownership token. Returns True if acquired."""
         pass
 
     @abc.abstractmethod
-    def release(self, resource_id: str) -> None:
-        """Release the lock on resource_id."""
+    def release(self, resource_id: str, owner_token: Optional[str] = None) -> bool:
+        """
+        Safely releases lock on resource_id using atomic compare-and-delete.
+        Guarantees that expired locks held by other workers are never deleted.
+        """
         pass
 
     @abc.abstractmethod

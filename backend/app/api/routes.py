@@ -252,8 +252,8 @@ def dispatch_task(req: DispatchTaskRequest):
     except (SecretLintError, ParameterValidationError) as e:
         raise HTTPException(status_code=422, detail=str(e))
 
-    # Governance check
-    if catalog_item.risk_tier == RiskTier.HIGH and catalog_item.requires_maker_checker and not req.dry_run:
+    # Governance check: Enforce Maker-Checker if declared on catalog item or if high risk
+    if (catalog_item.requires_maker_checker or catalog_item.risk_tier == RiskTier.HIGH) and not req.dry_run:
         job.parse()
         job.request_approval(datetime.now(timezone.utc))
         container.jobs[correlation_id] = job
@@ -264,7 +264,7 @@ def dispatch_task(req: DispatchTaskRequest):
             "status": job.status.value,
             "target_resource": job.target_resource_id,
             "requires_approval": True,
-            "message": "High-risk automation requires Maker-Checker approval before execution."
+            "message": "Automation requires Maker-Checker approval before execution."
         }
 
     # Immediate execution path

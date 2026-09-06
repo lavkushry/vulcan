@@ -197,11 +197,24 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field, constr
 
 class JobStatus(str, Enum):
+    """
+    Authoritative 14-State Deterministic Finite State Machine:
+    SUBMITTED -> PARSED -> PENDING_APPROVAL -> TIMEOUT_DENIED | REJECTED | QUEUED
+    -> LOCKED -> RUNNING -> VERIFYING -> SUCCESS | DEGRADED -> REVERTING -> REVERTED | FAILED
+    """
+    SUBMITTED = "SUBMITTED"
+    PARSED = "PARSED"
     PENDING_APPROVAL = "PENDING_APPROVAL"
+    TIMEOUT_DENIED = "TIMEOUT_DENIED"
+    REJECTED = "REJECTED"
     QUEUED = "QUEUED"
+    LOCKED = "LOCKED"
     RUNNING = "RUNNING"
+    VERIFYING = "VERIFYING"
     SUCCESS = "SUCCESS"
     FAILED = "FAILED"
+    DEGRADED = "DEGRADED"
+    REVERTING = "REVERTING"
     REVERTED = "REVERTED"
 
 class RiskTier(str, Enum):
@@ -241,7 +254,7 @@ class ExecutionJob:
     approver_id: Optional[str] = None
     servicenow_chg: Optional[str] = None
     exit_code: Optional[int] = None
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     completed_at: Optional[datetime] = None
 ```
 
@@ -329,61 +342,84 @@ class AnsibleRunnerAdapter(IExecutionEngine):
 
 #### B. Redis Distributed Mutex Adapter (`adapters/redis_lock_adapter.py`)
 ```python
+import uuid
 import redis
+from typing import Optional
 from domain.ports import ILockManager
 
+# Lua script for atomic compare-and-delete: only the owner token can release the lock
+LUA_RELEASE_SCRIPT = """
+if redis.call("get", KEYS[1]) == ARGV[1] then
+    return redis.call("del", KEYS[1])
+else
+    return 0
+end
+"""
+
 class RedisLockAdapter(ILockManager):
-    """Adapter enforcing target resource mutual exclusion using atomic SETNX."""
+    """Adapter enforcing target resource mutual exclusion using atomic SETNX + compare-and-delete."""
 
     def __init__(self, redis_client: redis.Redis):
         self.client = redis_client
+        self._release_script = self.client.register_script(LUA_RELEASE_SCRIPT)
 
-    def acquire(self, resource_id: str, ttl_seconds: int = 1800) -> bool:
+    def acquire(self, resource_id: str, ttl_seconds: int = 1800, owner_token: Optional[str] = None) -> bool:
         lock_key = f"lock:resource:{resource_id}"
-        return bool(self.client.set(lock_key, "LOCKED", ex=ttl_seconds, nx=True))
+        token = owner_token or f"tok-{uuid.uuid4().hex[:12]}"
+        return bool(self.client.set(lock_key, token, ex=ttl_seconds, nx=True))
 
-    def release(self, resource_id: str) -> None:
+    def release(self, resource_id: str, owner_token: Optional[str] = None) -> bool:
+        """Atomic compare-and-delete ensures expired locks held by other workers are never deleted."""
         lock_key = f"lock:resource:{resource_id}"
-        self.client.delete(lock_key)
+        if owner_token is None:
+            return bool(self.client.delete(lock_key))
+        return bool(self._release_script(keys=[lock_key], args=[owner_token]))
 ```
 
 #### C. Cryptographic Audit Logger (`adapters/crypto_audit_adapter.py`)
 ```python
 import hashlib
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict
 from domain.entities import ExecutionJob
 from domain.ports import IAuditLogger
 
 class CryptographicAuditAdapter(IAuditLogger):
-    """Adapter computing SHA256 Merkle hash chain over immutable audit records."""
+    """Adapter computing SHA256 Merkle hash chain with transactional disk/DB persistence to prevent chain forks."""
 
     def __init__(self, db_connection):
         self.db = db_connection
-        self._last_hash = "GENESIS_HASH_00000000000000000000000000000000000000000000000000000000"
+        self.GENESIS_HASH = "0" * 64
 
     def record(self, job: ExecutionJob, action: str, details: Dict[str, Any]) -> str:
+        # 1. Transactionally query the current chain head under row lock to prevent worker forking
+        cursor = self.db.cursor()
+        cursor.execute("SELECT sha256_hash FROM audit_logs ORDER BY id DESC LIMIT 1 FOR UPDATE")
+        row = cursor.fetchone()
+        prev_hash = row[0] if row else self.GENESIS_HASH
+
+        now_str = datetime.now(timezone.utc).isoformat()
         record_payload = {
             "correlation_id": job.correlation_id,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": now_str,
             "requester": job.requester_id,
             "approver": job.approver_id,
             "action": action,
             "target": job.target_resource_id,
             "details": details,
-            "prev_hash": self._last_hash
+            "prev_hash": prev_hash
         }
 
         serialized = json.dumps(record_payload, sort_keys=True)
         current_hash = hashlib.sha256(serialized.encode("utf-8")).hexdigest()
-        self._last_hash = current_hash
 
-        # Commit synchronously to WORM storage
-        self.db.execute(
-            "INSERT INTO audit_logs (correlation_id, payload, sha256_hash) VALUES (%s, %s, %s)",
-            (job.correlation_id, json.dumps(record_payload), current_hash)
+        # 2. Commit synchronously to tamper-evident table
+        cursor.execute(
+            "INSERT INTO audit_logs (correlation_id, payload, sha256_hash, prev_hash) VALUES (%s, %s, %s, %s)",
+            (job.correlation_id, json.dumps(record_payload), current_hash, prev_hash)
         )
+        self.db.commit()
         return current_hash
 ```
 

@@ -176,6 +176,42 @@ class TestAPIEndpoints(unittest.TestCase):
         self.assertEqual(logs_res.status_code, 200)
         self.assertGreater(len(logs_res.json()["logs"]), 0)
 
+    def test_create_job_missing_required_chg_returns_422(self):
+        """POST /api/v1/jobs for a catalog item requiring CHG without CHG fails with 422."""
+        payload = {
+            "catalog_identifier": "net-f5-cert-renew",  # requires_chg = True
+            "target_resource_id": "f5-edge-01.internal",
+            "requester_id": "eng.charlie",
+            "parameters": {
+                "hostname": "f5-edge-01.internal",
+                "vip_ip": "10.200.1.50",
+                "cert_valid_days": 90
+            },
+            "servicenow_chg": None  # Missing CHG
+        }
+        res = self.client.post("/api/v1/jobs", json=payload)
+        self.assertEqual(res.status_code, 422)
+        self.assertIn("requires a valid ServiceNow Change Request", res.json()["detail"])
+
+    def test_dispatch_task_requires_approval_when_catalog_item_declares_maker_checker(self):
+        """POST /api/v1/tasks/dispatch with high-risk item routes to PENDING_APPROVAL."""
+        payload = {
+            "catalog_identifier": "net-f5-cert-renew",
+            "target_resource_id": "f5-edge-01.internal",
+            "requester_id": "eng.charlie",
+            "parameters": {
+                "hostname": "f5-edge-01.internal",
+                "vip_ip": "10.200.1.50",
+                "cert_valid_days": 90
+            },
+            "servicenow_chg": "CHG-991122"
+        }
+        res = self.client.post("/api/v1/tasks/dispatch", json=payload)
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertTrue(data["requires_approval"])
+        self.assertEqual(data["status"], "PENDING_APPROVAL")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

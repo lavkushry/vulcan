@@ -58,49 +58,105 @@ class MerkleAuditLogger(IAuditLogger):
         except Exception as e:
             logger.error(f"Failed to load audit ledger from {self.persistence_file}: {e}")
 
+    def _get_persisted_head(self) -> tuple[int, str]:
+        """Reads the true authoritative chain head from transactional disk storage."""
+        if not self.persistence_file or not os.path.exists(self.persistence_file):
+            return 0, self.GENESIS_HASH
+
+        try:
+            with open(self.persistence_file, "r", encoding="utf-8") as f:
+                lines = [ln.strip() for ln in f if ln.strip()]
+                if not lines:
+                    return 0, self.GENESIS_HASH
+                last_record = json.loads(lines[-1])
+                return last_record.get("id", len(lines)), last_record.get("current_hash", self.GENESIS_HASH)
+        except Exception:
+            return len(self.ledger), self._last_hash
+
     def record(self, job: ExecutionJob, action: str, payload: Dict[str, Any]) -> AuditRecord:
+        """
+        Transactional, cross-process safe Merkle audit record commit.
+        Acquires exclusive file lock to prevent chain forking when multiple workers execute concurrently.
+        """
+        import fcntl
+        now_str = datetime.now(timezone.utc).isoformat()
+
         with self._lock:
-            rec_id = len(self.ledger) + 1
-            now_str = datetime.now(timezone.utc).isoformat()
-            current_hash = AuditRecord.compute_hash(
-                job.correlation_id,
-                now_str,
-                job.requester_id,
-                action,
-                payload,
-                self._last_hash
-            )
-            rec = AuditRecord(
-                id=rec_id,
-                correlation_id=job.correlation_id,
-                timestamp=now_str,
-                actor=job.requester_id,
-                action=action,
-                payload=payload,
-                prev_hash=self._last_hash,
-                current_hash=current_hash
-            )
-            self.ledger.append(rec)
-            self._last_hash = current_hash
-
+            # If disk persistence is enabled, use exclusive advisory lock across worker processes
             if self.persistence_file:
-                try:
-                    os.makedirs(os.path.dirname(os.path.abspath(self.persistence_file)), exist_ok=True)
-                    with open(self.persistence_file, "a", encoding="utf-8") as f:
-                        f.write(json.dumps({
-                            "id": rec.id,
-                            "correlation_id": rec.correlation_id,
-                            "timestamp": rec.timestamp,
-                            "actor": rec.actor,
-                            "action": rec.action,
-                            "payload": rec.payload,
-                            "prev_hash": rec.prev_hash,
-                            "current_hash": rec.current_hash
-                        }) + "\n")
-                except Exception as err:
-                    logger.error(f"Failed to persist audit log: {err}")
+                dir_path = os.path.dirname(os.path.abspath(self.persistence_file))
+                os.makedirs(dir_path, exist_ok=True)
+                lock_file_path = f"{self.persistence_file}.lock"
+                
+                with open(lock_file_path, "w") as lock_file:
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+                    try:
+                        last_id, true_last_hash = self._get_persisted_head()
+                        rec_id = last_id + 1
 
-            return rec
+                        current_hash = AuditRecord.compute_hash(
+                            job.correlation_id,
+                            now_str,
+                            job.requester_id,
+                            action,
+                            payload,
+                            true_last_hash
+                        )
+
+                        rec = AuditRecord(
+                            id=rec_id,
+                            correlation_id=job.correlation_id,
+                            timestamp=now_str,
+                            actor=job.requester_id,
+                            action=action,
+                            payload=payload,
+                            prev_hash=true_last_hash,
+                            current_hash=current_hash
+                        )
+
+                        with open(self.persistence_file, "a", encoding="utf-8") as f:
+                            f.write(json.dumps({
+                                "id": rec.id,
+                                "correlation_id": rec.correlation_id,
+                                "timestamp": rec.timestamp,
+                                "actor": rec.actor,
+                                "action": rec.action,
+                                "payload": rec.payload,
+                                "prev_hash": rec.prev_hash,
+                                "current_hash": rec.current_hash
+                            }) + "\n")
+                            f.flush()
+                            os.fsync(f.fileno())
+
+                        self.ledger.append(rec)
+                        self._last_hash = current_hash
+                        return rec
+                    finally:
+                        fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+            else:
+                # In-memory single-process fallback
+                rec_id = len(self.ledger) + 1
+                current_hash = AuditRecord.compute_hash(
+                    job.correlation_id,
+                    now_str,
+                    job.requester_id,
+                    action,
+                    payload,
+                    self._last_hash
+                )
+                rec = AuditRecord(
+                    id=rec_id,
+                    correlation_id=job.correlation_id,
+                    timestamp=now_str,
+                    actor=job.requester_id,
+                    action=action,
+                    payload=payload,
+                    prev_hash=self._last_hash,
+                    current_hash=current_hash
+                )
+                self.ledger.append(rec)
+                self._last_hash = current_hash
+                return rec
 
     def get_last_hash(self) -> str:
         with self._lock:

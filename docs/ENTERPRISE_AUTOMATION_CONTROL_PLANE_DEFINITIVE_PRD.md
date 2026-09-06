@@ -805,24 +805,34 @@ class ExecutionJob:
     storage_artifact_uri: Optional[str] = None
     storage_artifact_sha256: Optional[str] = None
     exit_code: Optional[int] = None
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     completed_at: Optional[datetime] = None
 
-    def enforce_maker_checker(self, approver_id: str):
-        """Hard Banking Invariant: Requester cannot approve own run."""
-        if self.catalog_item.risk_tier == RiskTier.HIGH:
-            if self.requester_id == approver_id:
-                raise ValueError(f"MakerCheckerViolation: Requester [{self.requester_id}] cannot approve own execution.")
+    def enforce_maker_checker(self, approver_id: str, decided_at: Optional[datetime] = None, timeout_seconds: int = 900):
+        """Hard Banking Invariant: Universal Maker-Checker across all risk tiers with transition guard."""
+        if self.status != JobStatus.PENDING_APPROVAL:
+            raise StateTransitionError(f"Cannot enforce maker-checker approval in state [{self.status.value}] (must be PENDING_APPROVAL).")
+        
+        now = decided_at or datetime.now(timezone.utc)
+        if self.approval_requested_at:
+            elapsed = (now - self.approval_requested_at).total_seconds()
+            if elapsed > timeout_seconds:
+                self.status = JobStatus.TIMEOUT_DENIED
+                raise ApprovalTimeoutError("Approval timed out after 15 minutes. Automatically denied fail-closed.")
+        
+        if self.requester_id == approver_id:
+            raise MakerCheckerViolationError(f"MakerCheckerViolation: Requester [{self.requester_id}] cannot approve own execution.")
+        
         self.approver_id = approver_id
         self.status = JobStatus.QUEUED
 
     def check_approval_timeout(self, timeout_seconds: int = 900):
         """Fail-Closed 15-minute circuit breaker."""
         if self.status == JobStatus.PENDING_APPROVAL and self.approval_requested_at:
-            elapsed = (datetime.utcnow() - self.approval_requested_at).total_seconds()
+            elapsed = (datetime.now(timezone.utc) - self.approval_requested_at).total_seconds()
             if elapsed > timeout_seconds:
                 self.status = JobStatus.TIMEOUT_DENIED
-                raise TimeoutError("Approval timed out after 15 minutes. Automatically denied.")
+                raise ApprovalTimeoutError("Approval timed out after 15 minutes. Automatically denied.")
 ```
 
 ---
@@ -939,10 +949,20 @@ class BaseJobRunner:
     def run(self, job: ExecutionJob):
         # 1. Maintenance Window Verification
         if job.servicenow_chg and not self.snow.is_within_maintenance_window(job.servicenow_chg):
+            self.audit.record(job, "EXEC_BLOCKED", {
+                "reason": "MAINTENANCE_WINDOW_CLOSED",
+                "resource": job.target_resource_id,
+                "chg": job.servicenow_chg
+            })
             raise MaintenanceWindowClosedError(f"Current time is outside approved window for {job.servicenow_chg}")
 
-        # 2. Acquire Distributed Mutex
-        if not self.lock_mgr.acquire(job.target_resource_id):
+        # 2. Acquire Distributed Mutex with Owner Token
+        owner_token = f"runner-{job.id}-{job.correlation_id}"
+        if not self.lock_mgr.acquire(job.target_resource_id, owner_token=owner_token):
+            self.audit.record(job, "EXEC_BLOCKED", {
+                "reason": "RESOURCE_LOCKED",
+                "resource": job.target_resource_id
+            })
             raise ResourceLockedError(f"Resource [{job.target_resource_id}] is locked by an active run.")
 
         try:
@@ -967,11 +987,23 @@ class BaseJobRunner:
             if exit_code != 0:
                 raise RuntimeError(f"Engine exited with non-zero code: {exit_code}")
 
-            # 8. Post-Flight Semantic Health Probes (Exit 0 is NOT sufficient)
+            # 8. Post-Flight Semantic Health Probing (Exit 0 is NOT sufficient)
             job.status = JobStatus.VERIFYING
             if not self.probe.probe(job):
                 job.status = JobStatus.DEGRADED
-                raise RuntimeError("Semantic health check failed post-execution.")
+                # If automated rollback path configured, trigger rollback
+                if getattr(job.catalog_item, "rollback_path", None):
+                    job.status = JobStatus.REVERTING
+                    rb_code = self.engine.execute(job, stream_callback, jit_secrets)
+                    if rb_code == 0:
+                        job.status = JobStatus.REVERTED
+                        self.audit.record(job, "EXEC_REVERTED", {"rollback_path": job.catalog_item.rollback_path})
+                        raise HealthProbeDegradedError("Health check failed. Automated rollback executed successfully.")
+                    else:
+                        job.status = JobStatus.FAILED
+                        raise RuntimeError("Health check failed and automated rollback failed.")
+                else:
+                    raise HealthProbeDegradedError("Semantic health check failed post-execution. System degraded.")
 
             # 9. Commit Success & Auto-Close Ticket
             job.status = JobStatus.SUCCESS
@@ -980,13 +1012,16 @@ class BaseJobRunner:
                 self.snow.update_work_notes(job.servicenow_chg, "Rollout verified healthy.", "Closed Complete")
 
         except Exception as exc:
-            job.status = JobStatus.FAILED
-            self.audit.record(job, "EXEC_FAILED", {"error": str(exc)})
+            # Preserve DEGRADED and REVERTED states - do not overwrite to FAILED
+            if job.status not in (JobStatus.DEGRADED, JobStatus.REVERTING, JobStatus.REVERTED, JobStatus.FAILED):
+                job.status = JobStatus.FAILED
+            if job.status != JobStatus.REVERTED:
+                self.audit.record(job, "EXEC_FAILED", {"error": str(exc), "status": job.status.value})
             raise exc
 
         finally:
-            # 10. Guaranteed Mutex Release
-            self.lock_mgr.release(job.target_resource_id)
+            # 10. Guaranteed Compare-and-Delete Mutex Release
+            self.lock_mgr.release(job.target_resource_id, owner_token=owner_token)
 ```
 
 ---
