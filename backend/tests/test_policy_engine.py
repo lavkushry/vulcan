@@ -210,6 +210,66 @@ class TestPolicyEngine(unittest.TestCase):
         self.assertGreaterEqual(len(blocked), 1)
         self.assertEqual(blocked[0].payload.get("reason"), "MAINTENANCE_WINDOW_CLOSED")
 
+    def test_runner_maintenance_window_block_never_enters_running(self):
+        """Runner-level invariant: maintenance window block transitions QUEUED→FAILED, never RUNNING.
+
+        Regression test for the RUNNING→QUEUED state regression observed in WS stream.
+        The runner's window check fires BEFORE the RUNNING transition (step 2 vs step 7),
+        so a blocked job must go directly to FAILED without burning a worker slot or
+        entering the RUNNING state.
+        """
+        from unittest.mock import MagicMock
+        from app.config import container
+        from app.domain.entities import ExecutionJob, JobStatus
+        from app.domain.exceptions import MaintenanceWindowClosedError
+
+        cat_item = next(c for c in container.catalog if c.identifier == "sec-system-hardening")
+        job = ExecutionJob(
+            job_id="job-runner-window-01",
+            correlation_id="EXEC-RUNNER-WINDOW-01",
+            catalog_item=cat_item,
+            requester_id="eng.alice",
+            target_resource_id="runner-test-host-01",
+            parameters={"port": 22, "auto_updates": True},
+            servicenow_chg="CHG-EXPIRED"
+        )
+        job.status = JobStatus.QUEUED
+
+        # Track all status events emitted by the runner
+        status_events = []
+
+        def capture_status(corr_id, status, message):
+            status_events.append({"correlation_id": corr_id, "status": status, "message": message})
+
+        runner = container.create_runner(
+            log_event_stream=None,
+            status_event_stream=capture_status
+        )
+
+        # The runner must raise MaintenanceWindowClosedError and never reach RUNNING
+        with self.assertRaises(MaintenanceWindowClosedError):
+            runner.run(job)
+
+        # Job must be in FAILED state — not QUEUED, not RUNNING
+        self.assertEqual(job.status, JobStatus.FAILED,
+            f"Expected FAILED but got {job.status.value}. "
+            "Blocked jobs must fail-close, never remain dispatchable in QUEUED.")
+
+        # No RUNNING status event should have been emitted
+        running_events = [e for e in status_events if e["status"] == "RUNNING"]
+        self.assertEqual(len(running_events), 0,
+            "Runner emitted a RUNNING status event before the maintenance window check. "
+            "This is the RUNNING→QUEUED regression: WS clients see RUNNING, then the job "
+            "reverts to a non-RUNNING terminal state.")
+
+        # Verify error message contains window information
+        self.assertIn("outside the approved", job.error_message.lower(),
+            "Error message should explain the maintenance window block.")
+
+        # Verify completed_at is set (terminal state)
+        self.assertIsNotNone(job.completed_at,
+            "FAILED jobs must have completed_at set.")
+
 
 if __name__ == "__main__":
     unittest.main()

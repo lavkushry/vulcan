@@ -51,7 +51,8 @@ class BaseJobRunner(abc.ABC):
         snow_gateway: Optional[IServiceNowGateway] = None,
         health_probe: Optional[IHealthProbeGateway] = None,
         storage_gateway: Optional[IObjectStorageGateway] = None,
-        log_event_stream: Optional[Callable[[str, str], None]] = None
+        log_event_stream: Optional[Callable[[str, str], None]] = None,
+        status_event_stream: Optional[Callable[[str, str, str], None]] = None
     ):
         self.lock_mgr = lock_manager
         self.audit = audit_logger
@@ -60,6 +61,7 @@ class BaseJobRunner(abc.ABC):
         self.health = health_probe
         self.storage = storage_gateway
         self.log_stream = log_event_stream
+        self.status_stream = status_event_stream
 
     def run(self, job: ExecutionJob) -> EngineExecutionResult:
         """The Master Template Method enforcing all banking invariants."""
@@ -167,6 +169,8 @@ class BaseJobRunner(abc.ABC):
 
             job.transition_to(JobStatus.RUNNING, "Worker spawned")
             job.started_at = datetime.now(timezone.utc)
+            if self.status_stream:
+                self.status_stream(job.correlation_id, "RUNNING", "Worker spawned")
 
             # 8. Engine Execution Hook (Subclass Strategy)
             def event_sink(line: str):

@@ -973,11 +973,16 @@ def trigger_execution(correlation_id: str, request: Request):
         actor=actor
     )
 
-    runner = container.create_runner(log_event_stream=ws_hub.emit_log)
+    def _status_callback(corr_id: str, status: str, message: str):
+        ws_hub.publish(corr_id, "status", {"status": status, "message": message})
+
+    runner = container.create_runner(
+        log_event_stream=ws_hub.emit_log,
+        status_event_stream=_status_callback
+    )
 
     def run_worker():
         try:
-            ws_hub.publish(job.correlation_id, "status", {"status": "RUNNING", "message": "Worker spawned"})
             runner.run(job)
             container.job_repo.save(job)
             ws_hub.publish(job.correlation_id, "status", {"status": job.status.value, "message": "Execution complete"})

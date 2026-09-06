@@ -183,7 +183,7 @@ class AppContainer:
             jobs[job.correlation_id] = job
         return jobs
 
-    def create_runner(self, log_event_stream=None) -> AnsibleJobRunner:
+    def create_runner(self, log_event_stream=None, status_event_stream=None) -> AnsibleJobRunner:
         return AnsibleJobRunner(
             engine_port=self.execution_engine,
             lock_manager=self.lock_manager,
@@ -191,7 +191,8 @@ class AppContainer:
             secret_provider=self.secret_provider,
             snow_gateway=self.snow_gateway,
             storage_gateway=self.storage_gateway,
-            log_event_stream=log_event_stream
+            log_event_stream=log_event_stream,
+            status_event_stream=status_event_stream
         )
 
 
