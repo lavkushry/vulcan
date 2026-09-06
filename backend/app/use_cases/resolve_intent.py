@@ -147,13 +147,20 @@ class IntentResolver:
         score = 0.0
 
         # Exact action alignment
-        actions = ["renew", "expand", "scale", "patch", "rotate", "backup", "drain", "peer", "deploy", "inspect"]
+        actions = [
+            "renew", "expand", "scale", "patch", "rotate", "backup", "drain", "peer", "deploy",
+            "inspect", "provision", "install", "setup", "ping", "check", "create", "stage", "harden"
+        ]
         matched_actions = [a for a in actions if a in query_lower and a in item_text]
         if matched_actions:
             score += 0.4
 
         # Target infrastructure domain alignment
-        domains = ["ssl", "cert", "tls", "tablespace", "database", "postgres", "eks", "kernel", "vpc", "ssh", "f5", "vip"]
+        domains = [
+            "ssl", "cert", "tls", "tablespace", "database", "postgres", "eks", "kernel", "vpc", "ssh",
+            "f5", "vip", "openclaw", "clawdbot", "bot", "agent", "docker", "container", "jenkins",
+            "gitlab", "nginx", "redis", "ping", "sandbox", "hardening", "tailscale", "user"
+        ]
         matched_domains = [d for d in domains if d in query_lower and d in item_text]
         if matched_domains:
             score += min(0.5, len(matched_domains) * 0.25)
@@ -167,7 +174,10 @@ class IntentResolver:
         """
         dense_scores = {item.id: self._dense_similarity_score(query, item) for item in self.catalog}
         sparse_scores = {
-            item.id: self._sparse_bm25_score(query, f"{item.identifier} {item.name} {item.playbook_or_module_path}")
+            item.id: self._sparse_bm25_score(
+                query,
+                f"{item.identifier} {item.name} {item.playbook_or_module_path} {' '.join(getattr(item, 'tags', []))} {getattr(item, 'description', '')}"
+            )
             for item in self.catalog
         }
 
