@@ -130,6 +130,44 @@ def sync_integration_data(key: str):
     return integrations_manager.trigger_sync(key)
 
 
+# =====================================================================
+# WORKFLOWS & CRON SCHEDULES (DAG Pipelines & Periodic Jobs)
+# =====================================================================
+
+from app.adapters.workflow_manager import workflow_engine
+
+@router.get("/workflows")
+def list_workflows():
+    """List multi-step DAG workflows (Airflow/Orquesta style)."""
+    return workflow_engine.list_workflows()
+
+
+@router.get("/workflows/{workflow_id}")
+def get_workflow(workflow_id: str):
+    wf = workflow_engine.get_workflow(workflow_id)
+    if not wf:
+        raise HTTPException(status_code=404, detail="Workflow not found.")
+    return wf
+
+
+@router.post("/workflows/{workflow_id}/run")
+def run_workflow(workflow_id: str):
+    """Trigger execution of a multi-step workflow."""
+    return workflow_engine.trigger_workflow(workflow_id)
+
+
+@router.get("/schedules")
+def list_schedules():
+    """List active distributed cron schedules."""
+    return workflow_engine.list_schedules()
+
+
+@router.post("/schedules/{schedule_id}/toggle")
+def toggle_schedule(schedule_id: str):
+    """Toggle a cron schedule between ACTIVE and PAUSED."""
+    return workflow_engine.toggle_schedule(schedule_id)
+
+
 @router.get("/catalog")
 def list_catalog(
     search: Optional[str] = None,

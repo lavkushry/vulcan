@@ -6,6 +6,7 @@ import {
   Zap,
   History,
   GitBranch,
+  GitMerge,
   Package,
   ShieldCheck,
   ChevronLeft,
@@ -28,6 +29,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { id: 'chat', label: 'AI Chat Assistant', icon: <Sparkles size={20} className="text-cyan-400" />, href: '/chat' },
   { id: 'actions', label: 'Actions Catalog', icon: <Zap size={20} />, href: '/actions' },
+  { id: 'workflows', label: 'Workflows & Cron', icon: <GitMerge size={20} />, href: '/workflows' },
   { id: 'matrix', label: 'High-Filtered Tasks', icon: <Table2 size={20} />, href: '/matrix' },
   { id: 'history', label: 'Execution History', icon: <History size={20} />, href: '/history' },
   { id: 'rules', label: 'Automation Rules', icon: <GitBranch size={20} />, href: '/rules' },
