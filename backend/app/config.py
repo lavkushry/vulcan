@@ -38,11 +38,17 @@ class AppContainer:
 
     def __init__(self):
         # 0. Configuration
-        raw_db_url = os.getenv("DATABASE_URL", "data/vulcan.db")
-        if raw_db_url.startswith("postgresql://") or raw_db_url.startswith("postgres://"):
-            self.database_url = "data/vulcan.db"
+        raw_db_url = os.getenv("DATABASE_URL", "")
+        postgres_url = os.getenv("POSTGRES_URL") or (raw_db_url if (raw_db_url.startswith("postgresql://") or raw_db_url.startswith("postgres://")) else None)
+        persistence_backend = os.getenv("VULCAN_PERSISTENCE_BACKEND", "postgres" if postgres_url else "sqlite").lower()
+
+        if persistence_backend in ("postgres", "postgresql") and postgres_url:
+            self.database_url = postgres_url
+            self.persistence_backend = "postgres"
         else:
-            self.database_url = raw_db_url
+            self.database_url = raw_db_url if (raw_db_url and not raw_db_url.startswith("postgres")) else "data/vulcan.db"
+            self.persistence_backend = "sqlite"
+
         self.redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
         self.simulation_mode = os.getenv("SIMULATION_MODE", "true").lower() == "true"
 
@@ -50,7 +56,6 @@ class AppContainer:
         redis_nodes = self._detect_redis()
         self.redis_nodes = redis_nodes
         self.lock_manager = RedlockManager(redis_nodes=redis_nodes)
-        self.audit_logger = MerkleAuditLogger(persistence_file="data/audit_ledger.jsonl")
         self.secret_provider = CyberArkPAMProvider(mock_mode=True)
         self.snow_gateway = ServiceNowGateway(mock_mode=True)
         s3_endpoint = os.getenv("S3_ENDPOINT_URL")
@@ -83,44 +88,70 @@ class AppContainer:
         # 3. Seed Catalog (in-memory materialization)
         self.catalog = self._build_catalog()
 
-        # 4. Durable Persistence Repositories
-        self.job_repo = SQLiteJobRepository(db_path=self.database_url, catalog=self.catalog)
-        self.audit_repo = SQLiteAuditLedgerRepository(db_path=self.database_url)
-
-        catalog_backend = os.getenv("VULCAN_CATALOG_BACKEND", "sqlite").lower()
-        if catalog_backend in ("postgres", "pgvector"):
+        # 4. Durable Persistence Repositories & Audit Ledger (Milestone B)
+        if self.persistence_backend == "postgres":
             try:
                 from app.adapters.postgres_catalog_repository import PostgresCatalogRepository
-                pg_repo = PostgresCatalogRepository(
-                    db_url=os.getenv("POSTGRES_URL") or os.getenv("DATABASE_URL"),
+                from app.adapters.postgres_job_repository import PostgresJobRepository
+                from app.adapters.postgres_audit_adapter import PostgresAuditAdapter
+
+                self.catalog_repo = PostgresCatalogRepository(
+                    db_url=self.database_url,
                     embedding_provider=self.embedding_provider,
                 )
-                self.catalog_repo = pg_repo
-                logger.info("Initialized PostgreSQL pgvector Catalog Repository.")
-                # Sync catalog items to Postgres if curated items are missing
+                self.job_repo = PostgresJobRepository(
+                    db_url=self.database_url,
+                    catalog_repo=self.catalog_repo,
+                    catalog=self.catalog
+                )
+                pg_audit = PostgresAuditAdapter(db_url=self.database_url)
+                self.audit_repo = pg_audit
+                self.audit_logger = pg_audit
+                logger.info("Initialized PostgreSQL 16 durable persistence for Catalog, Jobs, and Merkle Audit Ledger.")
+
+                # Sync curated catalog items if missing
                 if self.catalog_repo.count(curation_status="CURATED") < len(self.catalog):
                     for item in self.catalog:
                         self.catalog_repo.save(item)
                     logger.info("Seeded %d catalog items into PostgreSQL pgvector.", len(self.catalog))
             except Exception as e:
-                logger.warning("Failed to initialize PostgresCatalogRepository (%s); falling back to SQLite.", e)
+                logger.warning("Failed to initialize PostgreSQL persistence (%s); falling back to SQLite/file.", e)
+                self.persistence_backend = "sqlite"
+                self.database_url = "data/vulcan.db"
+                self.job_repo = SQLiteJobRepository(db_path=self.database_url, catalog=self.catalog)
+                self.audit_repo = SQLiteAuditLedgerRepository(db_path=self.database_url)
+                self.audit_logger = MerkleAuditLogger(persistence_file="data/audit_ledger.jsonl")
                 self.catalog_repo = SQLiteCatalogRepository(db_path=self.database_url)
                 self.catalog_repo.seed_if_empty(self.catalog)
         else:
+            self.job_repo = SQLiteJobRepository(db_path=self.database_url, catalog=self.catalog)
+            self.audit_repo = SQLiteAuditLedgerRepository(db_path=self.database_url)
+            self.audit_logger = MerkleAuditLogger(persistence_file="data/audit_ledger.jsonl")
             self.catalog_repo = SQLiteCatalogRepository(db_path=self.database_url)
             seeded = self.catalog_repo.seed_if_empty(self.catalog)
             if seeded > 0:
                 logger.info(f"Seeded {seeded} catalog items into SQLite.")
 
-        # 6. Seed sample jobs into SQLite if empty
+        # 5. Distributed Approval Sweeper with Redlock Leader Election
+        from app.core.approval_sweeper import ApprovalSweeper
+        from app.api.websockets import ws_hub
+        self.approval_sweeper = ApprovalSweeper(
+            job_repo=self.job_repo,
+            audit_logger=self.audit_logger,
+            lock_manager=self.lock_manager,
+            event_publisher=ws_hub.publish,
+            interval_seconds=float(os.getenv("VULCAN_SWEEPER_INTERVAL", "5.0")),
+            timeout_seconds=int(os.getenv("VULCAN_APPROVAL_TIMEOUT", "900"))
+        )
+
+        # 6. Seed sample jobs into database if empty
         self._seed_jobs_to_db()
 
         # 7. In-memory job cache for backward compatibility during transition
-        # Routes that still reference container.jobs will work
         self.jobs = self._load_jobs_from_db()
 
         # 8. AI & Domain Use Cases
-        active_catalog_repo = self.catalog_repo if catalog_backend in ("postgres", "pgvector") else None
+        active_catalog_repo = self.catalog_repo if self.persistence_backend == "postgres" else None
         self.intent_resolver = IntentResolver(
             catalog=self.catalog,
             chat_model_provider=self.chat_provider,

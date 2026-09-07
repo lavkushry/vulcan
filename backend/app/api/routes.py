@@ -479,27 +479,38 @@ def dispatch_task(req: DispatchTaskRequest):
 
 
 def _lookup_job(key: str) -> Optional[ExecutionJob]:
-    """Retrieve job from in-memory cache or durable SQLite repository."""
+    """Retrieve job from durable repository (PostgreSQL/SQLite) with cache fallback."""
+    if hasattr(container, "job_repo") and container.job_repo:
+        job = container.job_repo.get_by_id(key)
+        if not job:
+            job = container.job_repo.get_by_correlation_id(key)
+        if job:
+            return job
     job = container.jobs.get(key)
     if job:
         return job
     for j in container.jobs.values():
         if j.id == key or j.correlation_id == key:
             return j
-    job = container.job_repo.get_by_id(key)
-    if not job:
-        job = container.job_repo.get_by_correlation_id(key)
-    if job:
-        container.jobs[job.correlation_id] = job
-        return job
     return None
 
 
 @router.get("/tasks/{correlation_id}/logs")
 def get_task_logs(correlation_id: str):
-    """Returns ANSI terminal log lines for live or historical replay."""
-    # 1. From real-time buffer
+    """Returns ANSI terminal log lines for live or historical replay across all workers."""
+    # 1. From real-time local buffer or Redis list backplane
     buffer_lines = ws_hub.buffers.get(correlation_id, [])
+    if not buffer_lines and getattr(ws_hub, "_redis", None):
+        try:
+            raw_entries = ws_hub._redis.lrange(f"vulcan:logs:{correlation_id}", 0, -1)
+            if raw_entries:
+                buffer_lines = [
+                    json.loads(x.decode("utf-8") if isinstance(x, bytes) else x)
+                    for x in raw_entries
+                ]
+        except Exception:
+            pass
+
     if buffer_lines:
         def _get_line(item):
             d = item.get("data")

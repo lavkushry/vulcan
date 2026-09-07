@@ -28,7 +28,17 @@ async def lifespan(app: FastAPI):
     ws_hub.set_event_loop(loop)
     if hasattr(container, "redis_nodes") and container.redis_nodes:
         ws_hub.set_redis_client(container.redis_nodes[0])
+
+    # Start distributed approval sweeper with Redlock leader election (Milestone B)
+    if hasattr(container, "approval_sweeper") and container.approval_sweeper:
+        container.approval_sweeper.start(loop)
+
     yield
+
+    # Clean shutdown
+    if hasattr(container, "approval_sweeper") and container.approval_sweeper:
+        await container.approval_sweeper.stop()
+    ws_hub.stop()
 
 
 def create_app() -> FastAPI:
