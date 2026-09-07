@@ -206,6 +206,25 @@ class TestPostgresCatalogRepository(unittest.TestCase):
         """
         Hybrid search correctly surfaces relevant playbooks with RRF score fusion.
         """
+        test_item = CatalogItem(
+            id="test-f5-ssl-01",
+            identifier="test.f5.ssl-renew",
+            name="Renew SSL Certificate F5 Edge VIP",
+            engine=ExecutionEngineType.ANSIBLE,
+            git_repo="git@github.com:pnc/net-sec.git",
+            git_commit_sha="a1b2c3d4e5f67890123456789abcdef012345678",
+            playbook_or_module_path="playbooks/f5_renew.yml",
+            risk_tier=RiskTier.HIGH,
+            requires_maker_checker=True,
+            requires_chg=True,
+            input_schema={"type": "object"},
+            category="network",
+            description="Production validated SSL cert renewal playbook for F5 VIPs.",
+            tags=["f5", "ssl", "tls", "cert", "edge", "vip"],
+            curation_status=CurationStatus.CURATED
+        )
+        self.repo.save(test_item)
+
         query = "renew ssl certificate on f5 vip edge"
         results = self.repo.search_hybrid(query, top_k=5)
         self.assertGreater(len(results), 0, f"Query '{query}' returned no results")
