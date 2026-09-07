@@ -109,7 +109,7 @@ def run_durability_exit_gate(port: int = 8899, db_url: str = None, redis_url: st
 
         # 4. Dispatch a job through the API
         logger.info("Dispatching test execution job through multi-worker API...")
-        dispatch_url = f"http://127.0.0.1:{port}/tasks/dispatch"
+        dispatch_url = f"http://127.0.0.1:{port}/api/v1/tasks/dispatch"
         payload = json.dumps({
             "catalog_identifier": "net-f5-pool-member-drain",
             "target_resource_id": "f5-edge-vip-01.pnc.com",
@@ -135,7 +135,7 @@ def run_durability_exit_gate(port: int = 8899, db_url: str = None, redis_url: st
 
         # 5. Verify logs are queryable across workers
         time.sleep(1.0)
-        logs_url = f"http://127.0.0.1:{port}/tasks/{corr_id}/logs"
+        logs_url = f"http://127.0.0.1:{port}/api/v1/tasks/{corr_id}/logs"
         with urllib.request.urlopen(logs_url, timeout=3) as resp:
             logs_data = json.loads(resp.read().decode("utf-8"))
             logs_list = logs_data.get("logs", [])
@@ -161,7 +161,7 @@ def run_durability_exit_gate(port: int = 8899, db_url: str = None, redis_url: st
         logger.info("✓ Cluster answered /healthz immediately after worker death (Zero downtime)")
 
         # Query job status
-        task_url = f"http://127.0.0.1:{port}/jobs/{corr_id}"
+        task_url = f"http://127.0.0.1:{port}/api/v1/jobs/{corr_id}"
         with urllib.request.urlopen(task_url, timeout=3) as resp:
             task_info = json.loads(resp.read().decode("utf-8"))
             logger.info("✓ Job %s status after worker crash: %s", corr_id, task_info.get("status"))
@@ -185,7 +185,10 @@ def run_durability_exit_gate(port: int = 8899, db_url: str = None, redis_url: st
         return True
 
     except Exception as e:
-        logger.critical("Durability Exit Gate FAILED with exception: %s", e)
+        if isinstance(e, urllib.error.HTTPError):
+            logger.critical("Durability Exit Gate FAILED with HTTPError %d: %s", e.code, e.read().decode("utf-8"))
+        else:
+            logger.critical("Durability Exit Gate FAILED with exception: %s", e)
         return False
     finally:
         logger.info("Tearing down multi-worker test cluster (PID %d)...", proc.pid)
