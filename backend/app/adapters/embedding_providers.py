@@ -18,6 +18,7 @@ import logging
 import math
 import os
 import re
+import time
 import urllib.request
 import urllib.error
 from typing import Any, Dict, List, Optional
@@ -294,14 +295,32 @@ class OpenAIEmbeddingProvider(IEmbeddingProvider):
             },
             method="POST"
         )
-        try:
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                result = json.loads(resp.read().decode("utf-8"))
-                embeddings = [item["embedding"] for item in result.get("data", [])]
-                return [_l2_normalize(e) for e in embeddings]
-        except Exception as e:
-            logger.error("OpenAI embedding API request failed: %s", e)
-            raise
+        max_retries = 5
+        base_delay = 2.0
+        for attempt in range(max_retries):
+            try:
+                with urllib.request.urlopen(req, timeout=45) as resp:
+                    result = json.loads(resp.read().decode("utf-8"))
+                    embeddings = [item["embedding"] for item in result.get("data", [])]
+                    return [_l2_normalize(e) for e in embeddings]
+            except urllib.error.HTTPError as e:
+                if e.code in (429, 500, 502, 503, 504) and attempt < max_retries - 1:
+                    sleep_time = base_delay * (2 ** attempt)
+                    logger.warning("OpenAI API HTTP %d (rate limit/server error). Retrying in %.1fs (attempt %d/%d)...",
+                                   e.code, sleep_time, attempt + 1, max_retries)
+                    time.sleep(sleep_time)
+                else:
+                    logger.error("OpenAI embedding API request failed permanently: %s", e)
+                    raise
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    sleep_time = base_delay * (2 ** attempt)
+                    logger.warning("OpenAI API network exception: %s. Retrying in %.1fs (attempt %d/%d)...",
+                                   e, sleep_time, attempt + 1, max_retries)
+                    time.sleep(sleep_time)
+                else:
+                    logger.error("OpenAI embedding API request failed permanently: %s", e)
+                    raise
 
 
 class GeminiEmbeddingProvider(IEmbeddingProvider):
@@ -378,19 +397,37 @@ class GeminiEmbeddingProvider(IEmbeddingProvider):
             headers={"Content-Type": "application/json"},
             method="POST"
         )
-        try:
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                result = json.loads(resp.read().decode("utf-8"))
-                values = result.get("embedding", {}).get("values", [])
-                if len(values) < self._dim:
-                    # Deterministic orthogonal pad if API returns 768 dims
-                    values = values + [0.0] * (self._dim - len(values))
-                elif len(values) > self._dim:
-                    values = values[:self._dim]
-                return _l2_normalize(values)
-        except Exception as e:
-            logger.error("Gemini embedding API request failed: %s", e)
-            raise
+        max_retries = 5
+        base_delay = 2.0
+        for attempt in range(max_retries):
+            try:
+                with urllib.request.urlopen(req, timeout=45) as resp:
+                    result = json.loads(resp.read().decode("utf-8"))
+                    values = result.get("embedding", {}).get("values", [])
+                    if len(values) < self._dim:
+                        # Deterministic orthogonal pad if API returns 768 dims
+                        values = values + [0.0] * (self._dim - len(values))
+                    elif len(values) > self._dim:
+                        values = values[:self._dim]
+                    return _l2_normalize(values)
+            except urllib.error.HTTPError as e:
+                if e.code in (429, 500, 502, 503, 504) and attempt < max_retries - 1:
+                    sleep_time = base_delay * (2 ** attempt)
+                    logger.warning("Gemini API HTTP %d (rate limit/server error). Retrying in %.1fs (attempt %d/%d)...",
+                                   e.code, sleep_time, attempt + 1, max_retries)
+                    time.sleep(sleep_time)
+                else:
+                    logger.error("Gemini embedding API request failed permanently: %s", e)
+                    raise
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    sleep_time = base_delay * (2 ** attempt)
+                    logger.warning("Gemini API network exception: %s. Retrying in %.1fs (attempt %d/%d)...",
+                                   e, sleep_time, attempt + 1, max_retries)
+                    time.sleep(sleep_time)
+                else:
+                    logger.error("Gemini embedding API request failed permanently: %s", e)
+                    raise
 
     def embed_batch(self, texts: List[str]) -> List[List[float]]:
         return [self.embed_text(t) for t in texts]

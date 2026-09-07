@@ -65,14 +65,41 @@ test -f frontend/public/.gitkeep
 test -f frontend/next.config.mjs
 test -f frontend/playwright.config.ts
 
-# Port-Contract Gate: Verify zero published ports without explicit 127.0.0.1: loopback binding
-echo "Checking Docker Compose network lockdown contract (zero non-loopback port bindings)..."
-if grep -E '^\s*-\s*"[0-9]+:' deploy/docker-compose.yml; then
-    echo "🔴 GATE FAILURE: Found public port binding in deploy/docker-compose.yml!"
-    echo "All container host ports MUST be explicitly prefixed with '127.0.0.1:' (e.g. '127.0.0.1:8000:8000')."
-    exit 1
-fi
-echo "✓ Network lockdown contract verified: All compose ports bound strictly to 127.0.0.1."
+# Port-Contract Gate: Syntax-proof verification of zero published ports without explicit 127.0.0.1: loopback binding
+echo "Checking Docker Compose network lockdown contract across deploy/docker-compose*.yml..."
+for compose_file in deploy/docker-compose*.yml; do
+    [ -f "$compose_file" ] || continue
+
+    # Gate Stage A: Rendered effective config check (immune to quoting, env interpolation, and long/short syntax)
+    if command -v docker &>/dev/null && docker compose version &>/dev/null; then
+        docker compose -f "$compose_file" config --format json 2>/dev/null | python3 -c '
+import json, sys
+try:
+    data = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+errors = []
+for svc, cfg in data.get("services", {}).items():
+    for p in cfg.get("ports", []):
+        host_ip = p.get("host_ip")
+        pub = p.get("published")
+        if host_ip != "127.0.0.1":
+            errors.append(f"Service \"{svc}\" publishes port {pub} with non-loopback host_ip \"{host_ip}\"")
+if errors:
+    for e in errors:
+        print("🔴 GATE FAILURE: " + e)
+    sys.exit(1)
+' || { echo "🔴 GATE FAILURE: Non-loopback port published in rendered $compose_file"; exit 1; }
+    fi
+
+    # Gate Stage B: Static syntax regex gate (catches unquoted ports and raw port definitions)
+    if grep -E '^\s*-\s*("?[0-9]+:|\$\{)' "$compose_file"; then
+        echo "🔴 GATE FAILURE: Found unescaped or non-loopback port binding in $compose_file!"
+        echo "All container host ports MUST be explicitly prefixed with '127.0.0.1:' (e.g. '127.0.0.1:8000:8000')."
+        exit 1
+    fi
+    echo "✓ $compose_file: Verified loopback-only (127.0.0.1)."
+done
 echo "✓ Platform configuration and infrastructure files verified."
 echo ""
 

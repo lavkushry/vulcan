@@ -118,6 +118,16 @@ def reembed_catalog(
             v_row = cur.fetchone()
             logger.info("DB Verification: Total=%d | With Embedding=%d", v_row["total"], v_row["with_emb"])
 
+        # Post-reembed index maintenance (prevents index bloat & optimizes HNSW search)
+        logger.info("Running post-reembedding maintenance: VACUUM ANALYZE catalog_items...")
+        conn.autocommit = True
+        with conn.cursor() as m_cur:
+            m_cur.execute("VACUUM ANALYZE catalog_items;")
+            logger.info("Running post-reembedding maintenance: REINDEX INDEX idx_catalog_items_embedding_hnsw...")
+            m_cur.execute("REINDEX INDEX idx_catalog_items_embedding_hnsw;")
+        conn.autocommit = False
+        logger.info("Post-reembedding maintenance completed successfully.")
+
     except Exception as e:
         conn.rollback()
         logger.exception("Re-embedding failed: %s", e)
