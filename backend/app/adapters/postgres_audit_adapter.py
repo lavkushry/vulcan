@@ -42,10 +42,14 @@ class PostgresAuditAdapter(IAuditLedgerRepository, IAuditLogger):
         return psycopg.connect(self.db_url, row_factory=dict_row)
 
     def _ensure_tables(self) -> None:
-        """Verifies audit_ledger table and indexes exist in PostgreSQL."""
+        """Verifies audit_ledger table and indexes exist in PostgreSQL, skipping if present."""
         try:
             with self._get_connection() as conn:
                 with conn.cursor() as cur:
+                    cur.execute("SELECT to_regclass('public.audit_ledger') AS tbl;")
+                    row = cur.fetchone()
+                    if row and row.get("tbl") is not None:
+                        return  # Already migrated, skip DDL to avoid multi-worker lock contention
                     cur.execute("""
                         CREATE TABLE IF NOT EXISTS audit_ledger (
                             id BIGSERIAL PRIMARY KEY,

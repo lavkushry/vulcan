@@ -44,10 +44,14 @@ class PostgresJobRepository(IJobRepository):
         return psycopg.connect(self.db_url, row_factory=dict_row)
 
     def _ensure_tables(self) -> None:
-        """Verifies execution_jobs table exists."""
+        """Verifies execution_jobs table exists, skipping DDL if already present."""
         try:
             with self._get_connection() as conn:
                 with conn.cursor() as cur:
+                    cur.execute("SELECT to_regclass('public.execution_jobs') AS tbl;")
+                    row = cur.fetchone()
+                    if row and row.get("tbl") is not None:
+                        return  # Already migrated, skip DDL to avoid multi-worker lock contention
                     cur.execute("""
                         CREATE TABLE IF NOT EXISTS execution_jobs (
                             id VARCHAR(64) PRIMARY KEY,
