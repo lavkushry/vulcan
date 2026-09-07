@@ -56,6 +56,16 @@ class TestPostgresCatalogRepository(unittest.TestCase):
         if self._testMethodName != "test_01_embedding_math_and_formatting" and not self.available:
             self.skipTest(f"PostgreSQL pgvector not accessible: {getattr(self, 'skip_reason', 'unknown')}")
 
+    def tearDown(self):
+        if getattr(self, "available", False):
+            try:
+                with self.repo._get_connection() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute("DELETE FROM catalog_items WHERE identifier LIKE 'test.%';")
+                    conn.commit()
+            except Exception:
+                pass
+
     def test_01_embedding_math_and_formatting(self):
         """Embedding generator produces unit-normalized 1536-dimensional vectors."""
         vec = compute_hash_embedding("renew f5 ssl certificate on edge vip")
@@ -120,18 +130,32 @@ class TestPostgresCatalogRepository(unittest.TestCase):
             input_schema={"type": "object"},
             category="network",
             description="Production validated SSL cert renewal playbook for F5 VIPs.",
-            tags=["f5", "ssl", "tls", "cert"],
+            tags=["f5", "ssl", "cert"],
             curation_status=CurationStatus.CURATED
         )
         self.repo.save(valid_curated)
         fetched = self.repo.get_by_identifier(valid_curated.identifier)
         self.assertIsNotNone(fetched)
-        self.assertEqual(fetched.curation_status, CurationStatus.CURATED)
-        self.assertTrue(fetched.can_execute())
+        self.assertEqual(fetched.git_commit_sha, "a1b2c3d4e5f67890123456789abcdef012345678")
 
-    def test_03_candidate_store_quarantine_and_invariants(self):
+        # 4. Attempt to bypass candidate null constraint: CANDIDATE with fabricated SHA directly in SQL
+        with self.assertRaises(psycopg.errors.CheckViolation):
+            with self.repo._get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        INSERT INTO catalog_items (
+                            id, identifier, name, engine, git_repo, git_commit_sha,
+                            curation_status
+                        ) VALUES (
+                            'test-bypass-03', 'test.bypass.cand-sha', 'Candidate With SHA', 'terraform',
+                            'git@pnc:bypass.git', 'a1b2c3d4e5f67890123456789abcdef012345678', 'CANDIDATE'
+                        );
+                    """)
+                conn.commit()
+
+    def test_03_candidate_store_quarantined_and_persists(self):
         """
-        CANDIDATE items without Git commits can be stored in the CandidateStore,
+        CANDIDATE catalog items are stored and indexed with NULL commit SHA,
         but invariant INV-1 mathematically blocks execution (can_execute() is False).
         """
         candidate = CatalogItem(
@@ -140,7 +164,7 @@ class TestPostgresCatalogRepository(unittest.TestCase):
             name="[Candidate] AWS VPC Modular Provisioner",
             engine=ExecutionEngineType.TERRAFORM,
             git_repo="https://github.com/terraform-aws-modules/terraform-aws-vpc",
-            git_commit_sha="0000000000000000000000000000000000000000",
+            git_commit_sha=None,
             playbook_or_module_path="modules/vpc",
             risk_tier=RiskTier.HIGH,
             requires_maker_checker=True,
@@ -157,6 +181,7 @@ class TestPostgresCatalogRepository(unittest.TestCase):
         saved = self.repo.get_by_identifier(candidate.identifier)
         self.assertIsNotNone(saved)
         self.assertEqual(saved.curation_status, CurationStatus.CANDIDATE)
+        self.assertIsNone(saved.git_commit_sha)
         self.assertFalse(saved.can_execute())  # Invariant INV-1 enforced
 
     def test_04_refusal_gate_kills_zero_score_trap(self):

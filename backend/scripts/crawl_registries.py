@@ -62,7 +62,7 @@ def synthesize_synthetic_candidates(base_items: List[CatalogItem], target_count:
             name=name,
             engine=base_items[idx % len(base_items)].engine if base_items else CatalogItem.__dataclass_fields__["engine"].default,
             git_repo=f"https://github.com/pnc-candidate/{cp}-{svc}-{act}",
-            git_commit_sha=sha,
+            git_commit_sha=None,
             playbook_or_module_path=f"modules/{cp}_{svc}_{act}",
             risk_tier=base_items[idx % len(base_items)].risk_tier if base_items else CatalogItem.__dataclass_fields__["risk_tier"].default,
             requires_maker_checker=True,

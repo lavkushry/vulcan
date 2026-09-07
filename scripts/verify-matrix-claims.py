@@ -141,7 +141,7 @@ def run_probes():
         description="Public module",
         risk_tier=RiskTier.HIGH,
         git_repo="https://github.com/terraform-aws-modules/terraform-aws-vpc.git",
-        git_commit_sha="b" * 40,
+        git_commit_sha=None,
         requires_maker_checker=True,
         requires_chg=False,
         engine=ExecutionEngineType.TERRAFORM,

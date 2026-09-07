@@ -19,18 +19,20 @@ Empirical verification of the PostgreSQL 16 pgvector catalog search subsystem ac
 - **Enterprise Large:** 5,000 candidates
 - **Enterprise Ultra:** 10,000 candidates
 
-All scale tiers satisfy the enterprise latency budget: **dense HNSW p95 < 10.0ms**, **sparse ts_rank p95 < 15.0ms**, and achieve **100.0% Refusal Gate compliance** against out-of-catalog queries (permanently killing the Zero-Score Trap).
+All scale tiers satisfy the sparse search latency budget: **sparse ts_rank p95 < 15.0ms (11.81 ms)** and achieve **100.0% Refusal Gate compliance** against out-of-catalog queries (permanently killing the Zero-Score Trap). Dense HNSW Cosine (14.23 ms vs < 10.0 ms target) and Fused Two-Stage RRF (27.07 ms vs < 25.0 ms target) exceed their strict SLA targets and are honestly labeled **🟡 WARN (Over Budget)**.
 
 ---
 
 ## 2. Empirical Benchmark Matrix
 
-| Scale Tier | Catalog Size | Dense HNSW p95 | Sparse ts_rank p95 | Fused RRF p95 | HNSW Recall@10 | Refusal Rate | Gate Status |
+| Scale Tier | Catalog Size | Dense HNSW p95 | Sparse ts_rank p95 | Fused RRF p95 | HNSW Recall@10 (N=10 sample queries) | Refusal Rate | Gate Status |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Baseline Curated** | 123 | 14.28 ms | 12.57 ms | **26.87 ms** | 100.0% | 100.0% | 🟡 WARN |
 | **Candidate Tier** | 1,000 | 17.12 ms | 12.61 ms | **44.97 ms** | 100.0% | 100.0% | 🟡 WARN |
 | **Enterprise Large** | 5,000 | 14.42 ms | 11.82 ms | **26.83 ms** | 100.0% | 100.0% | 🟡 WARN |
 | **Enterprise Ultra** | 10,000 | 14.23 ms | 11.81 ms | **27.07 ms** | 100.0% | 100.0% | 🟡 WARN |
+
+*Note on Candidate Tier (1,000 items): The elevated p95 latency (44.97 ms vs ~27 ms across other tiers) is unexplained in a single pass; hypothesized cold-start / connection initialization; re-run pending.*
 
 ---
 
@@ -53,11 +55,10 @@ All scale tiers satisfy the enterprise latency budget: **dense HNSW p95 < 10.0ms
    - When a query matches twin or near-identical modules where top-1 and top-2 RRF scores differ by $\Delta < 0.05$, the system automatically tags metadata with `disambiguation_required=True` to prompt operator disambiguation.
 
 5. **Database-Level Steel Cage Enforcement (INV-1 / Uncle Bob):**
-   - Verified by check constraint `chk_catalog_curated_sha`:
-     ```sql
-     CHECK (curation_status <> 'CURATED' OR (git_commit_sha IS NOT NULL AND git_commit_sha ~ '^[0-9a-f]{40}$'))
-     ```
-   - Attempting to promote or mark any candidate module as `CURATED` without an immutable 40-character commit SHA is rejected directly by PostgreSQL.
+   - Enforced by bidirectional check constraints:
+     - `chk_catalog_curated_sha`: `CHECK (curation_status <> 'CURATED' OR (git_commit_sha IS NOT NULL AND git_commit_sha ~ '^[0-9a-f]{40}$'))`
+     - `chk_candidate_null_sha`: `CHECK (curation_status <> 'CANDIDATE' OR git_commit_sha IS NULL)`
+   - Attempting to promote any candidate module to `CURATED` without an immutable 40-character commit SHA, or populating a candidate with a SHA, is rejected directly by PostgreSQL.
 
 ---
 
@@ -65,9 +66,9 @@ All scale tiers satisfy the enterprise latency budget: **dense HNSW p95 < 10.0ms
 
 | Channel | PRD Target Budget | Empirical p95 (10k items) | Status |
 | :--- | :--- | :--- | :--- |
-| **Dense HNSW Cosine** | $< 10.0\text{ ms}$ | **14.23 ms** | 🟢 Compliant |
+| **Dense HNSW Cosine** | $< 10.0\text{ ms}$ | **14.23 ms** | 🟡 WARN (Over Budget) |
 | **Sparse ts_rank** | $< 15.0\text{ ms}$ | **11.81 ms** | 🟢 Compliant |
-| **Fused Two-Stage RRF** | $< 25.0\text{ ms}$ | **27.07 ms** | 🟢 Compliant |
+| **Fused Two-Stage RRF** | $< 25.0\text{ ms}$ | **27.07 ms** | 🟡 WARN (Over Budget) |
 | **Refusal Gate on Garbage** | $100.0\%$ | **100.0%** | 🟢 Compliant |
 
 ---

@@ -7,16 +7,19 @@ Implements:
 3. Grammar-Constrained Pydantic Slot Filling.
 4. Adversarial Prompt Injection Defense (100% refusal rate).
 """
+import logging
 import math
 import re
 import unicodedata
 from typing import Any, Dict, List, Optional, Tuple
 
-from app.domain.entities import CatalogItem, ExecutionEngineType, RiskTier
+from app.domain.entities import CatalogItem, CurationStatus, ExecutionEngineType, RiskTier
 from app.ports.interfaces import IChatModelProvider, IEmbeddingProvider
 from app.ports.repositories import ICatalogRepository
 from app.adapters.embedding_providers import get_embedding_provider
 from app.use_cases.tokenizer import token_calculator
+
+logger = logging.getLogger("vulcan.intent_resolver")
 
 
 class IntentResolutionResult:
@@ -205,22 +208,32 @@ class IntentResolver:
     def hybrid_search(self, query: str, k: int = 60) -> List[Tuple[CatalogItem, float]]:
         """
         Two-Stage Reciprocal Rank Fusion (RRF) search combining Dense and Sparse signals.
-        Enforces calibrated refusal gate: if dense < 0.35 and sparse == 0.0, returns empty list.
+        Enforces:
+        1. Curation Quarantine: NEVER returns CANDIDATE modules (CURATED only).
+        2. Calibrated refusal gate: if dense < 0.35 and sparse == 0.0, returns empty list.
         """
         if self.catalog_repo and hasattr(self.catalog_repo, "search_hybrid"):
             try:
-                repo_results = self.catalog_repo.search_hybrid(query, top_k=10)
+                repo_results = self.catalog_repo.search_hybrid(query, top_k=10, curation_status="CURATED")
                 if repo_results:
                     return [(item, score) for item, score, _ in repo_results]
                 return []
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("Catalog repository hybrid search failed (%s); falling back to in-memory search.", e)
 
         query_lower = query.lower()
         query_tokens = set(re.findall(r"\w+", query_lower))
 
-        dense_scores = {item.id: self._dense_similarity_score(query_lower, item) for item in self.catalog}
-        sparse_scores = {item.id: self._sparse_bm25_tokens(query_tokens, item.id) for item in self.catalog}
+        # Quarantine check: Operator intent search must strictly match CURATED items only
+        curated_catalog = [
+            item for item in self.catalog
+            if getattr(item, "curation_status", CurationStatus.CURATED) == CurationStatus.CURATED
+            or (hasattr(getattr(item, "curation_status", None), "value") and item.curation_status.value == "CURATED")
+            or getattr(item, "curation_status", None) == "CURATED"
+        ]
+
+        dense_scores = {item.id: self._dense_similarity_score(query_lower, item) for item in curated_catalog}
+        sparse_scores = {item.id: self._sparse_bm25_tokens(query_tokens, item.id) for item in curated_catalog}
 
         max_dense = max(dense_scores.values()) if dense_scores else 0.0
         max_sparse = max(sparse_scores.values()) if sparse_scores else 0.0
@@ -231,12 +244,12 @@ class IntentResolver:
             return []
 
         dense_ranked = sorted(
-            [item for item in self.catalog if dense_scores[item.id] > 0.0],
+            [item for item in curated_catalog if dense_scores[item.id] > 0.0],
             key=lambda item: dense_scores[item.id],
             reverse=True
         )
         sparse_ranked = sorted(
-            [item for item in self.catalog if sparse_scores[item.id] > 0.0],
+            [item for item in curated_catalog if sparse_scores[item.id] > 0.0],
             key=lambda item: sparse_scores[item.id],
             reverse=True
         )
@@ -248,7 +261,7 @@ class IntentResolver:
             rrf_scores[item.id] = rrf_scores.get(item.id, 0.0) + (0.4 / (k + rank + 1))
 
         results = []
-        for item in self.catalog:
+        for item in curated_catalog:
             if item.id in rrf_scores:
                 results.append((item, rrf_scores[item.id]))
         results.sort(key=lambda x: x[1], reverse=True)

@@ -61,8 +61,13 @@ def make_catalog_item(
     identifier: str = "net-f5-cert-renew",
     risk_tier: RiskTier = RiskTier.HIGH,
     curation_status: CurationStatus = CurationStatus.CURATED,
-    git_commit_sha: str = "a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3e"
+    git_commit_sha: Optional[str] = None
 ) -> CatalogItem:
+    if curation_status == CurationStatus.CURATED and git_commit_sha is None:
+        git_commit_sha = "a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3e"
+    elif curation_status == CurationStatus.CANDIDATE:
+        git_commit_sha = None
+
     return CatalogItem(
         id="item-001",
         identifier=identifier,

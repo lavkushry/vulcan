@@ -47,7 +47,7 @@ def candidate_item():
         name="[Candidate] Terraform AWS VPC",
         engine=ExecutionEngineType.TERRAFORM,
         git_repo="https://github.com/terraform-aws-modules/terraform-aws-vpc",
-        git_commit_sha="11223344556677889900aabbccddeeff00112233",
+        git_commit_sha=None,
         playbook_or_module_path="modules/vpc",
         risk_tier=RiskTier.MEDIUM,
         requires_maker_checker=True,
@@ -239,3 +239,46 @@ class TestCurationRestApi:
         appr_res = client.post(f"/api/v1/curation/candidates/{candidate_item.identifier}/approve", json=approve_payload)
         assert appr_res.status_code == 200
         assert appr_res.json()["status"] == "APPROVED"
+
+    def test_intent_resolution_quarantine_never_returns_candidates(self, candidate_item):
+        """Regression test for Step 0 / CHAT Quarantine: Intent resolution must NEVER match or return CANDIDATE modules."""
+        from app.use_cases.resolve_intent import IntentResolver
+        from app.domain.entities import CatalogItem, RiskTier, ExecutionEngineType, CurationStatus
+
+        curated_item = CatalogItem(
+            id="cat-vpc-curated",
+            identifier="bank.network.curated-vpc",
+            name="Curated Enterprise VPC",
+            engine=ExecutionEngineType.TERRAFORM,
+            git_repo="git@github.internal.bank.com:automation/vpc.git",
+            git_commit_sha="a" * 40,
+            playbook_or_module_path="modules/curated_vpc",
+            risk_tier=RiskTier.HIGH,
+            requires_maker_checker=True,
+            requires_chg=False,
+            input_schema={"type": "object", "properties": {"vpc_name": {"type": "string"}}},
+            category="network",
+            description="Official vetted enterprise VPC deployment",
+            tags=["aws", "vpc", "network"],
+            curation_status=CurationStatus.CURATED
+        )
+
+        # Candidate item with identical keywords
+        assert candidate_item.curation_status == CurationStatus.CANDIDATE
+        assert candidate_item.git_commit_sha is None
+
+        catalog = [candidate_item, curated_item]
+        resolver = IntentResolver(catalog=catalog)
+
+        # 1. Hybrid search directly
+        search_results = resolver.hybrid_search("deploy unvetted candidate vpc module on aws")
+        for item, score in search_results:
+            assert item.id != candidate_item.id, "Quarantine leak: CANDIDATE item was returned by hybrid_search!"
+            assert item.curation_status == CurationStatus.CURATED
+
+        # 2. Intent resolve pipeline
+        res = resolver.resolve("deploy unvetted candidate vpc module on aws")
+        if res.catalog_item:
+            assert res.catalog_item.id != candidate_item.id, "Quarantine leak: CANDIDATE item was resolved by resolve()!"
+            assert res.catalog_item.curation_status == CurationStatus.CURATED
+

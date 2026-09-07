@@ -115,7 +115,8 @@ class PostgresCatalogRepository(ICatalogRepository):
                             ) STORED,
                             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                            CONSTRAINT chk_catalog_curated_sha CHECK (curation_status <> 'CURATED' OR (git_commit_sha IS NOT NULL AND git_commit_sha ~ '^[0-9a-f]{40}$'))
+                            CONSTRAINT chk_catalog_curated_sha CHECK (curation_status <> 'CURATED' OR (git_commit_sha IS NOT NULL AND git_commit_sha ~ '^[0-9a-f]{40}$')),
+                            CONSTRAINT chk_candidate_null_sha CHECK (curation_status <> 'CANDIDATE' OR git_commit_sha IS NULL)
                         );
                     """)
                     cur.execute("""
@@ -179,7 +180,7 @@ class PostgresCatalogRepository(ICatalogRepository):
             name=str(row["name"]),
             engine=engine,
             git_repo=str(row.get("git_repo") or ""),
-            git_commit_sha=str(row.get("git_commit_sha") or ("0" * 40)),
+            git_commit_sha=row.get("git_commit_sha"),
             playbook_or_module_path=str(row.get("playbook_or_module_path") or ""),
             risk_tier=risk_tier,
             requires_maker_checker=bool(row.get("requires_maker_checker", True)),

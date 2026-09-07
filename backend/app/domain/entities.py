@@ -76,12 +76,12 @@ class CatalogItem:
     name: str
     engine: ExecutionEngineType
     git_repo: str
-    git_commit_sha: str
-    playbook_or_module_path: str
-    risk_tier: RiskTier
-    requires_maker_checker: bool
-    requires_chg: bool
-    input_schema: Dict[str, Any]
+    git_commit_sha: Optional[str] = None
+    playbook_or_module_path: str = ""
+    risk_tier: RiskTier = RiskTier.MEDIUM
+    requires_maker_checker: bool = True
+    requires_chg: bool = True
+    input_schema: Dict[str, Any] = field(default_factory=dict)
     rollback_path: Optional[str] = None
     category: str = "general"
     description: str = ""
@@ -90,10 +90,17 @@ class CatalogItem:
     provenance: Optional[Dict[str, Any]] = None
 
     def __post_init__(self):
-        if not re.match(r"^[0-9a-f]{40}$", self.git_commit_sha):
-            raise ParameterValidationError(
-                f"CatalogItem [{self.identifier}] must bind to a 40-character Git commit SHA."
-            )
+        if self.curation_status == CurationStatus.CURATED:
+            if not self.git_commit_sha or not re.match(r"^[0-9a-f]{40}$", self.git_commit_sha):
+                raise ParameterValidationError(
+                    f"Curated CatalogItem [{self.identifier}] must bind to a 40-character Git commit SHA."
+                )
+        elif self.curation_status == CurationStatus.CANDIDATE:
+            if self.git_commit_sha is not None:
+                raise ParameterValidationError(
+                    f"Candidate CatalogItem [{self.identifier}] cannot have a Git commit SHA ({self.git_commit_sha}); "
+                    f"unreviewed candidates must have null SHA."
+                )
 
     def can_execute(self) -> bool:
         """Determines if this catalog item is authorized for execution under INV-1."""
