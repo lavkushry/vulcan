@@ -23,7 +23,8 @@ from pathlib import Path
 
 # Add backend to sys.path
 REPO_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO_ROOT / "backend"))
+BACKEND_DIR = REPO_ROOT / "backend" if (REPO_ROOT / "backend").exists() else REPO_ROOT
+sys.path.insert(0, str(BACKEND_DIR))
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("vulcan.multiworker_gate")
@@ -44,14 +45,35 @@ def wait_for_http(url: str, timeout_sec: int = 15) -> bool:
 
 
 def get_child_worker_pids(parent_pid: int) -> list[int]:
-    """Finds all child processes of the master uvicorn process."""
+    """Finds all child processes of the master uvicorn process (portable Linux /proc & macOS pgrep)."""
+    # 1. Inspect /proc if on Linux
+    if os.path.exists("/proc"):
+        children = []
+        for pid_entry in os.listdir("/proc"):
+            if not pid_entry.isdigit():
+                continue
+            status_path = f"/proc/{pid_entry}/status"
+            try:
+                with open(status_path, "r") as f:
+                    for line in f:
+                        if line.startswith("PPid:"):
+                            ppid = int(line.split()[1])
+                            if ppid == parent_pid:
+                                children.append(int(pid_entry))
+                            break
+            except (FileNotFoundError, PermissionError):
+                continue
+        if children:
+            return sorted(children)
+
+    # 2. Fallback to pgrep (macOS / BSD)
     try:
         out = subprocess.check_output(
             ["pgrep", "-P", str(parent_pid)],
             universal_newlines=True
         )
         return [int(p.strip()) for p in out.strip().splitlines() if p.strip()]
-    except subprocess.CalledProcessError:
+    except Exception:
         return []
 
 
@@ -80,7 +102,7 @@ def run_durability_exit_gate(port: int = 8899, db_url: str = None, redis_url: st
         "--log-level", "warning"
     ]
     logger.info("Spawning multi-worker cluster: %s", " ".join(cmd))
-    proc = subprocess.Popen(cmd, cwd=str(REPO_ROOT / "backend"), env=env)
+    proc = subprocess.Popen(cmd, cwd=str(BACKEND_DIR), env=env)
 
     try:
         # 2. Wait for liveness probe on 127.0.0.1:{port}/healthz
