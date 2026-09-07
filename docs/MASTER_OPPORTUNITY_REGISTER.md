@@ -19,12 +19,12 @@ The Master Opportunity Register unifies **127 architectural opportunities** mine
 
 | Subsystem | Total Items | 🟢 Implemented | 🟡 In Progress | ⚪ Planned | Implementation Rate |
 | :--- | :---: | :---: | :---: | :---: | :---: |
-| **Frontend Console (`UI-XX`)** | 28 | 17 | 5 | 6 | **60.7%** |
-| **AI Chat Subsystem (`CHAT-XX`)** | 26 | 17 | 5 | 4 | **65.4%** |
+| **Frontend Console (`UI-XX`)** | 28 | 15 | 7 | 6 | **53.6%** |
+| **AI Chat Subsystem (`CHAT-XX`)** | 26 | 16 | 6 | 4 | **61.5%** |
 | **Backend Control Plane (`BKND-XX`)** | 35 | 26 | 5 | 4 | **74.3%** |
 | **Platform & Infra (`INFRA-XX`)** | 30 | 20 | 6 | 4 | **66.7%** |
 | **Registry & Curation (`REG-XX`)** | 8 | 7 | 1 | 0 | **87.5%** |
-| **Total Across Architecture** | **127** | **87** | **22** | **18** | **68.5%** |
+| **Total Across Architecture** | **127** | **84** | **25** | **18** | **66.1%** |
 
 ---
 
@@ -33,7 +33,7 @@ The Master Opportunity Register unifies **127 architectural opportunities** mine
 | ID | Initiative Name | Problem Killed | Persona | Prio | Phase | Status | Verification Artifact |
 | :--- | :--- | :--- | :---: | :---: | :---: | :---: | :--- |
 | **UI-01** | Domain Invariant Presenter | Policy logic leaking into JSX components | Uncle Bob | P0 | Phase 1 | 🟢 Implemented | `frontend/components/TaskMatrixTable.tsx` |
-| **UI-02** | Real-Time Attestation Ledger | Hardcoded mock policy evaluation arrays | Uncle Bob | P0 | Phase 1 | 🟢 Implemented | `frontend/components/SeparationOfDutiesProofCard.tsx` |
+| **UI-02** | Real-Time Attestation Ledger | Hardcoded mock policy evaluation arrays | Uncle Bob | P0 | Phase 1 | 🟡 In Progress (Props live, fallback defaults retain mock strings) | `frontend/components/SeparationOfDutiesProofCard.tsx` |
 | **UI-03** | Zero-Trust Error Boundary | Silent error-swallowing synthesizing fake cards | Karpathy | P0 | Phase 1 | 🟢 Implemented | `frontend/components/ChatAssistant.tsx` |
 | **UI-04** | Server-Telemetry Redlock Radar | Client-side setInterval lock simulation | Alex Xu | P0 | Phase 1 | 🟢 Implemented | `frontend/components/RedlockHeartbeatBar.tsx` |
 | **UI-05** | RAF-Batched WebSocket Streamer | 500+ re-renders/s tab freezing and storm | Alex Xu | P0 | Phase 1 | 🟢 Implemented | `frontend/hooks/useJobStream.ts` |
@@ -50,7 +50,7 @@ The Master Opportunity Register unifies **127 architectural opportunities** mine
 | **UI-16** | Resizable Dual-Pane Splitter | Rigid 50/50 split crowding small laptops | Jordan Walke | P2 | Phase 3 | 🟢 Implemented | `frontend/components/ResizableDualPane.tsx` |
 | **UI-17** | Linear-Grade Keyboard Hotkeys | Slow mouse-bound navigation in high-stress SRE | Jordan Walke | P1 | Phase 2 | 🟢 Implemented | `frontend/components/UniversalCommandPalette.tsx` |
 | **UI-18** | Forensic Terminal Action Bar | Viewport autoscroll snapping & ANSI corruption | Jordan Walke | P1 | Phase 2 | 🟢 Implemented | `frontend/components/TerminalActionBar.tsx` |
-| **UI-19** | AST Failure Pinpoint & Rollback | Fake rollback DAGs with setTimeout buttons | Karpathy | P0 | Phase 1 | 🟢 Implemented | `frontend/components/JobDetail.tsx` |
+| **UI-19** | Failure Pinpoint & Rollback Dispatch | Fake rollback DAGs with setTimeout buttons | Karpathy | P0 | Phase 1 | 🟡 In Progress (API dispatch active; AST parser pending) | `frontend/components/JobDetail.tsx` |
 | **UI-20** | Fuzzy Universal Command Palette | Static 4-item mock palette | Jordan Walke | P1 | Phase 2 | 🟢 Implemented | `frontend/components/UniversalCommandPalette.tsx` |
 | **UI-21** | Virtualized Task Table Engine | DOM bloat when rendering 500+ tasks | Alex Xu | P1 | Phase 2 | 🟡 In Progress | `frontend/components/TaskMatrixTable.tsx` |
 | **UI-22** | Pruning Dead Prototype Code | 100KB orphaned prototype components | Uncle Bob | P1 | Phase 2 | 🟢 Implemented | Clean repository checkout |
@@ -83,7 +83,7 @@ The Master Opportunity Register unifies **127 architectural opportunities** mine
 | **CHAT-14** | ServiceNow CHG & CMDB Hydration | Manual typing of infrastructure parameters | Alex Xu | P1 | Phase 4 | 🟡 In Progress | `backend/app/adapters/servicenow_adapter.py` |
 | **CHAT-15** | Visual Provenance Conflict Alerts | Unchecked mismatch between prompt & CMDB | Uncle Bob | P1 | Phase 5 | 🟡 In Progress | `frontend/components/ChatAssistant.tsx` |
 | **CHAT-16** | Telemetry Failure Warning Banner| Generic errors without historical context | Jordan Walke | P2 | Phase 5 | ⚪ Planned | `frontend/components/ChatAssistant.tsx` |
-| **CHAT-17** | 4-Stage Prompt Injection Refusal| Prompt jailbreaks and instruction override | Karpathy | P0 | Phase 3 | 🟢 Implemented | `backend/tests/test_ai_prompt_injection_golden.py` |
+| **CHAT-17** | Multi-Stage Injection Refusal | Prompt jailbreaks and instruction override | Karpathy | P0 | Phase 3 | 🟡 In Progress (Stage 1 of 4: Regex active; classifier pending) | `backend/tests/test_ai_prompt_injection_golden.py` |
 | **CHAT-18** | OpenTelemetry Dynamic HUD | Static hardcoded metrics in frontend | Alex Xu | P1 | Phase 5 | 🟢 Implemented | `frontend/components/TokenomicsHUD.tsx` |
 | **CHAT-19** | Conversational Merkle Binding | Inability to audit conversational intent later | Uncle Bob | P0 | Phase 4 | 🟢 Implemented | `backend/app/adapters/crypto_audit_adapter.py` |
 | **CHAT-20** | 500-Scenario Golden Eval Gate | Silent regressions in intent routing & safety | Karpathy | P0 | Phase 3 | 🟢 Implemented | `backend/tests/test_ai_reasoning_evals.py` |
@@ -225,3 +225,9 @@ In accordance with banking governance rules, 10 registered items were subjected 
    - *Audit Finding:* Rationalized single-node Redis 7.2 with Redlock Lua scripts for pilot deployment, documenting 5-node quorum as future multi-datacenter evolution in `deploy/docker-compose.yml`.
 10. **`REG-01` / `REG-02` (Registry Crawler & Curation Gate):**
     - *Audit Finding:* Verified in `backend/app/adapters/registry_crawler.py` and `scripts/crawl_registries.py`. Crawled 500 candidate modules (250 Terraform, 250 Ansible) into `data/corpus/candidates_500.json` strictly quarantined in `CANDIDATE` status.
+11. **`UI-02` (Real-Time Attestation Ledger):**
+    - *Audit Finding & Correction:* `SeparationOfDutiesProofCard.tsx` binds to live policy attestation props from the backend, but fallback default props retain hardcoded mock demo identities (`Alice Cooper`, `PNC-US-991204`). Status updated to 🟡 In Progress.
+12. **`UI-19` (Failure Pinpoint & Rollback Dispatch):**
+    - *Audit Finding & Correction:* Dispatches live `action: rollback` execution playbooks via the API, but does not perform AST tree parsing on playbook sources. Renamed and status updated to 🟡 In Progress.
+13. **`CHAT-17` (Multi-Stage Prompt Injection Refusal):**
+    - *Audit Finding & Correction:* Fast deterministic regex stage is fully implemented and tested against 50 adversarial attack vectors (`test_ai_prompt_injection_golden.py`). The full 4-stage architecture (including a specialized classifier model) is partially complete. Status updated to 🟡 In Progress (Stage 1 of 4).

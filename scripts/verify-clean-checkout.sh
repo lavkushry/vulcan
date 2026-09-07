@@ -58,12 +58,21 @@ echo "✓ Next.js production build succeeded (15/15 static pages compiled)."
 echo ""
 
 # 4. Platform Infrastructure Integrity
-echo "─── [4/4] Verifying Compose & Secrets Contract ───"
+echo "─── [4/4] Verifying Compose, Network Lockdown & Secrets Contract ───"
 cd "${REPO_ROOT}"
 test -f deploy/docker-compose.yml
 test -f frontend/public/.gitkeep
 test -f frontend/next.config.mjs
 test -f frontend/playwright.config.ts
+
+# Port-Contract Gate: Verify zero published ports without explicit 127.0.0.1: loopback binding
+echo "Checking Docker Compose network lockdown contract (zero non-loopback port bindings)..."
+if grep -E '^\s*-\s*"[0-9]+:' deploy/docker-compose.yml; then
+    echo "🔴 GATE FAILURE: Found public port binding in deploy/docker-compose.yml!"
+    echo "All container host ports MUST be explicitly prefixed with '127.0.0.1:' (e.g. '127.0.0.1:8000:8000')."
+    exit 1
+fi
+echo "✓ Network lockdown contract verified: All compose ports bound strictly to 127.0.0.1."
 echo "✓ Platform configuration and infrastructure files verified."
 echo ""
 
