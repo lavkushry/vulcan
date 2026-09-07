@@ -54,13 +54,18 @@ def get_child_worker_pids(parent_pid: int) -> list[int]:
                 continue
             status_path = f"/proc/{pid_entry}/status"
             try:
+                ppid = None
+                is_zombie = False
                 with open(status_path, "r") as f:
                     for line in f:
                         if line.startswith("PPid:"):
                             ppid = int(line.split()[1])
-                            if ppid == parent_pid:
-                                children.append(int(pid_entry))
-                            break
+                        elif line.startswith("State:"):
+                            parts = line.split()
+                            if len(parts) > 1 and parts[1].startswith("Z"):
+                                is_zombie = True
+                if ppid == parent_pid and not is_zombie:
+                    children.append(int(pid_entry))
             except (FileNotFoundError, PermissionError):
                 continue
         if children:
