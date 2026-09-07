@@ -90,6 +90,9 @@ if errors:
         print("🔴 GATE FAILURE: " + e)
     sys.exit(1)
 ' || { echo "🔴 GATE FAILURE: Non-loopback port published in rendered $compose_file"; exit 1; }
+    else
+        echo "🔴 GATE FAILURE: docker compose command not available to render $compose_file. Failing closed."
+        exit 1
     fi
 
     # Gate Stage B: Static syntax regex gate (catches unquoted ports and raw port definitions)
