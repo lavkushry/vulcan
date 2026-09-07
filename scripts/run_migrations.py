@@ -25,14 +25,15 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 logger = logging.getLogger("vulcan.migrate")
 
 
-def run_migrations(db_url: str) -> None:
+def run_migrations(db_url: str, migrations_dir: str = None) -> None:
+    target_dir = Path(migrations_dir) if migrations_dir else MIGRATIONS_DIR
     try:
         import psycopg
     except ImportError:
         logger.critical("psycopg is required to run migrations. Install psycopg[binary].")
         sys.exit(1)
 
-    logger.info("Connecting to PostgreSQL to run migrations...")
+    logger.info("Connecting to PostgreSQL to run migrations from %s...", target_dir)
     conn = psycopg.connect(db_url)
     conn.autocommit = False
 
@@ -52,9 +53,9 @@ def run_migrations(db_url: str) -> None:
             applied = {row[0] for row in cur.fetchall()}
 
             # 3. Find and sort all SQL files
-            migration_files = sorted(MIGRATIONS_DIR.glob("*.sql"))
+            migration_files = sorted(target_dir.glob("*.sql"))
             if not migration_files:
-                logger.warning("No migration files found in %s", MIGRATIONS_DIR)
+                logger.warning("No migration files found in %s", target_dir)
                 return
 
             applied_count = 0
@@ -88,6 +89,7 @@ def run_migrations(db_url: str) -> None:
 def main():
     parser = argparse.ArgumentParser(description="Vulcan PostgreSQL Migration Runner")
     parser.add_argument("--db-url", type=str, default=None, help="PostgreSQL connection URL")
+    parser.add_argument("--migrations-dir", type=str, default=None, help="Custom path to migrations directory")
     args = parser.parse_args()
 
     db_url = (
@@ -97,7 +99,7 @@ def main():
         or "postgresql://vulcan_admin:vulcan_secret_pnc_2026@localhost:5432/vulcan_control_plane"
     )
 
-    run_migrations(db_url)
+    run_migrations(db_url, migrations_dir=args.migrations_dir)
 
 
 if __name__ == "__main__":
