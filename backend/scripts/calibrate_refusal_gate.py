@@ -227,7 +227,7 @@ def calibrate_refusal_gate(
         max_s = max(sparse_s) if sparse_s else 0.0
         valid_dense_scores.append(max_d)
         valid_sparse_scores.append(max_s)
-        if provider.is_refusal(max_d, max_s):
+        if getattr(provider, "is_calibrated", True) and provider.is_refusal(max_d, max_s):
             valid_refusals += 1
 
     logger.info("Evaluating %d adversarial/garbage queries...", len(ADVERSARIAL_QUERIES))
@@ -243,7 +243,7 @@ def calibrate_refusal_gate(
         max_s = max(sparse_s) if sparse_s else 0.0
         adv_dense_scores.append(max_d)
         adv_sparse_scores.append(max_s)
-        if provider.is_refusal(max_d, max_s):
+        if getattr(provider, "is_calibrated", True) and provider.is_refusal(max_d, max_s):
             adv_refusals += 1
 
     total_time = time.perf_counter() - t0

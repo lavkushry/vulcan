@@ -237,13 +237,38 @@ class OpenAIEmbeddingProvider(IEmbeddingProvider):
         return f"openai/{self.model}"
 
     @property
-    def refusal_thresholds(self) -> Dict[str, float]:
+    def is_calibrated(self) -> bool:
+        """Indicates whether refusal gate thresholds have been empirically calibrated for this model."""
+        return False
+
+    @property
+    def refusal_thresholds(self) -> Dict[str, Any]:
+        """
+        Uncalibrated placeholder refusal gate thresholds.
+        UNVERIFIED: Not empirically calibrated against live OpenAI API.
+        Must execute 'scripts/calibrate_refusal_gate.py --provider openai' (Milestone A3)
+        to measure true vector geometry and establish real cutoffs.
+        """
         return {
-            "min_dense_no_sparse": 0.45,
-            "min_dense_with_sparse": 0.35,
-            "min_sparse_cutoff": 0.20,
-            "rrf_dense_floor": 0.35,
+            "calibrated": False,
+            "min_dense_no_sparse": None,
+            "min_dense_with_sparse": None,
+            "min_sparse_cutoff": None,
+            "rrf_dense_floor": None,
+            "status": "UNVERIFIED_PENDING_CALIBRATION_MILESTONE_A3",
         }
+
+    def is_refusal(self, max_dense: float, max_sparse: float) -> bool:
+        if not self.is_calibrated:
+            raise RuntimeError(
+                f"Cannot evaluate refusal gate for {self.provider_name}: thresholds are uncalibrated placeholders. "
+                "You must execute 'scripts/calibrate_refusal_gate.py --provider openai' against the live API first."
+            )
+        t = self.refusal_thresholds
+        min_no_sparse = t.get("min_dense_no_sparse", 0.45)
+        min_with_sparse = t.get("min_dense_with_sparse", 0.35)
+        sparse_cutoff = t.get("min_sparse_cutoff", 0.20)
+        return (max_dense < min_no_sparse and max_sparse <= 0.0) or (max_dense < min_with_sparse and max_sparse < sparse_cutoff)
 
     def embed_text(self, text: str) -> List[float]:
         res = self.embed_batch([text])
@@ -301,13 +326,38 @@ class GeminiEmbeddingProvider(IEmbeddingProvider):
         return f"gemini/{self.model}"
 
     @property
-    def refusal_thresholds(self) -> Dict[str, float]:
+    def is_calibrated(self) -> bool:
+        """Indicates whether refusal gate thresholds have been empirically calibrated for this model."""
+        return False
+
+    @property
+    def refusal_thresholds(self) -> Dict[str, Any]:
+        """
+        Uncalibrated placeholder refusal gate thresholds.
+        UNVERIFIED: Not empirically calibrated against live Gemini API.
+        Must execute 'scripts/calibrate_refusal_gate.py --provider gemini' (Milestone A3)
+        to measure true vector geometry and establish real cutoffs.
+        """
         return {
-            "min_dense_no_sparse": 0.50,
-            "min_dense_with_sparse": 0.40,
-            "min_sparse_cutoff": 0.20,
-            "rrf_dense_floor": 0.40,
+            "calibrated": False,
+            "min_dense_no_sparse": None,
+            "min_dense_with_sparse": None,
+            "min_sparse_cutoff": None,
+            "rrf_dense_floor": None,
+            "status": "UNVERIFIED_PENDING_CALIBRATION_MILESTONE_A3",
         }
+
+    def is_refusal(self, max_dense: float, max_sparse: float) -> bool:
+        if not self.is_calibrated:
+            raise RuntimeError(
+                f"Cannot evaluate refusal gate for {self.provider_name}: thresholds are uncalibrated placeholders. "
+                "You must execute 'scripts/calibrate_refusal_gate.py --provider gemini' against the live API first."
+            )
+        t = self.refusal_thresholds
+        min_no_sparse = t.get("min_dense_no_sparse", 0.50)
+        min_with_sparse = t.get("min_dense_with_sparse", 0.40)
+        sparse_cutoff = t.get("min_sparse_cutoff", 0.20)
+        return (max_dense < min_no_sparse and max_sparse <= 0.0) or (max_dense < min_with_sparse and max_sparse < sparse_cutoff)
 
     def embed_text(self, text: str) -> List[float]:
         if not self.api_key:

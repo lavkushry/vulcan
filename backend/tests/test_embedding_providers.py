@@ -210,6 +210,21 @@ class TestIntentResolverWithEmbeddingProvider(unittest.TestCase):
         self.assertTrue(dh.is_refusal(max_dense=0.20, max_sparse=0.0))
         self.assertFalse(dh.is_refusal(max_dense=0.26, max_sparse=0.0))
 
+    def test_uncalibrated_provider_refusal_raises_error(self):
+        openai_p = OpenAIEmbeddingProvider(api_key="sk-test")
+        self.assertFalse(openai_p.is_calibrated)
+        self.assertFalse(openai_p.refusal_thresholds["calibrated"])
+        with self.assertRaises(RuntimeError) as ctx:
+            openai_p.is_refusal(0.40, 0.0)
+        self.assertIn("uncalibrated placeholders", str(ctx.exception))
+
+        gemini_p = GeminiEmbeddingProvider(api_key="gem-test")
+        self.assertFalse(gemini_p.is_calibrated)
+        self.assertFalse(gemini_p.refusal_thresholds["calibrated"])
+        with self.assertRaises(RuntimeError) as ctx:
+            gemini_p.is_refusal(0.40, 0.0)
+        self.assertIn("uncalibrated placeholders", str(ctx.exception))
+
 
 if __name__ == "__main__":
     unittest.main()

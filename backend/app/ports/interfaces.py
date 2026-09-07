@@ -205,9 +205,15 @@ class IEmbeddingProvider(abc.ABC):
         pass
 
     @property
-    def refusal_thresholds(self) -> Dict[str, float]:
+    def is_calibrated(self) -> bool:
+        """Indicates whether refusal gate thresholds have been empirically calibrated for this model."""
+        return True
+
+    @property
+    def refusal_thresholds(self) -> Dict[str, Any]:
         """Calibrated refusal gate thresholds for this provider."""
         return {
+            "calibrated": True,
             "min_dense_no_sparse": 0.45,
             "min_dense_with_sparse": 0.35,
             "min_sparse_cutoff": 0.20,

@@ -171,8 +171,7 @@ class RegistryCrawlerAgent:
         category = infer_category(name, description, tags)
         risk = infer_risk_tier(category, tags)
 
-        # Candidate commit SHA is a placeholder deterministic hash (not yet an internal Git commit)
-        candidate_sha = ensure_valid_sha(None, f"candidate-{identifier}-{version}")
+        # Candidates strictly have git_commit_sha=None (INV-1)
 
         # Extract root inputs and construct schema with suggestions
         root_inputs = []
@@ -235,8 +234,6 @@ class RegistryCrawlerAgent:
 
         raw_lic = role.get("license") or "Unknown"
         license_name, license_allowed = self.classify_license(raw_lic)
-
-        candidate_sha = ensure_valid_sha(None, f"candidate-{identifier}")
 
         git_user = role.get("github_user") or namespace
         git_repo_name = role.get("github_repo") or f"ansible-role-{name}"
@@ -309,7 +306,7 @@ class RegistryCrawlerAgent:
                         name=f"[Candidate] {item_dict.get('name', '')}",
                         engine=ExecutionEngineType.TERRAFORM if engine_type == "terraform" else ExecutionEngineType.ANSIBLE,
                         git_repo=item_dict.get("git_repo", "https://github.com/upstream/candidate"),
-                        git_commit_sha=item_dict.get("git_commit_sha") or ensure_valid_sha(None, ident),
+                        git_commit_sha=None,
                         playbook_or_module_path=item_dict.get("playbook_or_module_path", ""),
                         risk_tier=RiskTier(item_dict.get("risk_tier", "MEDIUM")),
                         requires_maker_checker=True,

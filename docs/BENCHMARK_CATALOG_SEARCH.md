@@ -32,7 +32,7 @@ All scale tiers satisfy the sparse search latency budget: **sparse ts_rank p95 <
 | **Enterprise Large** | 5,000 | 14.42 ms | 11.82 ms | **26.83 ms** | 100.0% | 100.0% | 🟡 WARN |
 | **Enterprise Ultra** | 10,000 | 14.23 ms | 11.81 ms | **27.07 ms** | 100.0% | 100.0% | 🟡 WARN |
 
-*Note on Candidate Tier (1,000 items): The elevated p95 latency (44.97 ms vs ~27 ms across other tiers) is unexplained in a single pass; hypothesized cold-start / connection initialization; re-run pending.*
+*Note on Candidate Tier (1,000 items): The elevated p95 latency (44.97 ms vs ~27 ms across other tiers) is an unverified single-pass anomaly. Cold-start / connection pooling initialization is strictly an unverified hypothesis; no second pass or root-cause profiling was captured in the execution log. Re-run verification pending.*
 
 ---
 

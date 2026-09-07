@@ -1,4 +1,6 @@
 {
+  "embedding_provider": "semantic-cluster-1536",
+  "chat_provider": "DeterministicFakeChatProvider",
   "evaluation_timestamp": "2026-09-07T18:17:57Z",
   "total_scenarios": 200,
   "metrics": {

@@ -54,7 +54,6 @@ def synthesize_synthetic_candidates(base_items: List[CatalogItem], target_count:
         ident = f"candidate.{cp}.{svc}-{act}-{idx}".lower()
         name = f"[Candidate] {cp.upper()} {svc.title()} {act.title()} ({env.upper()})"
         desc = f"Enterprise candidate automation module for {act} of {cp} {svc} in {env} tier."
-        sha = hashlib.sha1(f"synth-{ident}-{idx}".encode()).hexdigest()
 
         item = CatalogItem(
             id=f"synth-{idx:05d}",

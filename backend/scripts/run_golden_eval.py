@@ -231,6 +231,8 @@ def run_golden_eval(resolver: IntentResolver, output_path: Path = None) -> Dict[
     mean_tokens = sum(route_tokens) / len(route_tokens)
 
     results = {
+        "embedding_provider": embedding_provider.provider_name,
+        "chat_provider": getattr(chat_provider, "provider_name", chat_provider.__class__.__name__),
         "evaluation_timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "total_scenarios": len(ROUTING_SCENARIOS) + len(SLOT_SCENARIOS) + len(INJECTION_SCENARIOS) + len(OUT_OF_CATALOG_SCENARIOS),
         "metrics": {
