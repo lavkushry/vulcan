@@ -101,6 +101,7 @@ def create_app() -> FastAPI:
         audit_ok = container.audit_logger.verify_chain()
         is_ready = catalog_ok and audit_ok
         status_code = 200 if is_ready else 503
+        provider_name = getattr(container.embedding_provider, "provider_name", "unknown")
         return JSONResponse(
             status_code=status_code,
             content={
@@ -108,8 +109,10 @@ def create_app() -> FastAPI:
                 "checks": {
                     "catalog_loaded": catalog_ok,
                     "audit_chain_valid": audit_ok,
-                    "lock_manager_active": True
+                    "lock_manager_active": True,
+                    "embedding_provider_name": provider_name
                 },
+                "embedding_provider_name": provider_name,
                 "timestamp": datetime.now(timezone.utc).isoformat()
             }
         )

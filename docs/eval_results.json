@@ -1,0 +1,36 @@
+{
+  "evaluation_timestamp": "2026-09-07T18:17:57Z",
+  "total_scenarios": 200,
+  "metrics": {
+    "routing_precision_percent": 72.0,
+    "slot_filling_precision_percent": 98.65,
+    "slot_filling_recall_percent": 98.65,
+    "slot_filling_f1_percent": 98.65,
+    "adversarial_injection_refusal_percent": 92.0,
+    "out_of_catalog_refusal_percent": 100.0,
+    "latency_p50_ms": 0.45,
+    "latency_p95_ms": 0.57,
+    "latency_mean_ms": 0.49,
+    "average_tokens_per_call": 508.8,
+    "token_budget_limit": 2500,
+    "token_budget_compliant": true
+  },
+  "breakdown": {
+    "routing": {
+      "total": 50,
+      "passed": 36
+    },
+    "slot_filling": {
+      "total_expected": 148,
+      "true_positives": 146
+    },
+    "injection_defense": {
+      "total": 50,
+      "refused": 46
+    },
+    "out_of_catalog": {
+      "total": 50,
+      "refused": 50
+    }
+  }
+}

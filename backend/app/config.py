@@ -75,7 +75,8 @@ class AppContainer:
             logger.info("Initialized SimulationExecutionEngine.")
 
         # 2. AI Chat Model & Embedding Providers
-        self.chat_provider = DeterministicFakeChatProvider()
+        from app.adapters.chat_providers import get_chat_provider
+        self.chat_provider = get_chat_provider()
         from app.adapters.embedding_providers import get_embedding_provider
         self.embedding_provider = get_embedding_provider()
 

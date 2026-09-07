@@ -346,7 +346,7 @@ class GeminiEmbeddingProvider(IEmbeddingProvider):
         return [self.embed_text(t) for t in texts]
 
 
-def get_embedding_provider(provider_type: Optional[str] = None) -> IEmbeddingProvider:
+def get_embedding_provider(provider_type: Optional[str] = None, require_real: bool = False) -> IEmbeddingProvider:
     """
     Factory resolving the active embedding provider.
     Priority:
@@ -358,12 +358,28 @@ def get_embedding_provider(provider_type: Optional[str] = None) -> IEmbeddingPro
     choice = (provider_type or os.getenv("VULCAN_EMBEDDING_PROVIDER") or "").strip().lower()
 
     if choice in ("openai", "text-embedding-3-small"):
-        return OpenAIEmbeddingProvider()
+        api_key = os.getenv("OPENAI_API_KEY") or ""
+        if require_real and not api_key:
+            raise RuntimeError(
+                f"VULCAN_EMBEDDING_PROVIDER is set to '{choice}', but OPENAI_API_KEY is missing. "
+                "Failing closed without fallback (INV-AI-01: Zero silent synthetic degradation)."
+            )
+        return OpenAIEmbeddingProvider(api_key=api_key)
     elif choice in ("gemini", "text-embedding-004"):
-        return GeminiEmbeddingProvider()
+        api_key = os.getenv("GEMINI_API_KEY") or ""
+        if require_real and not api_key:
+            raise RuntimeError(
+                f"VULCAN_EMBEDDING_PROVIDER is set to '{choice}', but GEMINI_API_KEY is missing. "
+                "Failing closed without fallback (INV-AI-01: Zero silent synthetic degradation)."
+            )
+        return GeminiEmbeddingProvider(api_key=api_key)
     elif choice in ("hash", "deterministic_hash"):
+        if require_real:
+            raise RuntimeError("Synthetic hash provider forbidden when require_real=True.")
         return DeterministicHashEmbeddingProvider()
     elif choice in ("semantic", "semantic_cluster"):
+        if require_real:
+            raise RuntimeError("Synthetic semantic-cluster provider forbidden when require_real=True.")
         return SemanticClusterEmbeddingProvider()
 
     # Auto-detection
@@ -373,6 +389,9 @@ def get_embedding_provider(provider_type: Optional[str] = None) -> IEmbeddingPro
     elif os.getenv("GEMINI_API_KEY"):
         logger.info("Auto-selected GeminiEmbeddingProvider via GEMINI_API_KEY.")
         return GeminiEmbeddingProvider()
+
+    if require_real:
+        raise RuntimeError("No external AI provider configured and require_real=True.")
 
     # Default to SemanticClusterEmbeddingProvider for offline/CI environments
     logger.info("Defaulted to SemanticClusterEmbeddingProvider (1,536 dimensions).")

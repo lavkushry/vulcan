@@ -1,0 +1,56 @@
+{
+  "provider_name": "semantic-cluster-1536",
+  "dimension": 1536,
+  "calibrated_at": "2026-09-07T18:17:25Z",
+  "sample_counts": {
+    "valid_queries": 50,
+    "adversarial_queries": 100,
+    "total_queries": 150
+  },
+  "score_distributions": {
+    "valid_dense": {
+      "min": 0.0,
+      "max": 0.9,
+      "mean": 0.344,
+      "median": 0.4,
+      "p5": 0.0,
+      "p95": 0.9
+    },
+    "valid_sparse": {
+      "min": 0.1429,
+      "max": 0.875,
+      "mean": 0.4001,
+      "median": 0.375,
+      "p5": 0.1429,
+      "p95": 0.8571
+    },
+    "adversarial_dense": {
+      "min": 0.0,
+      "max": 0.65,
+      "mean": 0.0635,
+      "median": 0.0,
+      "p5": 0.0,
+      "p95": 0.4
+    },
+    "adversarial_sparse": {
+      "min": 0.0,
+      "max": 0.5,
+      "mean": 0.0826,
+      "median": 0.0,
+      "p5": 0.0,
+      "p95": 0.2857
+    }
+  },
+  "current_performance": {
+    "valid_recall_percent": 82.0,
+    "adversarial_refusal_percent": 83.0,
+    "false_positive_rate_percent": 17.0,
+    "total_eval_time_seconds": 0.08
+  },
+  "calibrated_thresholds": {
+    "min_dense_no_sparse": 0.4,
+    "min_dense_with_sparse": 0.3,
+    "min_sparse_cutoff": 0.2,
+    "rrf_dense_floor": 0.3
+  }
+}
