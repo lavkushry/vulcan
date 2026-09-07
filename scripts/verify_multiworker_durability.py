@@ -92,6 +92,10 @@ def run_durability_exit_gate(port: int = 8899, db_url: str = None, redis_url: st
     if redis_url:
         env["REDIS_URL"] = redis_url
 
+    test_token = "vulcan-durability-gate-token-2026"
+    env["VULCAN_API_TOKENS"] = f"{test_token}:admin.dave"
+    auth_headers = {"Authorization": f"Bearer {test_token}"}
+
     # 1. Spawn uvicorn with 2 worker processes
     cmd = [
         sys.executable, "-m", "uvicorn",
@@ -116,7 +120,7 @@ def run_durability_exit_gate(port: int = 8899, db_url: str = None, redis_url: st
         logger.info("✓ Cluster is ALIVE (200 OK)")
 
         # Verify readiness
-        req = urllib.request.Request(ready_url)
+        req = urllib.request.Request(ready_url, headers=auth_headers)
         with urllib.request.urlopen(req, timeout=3) as resp:
             ready_data = json.loads(resp.read().decode("utf-8"))
             logger.info("✓ /ready checks: %s", ready_data.get("checks"))
@@ -147,7 +151,7 @@ def run_durability_exit_gate(port: int = 8899, db_url: str = None, redis_url: st
         dispatch_req = urllib.request.Request(
             dispatch_url,
             data=payload,
-            headers={"Content-Type": "application/json"}
+            headers={"Content-Type": "application/json", **auth_headers}
         )
         with urllib.request.urlopen(dispatch_req, timeout=5) as resp:
             dispatch_res = json.loads(resp.read().decode("utf-8"))
@@ -158,7 +162,8 @@ def run_durability_exit_gate(port: int = 8899, db_url: str = None, redis_url: st
         # 5. Verify logs are queryable across workers
         time.sleep(1.0)
         logs_url = f"http://127.0.0.1:{port}/api/v1/tasks/{corr_id}/logs"
-        with urllib.request.urlopen(logs_url, timeout=3) as resp:
+        logs_req = urllib.request.Request(logs_url, headers=auth_headers)
+        with urllib.request.urlopen(logs_req, timeout=3) as resp:
             logs_data = json.loads(resp.read().decode("utf-8"))
             logs_list = logs_data.get("logs", [])
             first_log = logs_list[0][:40] if logs_list else "no-logs-yet"
@@ -184,7 +189,8 @@ def run_durability_exit_gate(port: int = 8899, db_url: str = None, redis_url: st
 
         # Query job status
         task_url = f"http://127.0.0.1:{port}/api/v1/jobs/{corr_id}"
-        with urllib.request.urlopen(task_url, timeout=3) as resp:
+        task_req = urllib.request.Request(task_url, headers=auth_headers)
+        with urllib.request.urlopen(task_req, timeout=3) as resp:
             task_info = json.loads(resp.read().decode("utf-8"))
             logger.info("✓ Job %s status after worker crash: %s", corr_id, task_info.get("status"))
 
