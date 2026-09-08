@@ -156,18 +156,27 @@ def create_app() -> FastAPI:
             }
         )
 
-    # Prometheus Metrics Exporter (INFRA-16)
+    # Prometheus Metrics Exporter (INFRA-22)
     @app.get("/metrics", response_class=PlainTextResponse, tags=["Observability"])
     def prometheus_metrics():
         """Prometheus metrics endpoint scrapable by Prometheus / OpenTelemetry."""
         uptime = time.time() - SERVER_START_TIME
         catalog_size = len(container.catalog)
-        jobs_count = len(container.jobs)
-        running_jobs = sum(1 for j in container.jobs.values() if j.status.value == "RUNNING")
-        queued_jobs = sum(1 for j in container.jobs.values() if j.status.value == "QUEUED")
-        pending_jobs = sum(1 for j in container.jobs.values() if j.status.value == "PENDING_APPROVAL")
-        success_jobs = sum(1 for j in container.jobs.values() if j.status.value == "SUCCESS")
-        failed_jobs = sum(1 for j in container.jobs.values() if j.status.value == "FAILED")
+        if hasattr(container, "job_repo") and container.job_repo:
+            jobs = container.job_repo.list_jobs(limit=5000)
+            jobs_count = len(jobs)
+            running_jobs = sum(1 for j in jobs if j.status.value == "RUNNING")
+            queued_jobs = sum(1 for j in jobs if j.status.value == "QUEUED")
+            pending_jobs = sum(1 for j in jobs if j.status.value == "PENDING_APPROVAL")
+            success_jobs = sum(1 for j in jobs if j.status.value == "SUCCESS")
+            failed_jobs = sum(1 for j in jobs if j.status.value == "FAILED")
+        else:
+            jobs_count = len(container.jobs)
+            running_jobs = sum(1 for j in container.jobs.values() if j.status.value == "RUNNING")
+            queued_jobs = sum(1 for j in container.jobs.values() if j.status.value == "QUEUED")
+            pending_jobs = sum(1 for j in container.jobs.values() if j.status.value == "PENDING_APPROVAL")
+            success_jobs = sum(1 for j in container.jobs.values() if j.status.value == "SUCCESS")
+            failed_jobs = sum(1 for j in container.jobs.values() if j.status.value == "FAILED")
 
         lines = [
             "# HELP vulcan_uptime_seconds System process uptime in seconds.",

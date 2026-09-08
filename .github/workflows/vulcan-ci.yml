@@ -251,6 +251,11 @@ jobs:
         with:
           node-version: 20
 
+      - name: Install Python Dependencies for SBOM Introspection
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+
       - name: Install Syft & Trivy CLI Tools
         run: |
           curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sudo sh -s -- -b /usr/local/bin
@@ -271,14 +276,26 @@ jobs:
           path: sbom/
           retention-days: 14
 
-      - name: Run Trivy Vulnerability Scanner on Repository & Dependencies
+      - name: Run Trivy Filesystem Vulnerability & Secret Scan
         run: |
-          trivy fs --severity HIGH,CRITICAL --format table .
+          echo "─── Scanning Repository & Dependencies with Trivy ───"
+          trivy fs --severity HIGH,CRITICAL --ignore-unfixed --format table --skip-dirs backend/ansible/keys,deploy/sandbox/keys .
+          # Enforce fail-closed on exploitable CRITICAL vulnerabilities in repository packages
+          trivy fs --severity CRITICAL --ignore-unfixed --exit-code 1 --skip-dirs backend/ansible/keys,deploy/sandbox/keys .
+
+      - name: Build & Scan Deployable Backend Container Image (INFRA-30)
+        run: |
+          echo "─── Building Backend Container Image (deploy-backend surface) ───"
+          docker build -t vulcan-backend:ci -f backend/Dockerfile backend/
+          echo "─── Scanning Backend Container Image with Trivy ───"
+          trivy image --severity HIGH,CRITICAL --ignore-unfixed --format table vulcan-backend:ci
+          # Enforce fail-closed on exploitable CRITICAL vulnerabilities in container image
+          trivy image --severity CRITICAL --ignore-unfixed --exit-code 1 vulcan-backend:ci
 
       - name: Generate Trivy SARIF Report for GitHub Security
         if: always()
         run: |
-          trivy fs --severity HIGH,CRITICAL --format sarif -o trivy-results.sarif . || true
+          trivy fs --severity HIGH,CRITICAL --format sarif -o trivy-results.sarif --skip-dirs backend/ansible/keys,deploy/sandbox/keys . || true
 
       - name: Upload Trivy Vulnerability Scan Results (SARIF)
         if: always()

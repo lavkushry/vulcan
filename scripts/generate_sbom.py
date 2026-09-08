@@ -26,15 +26,20 @@ def get_backend_dependencies(repo_root: Path) -> List[Dict[str, Any]]:
 
     req_file = repo_root / "backend" / "requirements.txt"
     direct_deps = set()
+    req_packages = []
     if req_file.exists():
         for line in req_file.read_text().splitlines():
             line = line.strip()
             if not line or line.startswith("#"):
                 continue
-            # Extract package name before any version specifier
-            match = re.match(r"^([a-zA-Z0-9_\-\.]+)", line)
+            # Extract package name and version if specified
+            match = re.match(r"^([a-zA-Z0-9_\-\.]+)(?:\[.*\])?(?:([><=~!]+)(.*))?$", line)
             if match:
-                direct_deps.add(match.group(1).lower().replace("_", "-"))
+                pkg_name = match.group(1)
+                clean_ver = (match.group(3) or "latest").split(",")[0].strip()
+                norm_name = pkg_name.lower().replace("_", "-")
+                direct_deps.add(norm_name)
+                req_packages.append((pkg_name, norm_name, clean_ver))
 
     # Try virtualenv metadata first for exact resolved versions and licenses
     venv_python = repo_root / "backend" / ".venv"
@@ -66,8 +71,9 @@ def get_backend_dependencies(repo_root: Path) -> List[Dict[str, Any]]:
     except Exception:
         pass
 
-    # If dist_map collected packages, use them
-    if dist_map:
+    # Determine if dist_map covers direct_deps sufficiently (at least 50%)
+    direct_covered = direct_deps.intersection(dist_map.keys())
+    if dist_map and len(direct_covered) >= max(1, len(direct_deps) // 2):
         for norm_name, info in sorted(dist_map.items()):
             seen.add(norm_name)
             packages.append({
@@ -79,29 +85,29 @@ def get_backend_dependencies(repo_root: Path) -> List[Dict[str, Any]]:
                 "purl": f"pkg:pypi/{info['name'].lower()}@{info['version']}",
             })
     else:
-        # Fallback: parse requirements.txt directly
-        if req_file.exists():
-            for line in req_file.read_text().splitlines():
-                line = line.strip()
-                if not line or line.startswith("#"):
-                    continue
-                match = re.match(r"^([a-zA-Z0-9_\-\.]+)(?:\[.*\])?(?:([><=~!]+)(.*))?$", line)
-                if match:
-                    pkg_name = match.group(1)
-                    ver_op = match.group(2) or ""
-                    ver_str = match.group(3) or "latest"
-                    clean_ver = ver_str.split(",")[0].strip()
-                    norm_name = pkg_name.lower().replace("_", "-")
-                    if norm_name not in seen:
-                        seen.add(norm_name)
-                        packages.append({
-                            "ecosystem": "pypi",
-                            "name": pkg_name,
-                            "version": clean_ver,
-                            "license": "NOASSERTION",
-                            "direct": True,
-                            "purl": f"pkg:pypi/{norm_name}@{clean_ver}",
-                        })
+        # Fallback or merge: parse requirements.txt directly so requirements are never missing
+        for pkg_name, norm_name, clean_ver in req_packages:
+            if norm_name not in seen:
+                seen.add(norm_name)
+                if norm_name in dist_map:
+                    info = dist_map[norm_name]
+                    packages.append({
+                        "ecosystem": "pypi",
+                        "name": info["name"],
+                        "version": info["version"],
+                        "license": info["license"],
+                        "direct": True,
+                        "purl": f"pkg:pypi/{info['name'].lower()}@{info['version']}",
+                    })
+                else:
+                    packages.append({
+                        "ecosystem": "pypi",
+                        "name": pkg_name,
+                        "version": clean_ver,
+                        "license": "NOASSERTION",
+                        "direct": True,
+                        "purl": f"pkg:pypi/{norm_name}@{clean_ver}",
+                    })
 
     return packages
 
@@ -131,11 +137,15 @@ def get_frontend_dependencies(repo_root: Path) -> List[Dict[str, Any]]:
                 if not ppath:  # Root package
                     continue
                 name = ppath.split("node_modules/")[-1]
-                if not name or name in seen:
+                if not name:
                     continue
-                seen.add(name)
-
                 version = pinfo.get("version", "unknown")
+                # Deduplicate on (name, version) to preserve multi-version transitive closures
+                key = (name, version)
+                if key in seen:
+                    continue
+                seen.add(key)
+
                 license_str = pinfo.get("license", "NOASSERTION")
                 packages.append({
                     "ecosystem": "npm",
@@ -148,7 +158,7 @@ def get_frontend_dependencies(repo_root: Path) -> List[Dict[str, Any]]:
         except Exception as e:
             print(f"Warning: Failed to parse package-lock.json: {e}", file=sys.stderr)
 
-    return sorted(packages, key=lambda x: x["name"])
+    return sorted(packages, key=lambda x: (x["name"], x["version"]))
 
 
 def generate_spdx_json(
