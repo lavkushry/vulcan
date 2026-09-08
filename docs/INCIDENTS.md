@@ -69,7 +69,7 @@
 
 ### SEC-INC-05: Hardcoded Connection Strings in Code Fallbacks & Benchmark Reports
 * **Timestamp:** 2026-09-08T16:00:00Z
-* **Description:** Static code audit following SEC-INC-04 revealed that 10 codebase files (`backend/app/adapters/postgres_*.py`, `backend/scripts/run_migrations.py`, `backend/tests/test_postgres_*.py`, etc.) contained hardcoded fallback connection strings (`"postgresql://vulcan_admin:vulcan_secret_pnc_2026@localhost:5432/..."`). Furthermore, `docs/LOAD_AND_CHAOS_BENCHMARK_REPORT.md` and `docs/PLATFORM_INFRASTRUCTURE_CI_OBSERVABILITY_DEBATE.md` contained unredacted Redis and PostgreSQL connection strings.
+* **Description:** Static code audit following SEC-INC-04 revealed that 10 codebase files (`backend/app/adapters/postgres_*.py`, `backend/scripts/run_migrations.py`, `backend/tests/test_postgres_*.py`, etc.) contained hardcoded fallback connection strings (`"postgresql://vulcan_admin:***@localhost:5432/..."`). Furthermore, `docs/LOAD_AND_CHAOS_BENCHMARK_REPORT.md` and `docs/PLATFORM_INFRASTRUCTURE_CI_OBSERVABILITY_DEBATE.md` contained unredacted Redis and PostgreSQL connection strings.
 * **Impact & Exposure:** Stale development credentials remained scattered across production adapters and documentation.
 * **Remediation:**
   1. Removed all hardcoded fallback connection strings across all 10 files, replacing them with dynamic environment variable assembly (`f"postgresql://{user}@{host}:5432/{db}"`).
