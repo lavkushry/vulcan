@@ -77,6 +77,9 @@ test.describe('Flow 1: Governed Happy Path (Maker-Checker & Execution)', () => {
     expect(titleAttr).toContain('Requester cannot approve their own high-risk job');
 
     // 7. Persona Switch to Lead Approver (lead.bob)
+    await page.evaluate((tok) => {
+      window.localStorage.setItem('vulcan_api_token', tok);
+    }, TOKENS.bob);
     const switchBobBtn = page.locator('button:has-text("Switch to Bob (Approving Lead)")');
     if (await switchBobBtn.isVisible()) {
       await switchBobBtn.click();
@@ -99,8 +102,8 @@ test.describe('Flow 1: Governed Happy Path (Maker-Checker & Execution)', () => {
 
     // Assert accessible live terminal buffer contains actual runner stdout lines
     const textBuffer = page.locator('[data-testid="terminal-text-buffer"]');
-    await expect(textBuffer).toContainText('[PROJECT VULCAN CONTROL PLANE]', { timeout: 15000 });
-    await expect(textBuffer).toContainText('[AUDIT LEDGER]', { timeout: 15000 });
+    await expect(textBuffer).toContainText('[PROJECT VULCAN RUNNER]', { timeout: 15000 });
+    await expect(textBuffer).toContainText('PLAY [Expand Database Tablespace Disk Volume]', { timeout: 15000 });
 
     // Assert Job Reaches SUCCESS
     const successBadge = page.locator('text=SUCCESS').first();

@@ -41,6 +41,22 @@ class ServiceNowGateway(IServiceNowGateway):
                 "ci": "pnc-core-db01",
                 "work_notes": []
             },
+            "CHG-98412": {
+                "state": "Scheduled",
+                "risk": "High",
+                "start_time": "2026-01-01T00:00:00Z",
+                "end_time": "2027-01-01T00:00:00Z",
+                "ci": "pnc-core-db01",
+                "work_notes": []
+            },
+            "CHG-998811": {
+                "state": "Scheduled",
+                "risk": "High",
+                "start_time": "2026-01-01T00:00:00Z",
+                "end_time": "2027-01-01T00:00:00Z",
+                "ci": "f5-edge-vip-02.pnc.com",
+                "work_notes": []
+            },
             "CHG-DEMO-001": {
                 "state": "Scheduled",
                 "risk": "High",
