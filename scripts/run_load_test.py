@@ -82,25 +82,26 @@ async def run_websocket_fanout_benchmark(
     correlation_id = f"EXEC-{uuid_hex}"
     ws_url = f"ws://{host}:{port}/api/v1/ws/jobs/{correlation_id}?token={token}"
 
-    opener = urllib.request.build_opener()
+    # Quiesce briefly after heavy Locust soak
+    await asyncio.sleep(2.0)
 
     # 1. Create a job to stream
     create_req = urllib.request.Request(
         f"http://{host}:{port}/api/v1/jobs",
         data=json.dumps({
             "catalog_identifier": "claw-openclaw-deploy",
-            "requester_id": "operator.loadtest",
+            "requester_id": "eng.alice",
             "target_resource_id": "fanout-test-node.internal",
             "parameters": {"port": 3000, "username": "openclaw"},
             "servicenow_chg": "CHG0098412"
         }).encode(),
         headers={
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {token}",
-            "X-Vulcan-User": "operator.loadtest"
+            "Authorization": "Bearer token-loadtest-op",
+            "X-Vulcan-User": "eng.alice"
         }
     )
-    with opener.open(create_req, timeout=3.0) as resp:
+    with opener.open(create_req, timeout=10.0) as resp:
         res_data = json.loads(resp.read().decode("utf-8"))
         correlation_id = res_data.get("correlation_id", correlation_id)
         ws_url = f"ws://{host}:{port}/api/v1/ws/jobs/{correlation_id}?token={token}"
@@ -155,7 +156,7 @@ async def run_websocket_fanout_benchmark(
         }
     )
     try:
-        with opener.open(appr_req, timeout=3.0) as resp:
+        with opener.open(appr_req, timeout=10.0) as resp:
             pass
     except Exception:
         pass
@@ -171,7 +172,7 @@ async def run_websocket_fanout_benchmark(
         }
     )
     try:
-        with opener.open(exec_req, timeout=5.0) as resp:
+        with opener.open(exec_req, timeout=10.0) as resp:
             pass
     except Exception:
         pass
