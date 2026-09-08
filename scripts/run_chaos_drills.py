@@ -406,8 +406,9 @@ def run_live_drill_2_real_minio() -> bool:
     gateway = S3MultipartGateway(
         bucket_name=bucket,
         endpoint_url=endpoint,
-        access_key=access,
-        secret_key=secret,
+        aws_access_key_id=access,
+        aws_secret_access_key=secret,
+        s3_client=s3_client,
         mock_mode=False
     )
 
