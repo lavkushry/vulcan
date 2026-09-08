@@ -35,3 +35,16 @@ Rather than declaring an epoch break, all historical data was migrated directly 
 - Merkle audit records in `PostgresAuditAdapter` are serialized using `SELECT ... FOR UPDATE` over the last ledger row (`ORDER BY id DESC LIMIT 1`).
 - This guarantees strict mathematical sequential chaining across distributed multi-worker uvicorn processes without race conditions.
 - **Trade-off:** At massive scale (tens of thousands of concurrent writes/second), this creates a global write serialization point on PostgreSQL. For Project Vulcan's banking automation control plane (target capacity 75 concurrent runners, ~3,000 governed jobs/day), row-level transaction times (<5ms) easily handle peak throughput while guaranteeing zero-trust tamper resistance.
+
+## 5. Architectural Limitation: Single-Host vs. Multi-Node Runner Heartbeats
+- The current orphan reaper in `ApprovalSweeper` validates worker process liveness using POSIX signal 0 (`os.kill(pid, 0)`).
+- **Known Scope:** This is valid strictly within a single shared PID namespace (e.g. multi-worker uvicorn processes running on the same host or inside the same container).
+- **Multi-Node Roadmap:** When runner fleets scale out to multiple host machines or independent Kubernetes pods, PID numbers are meaningless across boundaries. At that scale, runner liveness must transition to distributed heartbeat timestamps in PostgreSQL or Redis (`updated_at < NOW() - INTERVAL '30 seconds'`).
+
+## 6. Historical File Archival
+- With PostgreSQL 16 serving as the definitive authoritative store for all Merkle records, `/app/data/audit_ledger.jsonl` has been archived to `/app/data/archive/audit_ledger.jsonl.archive` with mode `0444` (read-only).
+- No control plane path writes to JSONL files in production mode.
+
+## 7. WebSocket Fanout Determinism
+- Rather than relying on a single WebSocket client connection (which has a 50% chance of landing on the same worker that executed the job), durability verification opens 4 concurrent WebSocket connections across the pool.
+- All 4 clients receive broadcast events over the Redis Pub/Sub backplane, proving that cross-worker fanout functions regardless of which worker terminates the client socket.

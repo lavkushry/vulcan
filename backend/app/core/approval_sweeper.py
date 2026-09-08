@@ -177,12 +177,15 @@ class ApprovalSweeper:
                 self.job_repo.save(job)
                 reaped.append(job)
 
-                # 3. Release any held distributed lock for this job
+                # 3. Release any held distributed lock for this job's target resource
                 try:
-                    self.lock_manager.release(
-                        f"job:{job.id}",
-                        owner_token=str(pid)
-                    )
+                    if job.target_resource_id:
+                        owner_token = f"runner-{job.id}-{job.correlation_id}"
+                        released = self.lock_manager.release(
+                            job.target_resource_id,
+                            owner_token=owner_token
+                        )
+                        logger.info("Released target mutex for [%s] (owner=%s): %s", job.target_resource_id, owner_token, released)
                 except Exception as lock_err:
                     logger.debug("Lock release for reaped job [%s]: %s (may already be expired)", job.id, lock_err)
 
@@ -205,7 +208,16 @@ class ApprovalSweeper:
 
     @staticmethod
     def _is_pid_alive(pid: int) -> bool:
-        """Portable PID liveness check (POSIX signal 0 + Linux /proc fallback)."""
+        """
+        Portable PID liveness check (POSIX signal 0).
+
+        ARCHITECTURAL LIMITATION (SINGLE-HOST ONLY):
+        Signal 0 liveness check is valid ONLY within a single shared PID namespace (e.g., multi-worker
+        uvicorn processes running on a single container or host).
+        When execution runners scale out across multiple distributed hosts/nodes, PID numbers collide
+        and are meaningless across nodes. For multi-node runner fleets, worker liveness MUST use
+        distributed Redis/Postgres heartbeats (lease timestamps e.g. updated_at < now - heartbeat_timeout).
+        """
         try:
             os.kill(pid, 0)
             return True

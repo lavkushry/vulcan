@@ -241,18 +241,34 @@ def run_durability_exit_gate(port: int = 8899, db_url: str = None, redis_url: st
             logger.info("✓ Job %s is currently %s (Owning Worker PID: %s)",
                         corr_id, task_info.get("status"), owning_worker_pid)
 
-        # Test WebSocket event reception
+        # Test WebSocket event reception across 4 concurrent clients
+        # Opening 4 concurrent clients across 2 uvicorn workers eliminates the single-client
+        # 50% coin flip and guarantees both workers' Redis Pub/Sub subscribers are exercised.
+        ws_url = f"ws://127.0.0.1:{port}/api/v1/ws/jobs/{corr_id}?token={test_token}"
+        logger.info("Opening 4 concurrent WebSocket clients to %s to prove cross-worker fanout...", ws_url)
         try:
+            import concurrent.futures
             from websockets.sync.client import connect as ws_connect
-            ws_url = f"ws://127.0.0.1:{port}/api/v1/ws/jobs/{corr_id}?token={test_token}"
-            logger.info("Connecting WebSocket client to %s...", ws_url)
-            with ws_connect(ws_url, open_timeout=4.0) as ws:
-                msg = ws.recv(timeout=4.0)
-                ws_entry = json.loads(msg)
-                logger.info("✓ WebSocket client received live stream event: seq=%s, type=%s, from_worker=%s",
-                            ws_entry.get("seq"), ws_entry.get("type"), ws_entry.get("worker_id"))
+
+            def _ws_probe(client_idx: int):
+                try:
+                    with ws_connect(ws_url, open_timeout=5.0) as ws:
+                        msg = ws.recv(timeout=5.0)
+                        entry = json.loads(msg)
+                        return {"client": client_idx, "success": True, "seq": entry.get("seq"), "worker_id": entry.get("worker_id")}
+                except Exception as e:
+                    return {"client": client_idx, "success": False, "error": str(e)}
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+                ws_results = list(executor.map(_ws_probe, range(1, 5)))
+
+            successful_ws = [r for r in ws_results if r["success"]]
+            logger.info("✓ %d/4 WebSocket clients received live stream events via Redis backplane", len(successful_ws))
+            for r in successful_ws:
+                logger.info("  ├─ WS Client #%d: event seq=%s from worker=%s", r["client"], r["seq"], r["worker_id"])
+            assert len(successful_ws) == 4, f"Expected all 4 WS clients to receive stream events, got {len(successful_ws)}"
         except Exception as ws_err:
-            logger.warning("WebSocket probe warning (%s); testing REST log fallback...", ws_err)
+            logger.warning("WebSocket multi-client probe warning (%s); testing REST log fallback...", ws_err)
 
         # Also verify REST logs endpoint
         time.sleep(0.5)
