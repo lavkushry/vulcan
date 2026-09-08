@@ -152,7 +152,9 @@ def run_durability_exit_gate(port: int = 8899, db_url: str = None, redis_url: st
     env["VULCAN_SWEEPER_INTERVAL"] = "1.5"
 
     test_token = "vulcan-durability-gate-token-2026"
-    env["VULCAN_API_TOKENS"] = f"{test_token}:admin.dave"
+    env["VULCAN_API_TOKEN"] = test_token
+    env["VULCAN_API_USER"] = "admin.dave"
+    env["VULCAN_API_TOKENS"] = json.dumps({test_token: "admin.dave"})
     auth_headers = {"Authorization": f"Bearer {test_token}"}
 
     # 1. Spawn uvicorn with 2 worker processes
