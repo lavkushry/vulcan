@@ -72,6 +72,19 @@ jobs:
         run: |
           python scripts/verify-matrix-claims.py --hermetic
 
+      - name: Generate & Verify Release SBOM Artifacts (INFRA-30)
+        run: |
+          mkdir -p /tmp/release-sbom
+          chmod +x scripts/generate_sbom.sh
+          ./scripts/generate_sbom.sh /tmp/release-sbom
+
+      - name: Upload Release SBOM Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: vulcan-release-sbom
+          path: /tmp/release-sbom/
+          retention-days: 30
+
   # Deploy to remote Ubuntu server via SSH (strictly gated by test job)
   deploy:
     name: Deploy to Remote Ubuntu Server

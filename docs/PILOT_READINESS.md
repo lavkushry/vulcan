@@ -80,6 +80,7 @@ Project Vulcan is an enterprise automation control plane designed for banking-gr
 | Perimeter: only SSH(22) public; port-contract gate prevents compose drift | [`scripts/verify-clean-checkout.sh`](../scripts/verify-clean-checkout.sh#L75), [`docs/WALKTHROUGH_LIVE_VERIFICATION.md`](WALKTHROUGH_LIVE_VERIFICATION.md) | External socket probing across ports 22, 3000, 8000, 9000, 9001, 2222, 5432, 6379 | 2026-09-08 | Oracle Cloud Infrastructure web console access represents break-glass boundary |
 | Auth: bearer middleware, server-side token→identity map, fail-closed | [`backend/app/api/auth.py`](../backend/app/api/auth.py#L30), [`backend/tests/test_auth_and_execution_rbac.py`](../backend/tests/test_auth_and_execution_rbac.py) | 401/403 live HTTP probes with unauthorized, invalid, and role-mismatched tokens | 2026-09-08 | Static bearer tokens; external enterprise SSO (Okta/Ping) and dynamic token rotation not integrated |
 | Credential hygiene: stdin-only rotation protocol; 5 incidents logged with gates added | [`docs/INCIDENTS.md`](INCIDENTS.md), [`scripts/verify-clean-checkout.sh`](../scripts/verify-clean-checkout.sh#L110) | Forensic incident register + connection-string regex gate + live credential rotation | 2026-09-08 | Historical credentials exist in immutable git history; rotation is the sole effective remediation |
+| Supply chain security: automated SPDX 2.3 & CycloneDX 1.5 SBOM + Trivy CVE gate (INFRA-30) | [`scripts/generate_sbom.sh`](../scripts/generate_sbom.sh), [`.github/workflows/vulcan-ci.yml`](../.github/workflows/vulcan-ci.yml) | Dual-format SBOM generation (210 components) + Trivy filesystem/dependency CVE scanning in CI Stage 5 | 2026-09-08 | Scans repository dependencies and lockfiles; base OS container image CVE scanning requires registry integration |
 
 ---
 
@@ -88,9 +89,9 @@ Project Vulcan is an enterprise automation control plane designed for banking-gr
 2. **Execution is simulation-first.** Real Ansible runs only against `vulcan-sandbox` (2 playbooks, real OS changes verified). Load-test executions were simulated. No production infrastructure is touched.
 3. **Single-host assumptions:** Redis is single-node (Redlock semantics are real but not multi-datacenter); orphan reaper uses PID liveness (one PID namespace); runners are in-process threads.
 4. **Floating-branch execution:** playbooks run from the deployed working tree, not a SHA-pinned checkout — a documented pilot exception.
-5. **Missing operational capabilities:** Prometheus metrics endpoint `/metrics` exists live on `:8000/metrics` (INFRA-16) but has no scraping Prometheus daemon/alertmanager deployed; structured logging is partial (INFRA-24); no SBOM artifact exists (INFRA-30); backup freshness is enforced in `/ready` (<26h).
+5. **Missing operational capabilities:** Prometheus metrics endpoint `/metrics` exists live on `:8000/metrics` (INFRA-16) but has no scraping Prometheus daemon/alertmanager deployed; structured logging is partial (INFRA-24); automated SBOM generation and Trivy CVE scanning enforced in CI (INFRA-30); backup freshness is enforced in `/ready` (<26h).
 6. **Enterprise connectors are fail-closed mocks:** ServiceNow Gateway (unknown tickets rejected fail-closed, valid tickets simulated), CyberArk PAM (RAM-only mock lease provider).
-7. **Register truth:** 79/127 implemented (62.2%) — see [`docs/MASTER_OPPORTUNITY_REGISTER.md`](MASTER_OPPORTUNITY_REGISTER.md); all 21 spot-audited rows verified.
+7. **Register truth:** 80/127 implemented (63.0%) — see [`docs/MASTER_OPPORTUNITY_REGISTER.md`](MASTER_OPPORTUNITY_REGISTER.md); all 21 spot-audited rows verified.
 
 ---
 

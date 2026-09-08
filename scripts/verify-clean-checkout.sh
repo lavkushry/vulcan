@@ -17,7 +17,7 @@ echo "Repository Root: ${REPO_ROOT}"
 echo ""
 
 # 1. Backend Verification
-echo "─── [1/4] Verifying Backend Control Plane ───"
+echo "─── [1/5] Verifying Backend Control Plane ───"
 if [ ! -d "backend/.venv" ]; then
     echo "Creating virtual environment in backend/.venv..."
     python3 -m venv backend/.venv
@@ -31,7 +31,7 @@ echo "✓ Backend tests passed (100% green)."
 echo ""
 
 # 2. Schema Migrations Verification
-echo "─── [2/4] Verifying Database Migrations ───"
+echo "─── [2/5] Verifying Database Migrations ───"
 test -f backend/migrations/003_vulcan_core_schema.sql
 test -f backend/migrations/004_catalog_pgvector.sql
 test -f backend/migrations/005_candidate_null_sha_constraint.sql
@@ -42,7 +42,7 @@ echo "✓ Schema migrations 003, 004, 005, 006, 007, and migration runner verifi
 echo ""
 
 # 3. Frontend Typecheck & Build
-echo "─── [3/4] Verifying Frontend Console (Next.js 15) ───"
+echo "─── [3/5] Verifying Frontend Console (Next.js 15) ───"
 cd "${REPO_ROOT}/frontend"
 
 if [ ! -d "node_modules" ]; then
@@ -60,7 +60,7 @@ echo "✓ Next.js production build succeeded (15/15 static pages compiled)."
 echo ""
 
 # 4. Platform Infrastructure Integrity
-echo "─── [4/4] Verifying Compose, Network Lockdown & Secrets Contract ───"
+echo "─── [4/5] Verifying Compose, Network Lockdown & Secrets Contract ───"
 cd "${REPO_ROOT}"
 test -f deploy/docker-compose.yml
 test -f frontend/public/.gitkeep
@@ -120,7 +120,15 @@ fi
 echo "✓ Connection-string secrets gate: 0 embedded credentials found across docs/, scripts/, backend/."
 echo ""
 
+# 5. Software Bill of Materials (SBOM) Gate (INFRA-30)
+echo "─── [5/5] Verifying Software Bill of Materials (SBOM) Generation Gate (INFRA-30) ───"
+TEMP_SBOM_DIR=$(mktemp -d)
+bash "${REPO_ROOT}/scripts/generate_sbom.sh" "$TEMP_SBOM_DIR"
+rm -rf "$TEMP_SBOM_DIR"
+echo "✓ Software Bill of Materials (SBOM) generation gate passed (SPDX 2.3 + CycloneDX 1.5)."
+echo ""
 
 echo "===================================================================="
 echo "  CLEAN CHECKOUT VERIFICATION SUCCESSFUL: ALL GATES GREEN"
 echo "===================================================================="
+

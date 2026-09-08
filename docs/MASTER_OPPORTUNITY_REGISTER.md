@@ -22,9 +22,9 @@ The Master Opportunity Register unifies **127 architectural opportunities** mine
 | **Frontend Console (`UI-XX`)** | 28 | 15 | 7 | 6 | **53.6%** |
 | **AI Chat Subsystem (`CHAT-XX`)** | 26 | 15 | 7 | 4 | **57.7%** |
 | **Backend Control Plane (`BKND-XX`)** | 35 | 24 | 7 | 4 | **68.6%** |
-| **Platform & Infra (`INFRA-XX`)** | 30 | 18 | 6 | 6 | **60.0%** |
+| **Platform & Infra (`INFRA-XX`)** | 30 | 19 | 6 | 5 | **63.3%** |
 | **Registry & Curation (`REG-XX`)** | 8 | 7 | 1 | 0 | **87.5%** |
-| **Total Across Architecture** | **127** | **79** | **28** | **20** | **62.2%** |
+| **Total Across Architecture** | **127** | **80** | **28** | **19** | **63.0%** |
 
 > [!NOTE]
 > **Milestone A Deferral & Protocol:** Milestone A (Live Embedding API Procurement & Empirical Gate Calibration) is formally deferred pending API key procurement — owner: user, review date: 2026-09-22. Deterministic semantic cluster vectors (`semantic-cluster-1536`) remain the active baseline until credentials are provided. If no key is provided by 2026-09-22, routing precision (≥99.2%) and search quality claims will formally downgrade to deferred indefinitely in the PRD, solidifying the pilot posture as *governance-proven, AI-staged*.
@@ -177,7 +177,7 @@ The Master Opportunity Register unifies **127 architectural opportunities** mine
 | **INFRA-27**| Golden Eval Dataset in CI | AI behavior silently drifting on prompt edits | Uncle Bob | P1 | Phase 6 | 🟢 Implemented | `backend/tests/test_ai_prompt_injection_golden.py` |
 | **INFRA-28**| Operational Backup & RTO Drills | Untested disaster recovery procedures | SRE Lead | P0 | Phase 6 | 🟢 Operational | `scripts/schedule_backup.sh`, `scripts/drill_backup_restore.py` |
 | **INFRA-29**| Chaos Engineering Drill Suite | Unpredicted cascading failures under loss | Alex Xu | P1 | Phase 6 | 🟢 Verified | `scripts/run_chaos_drills.py` |
-| **INFRA-30**| Release Pipeline & SBOM Scan | Deploying images with uninspected CVEs | SRE Lead | P0 | Phase 6 | ⚪ Planned (gitleaks is secret scanning, not SBOM; no SBOM artifact exists) | `.github/workflows/deploy.yml` |
+| **INFRA-30**| Release Pipeline & SBOM Scan | Deploying images with uninspected CVEs | SRE Lead | P0 | Phase 6 | 🟢 Operational (Automated SPDX 2.3 & CycloneDX 1.5 SBOM generation, Trivy CVE scan & SARIF in CI) | `scripts/generate_sbom.sh`, `.github/workflows/vulcan-ci.yml` |
 
 
 ---
@@ -251,7 +251,10 @@ In accordance with banking governance rules, 10 registered items were subjected 
       1. *RTO Drill Verification:* Executed `scripts/drill_backup_restore.py` covering all 5 phases: (1) Custom-format binary `pg_dump` generated in 1.46s (5,402,789 bytes, SHA-256 verified); (2) Archived to MinIO S3 object storage bucket `vulcan-artifacts/backups` in 0.24s; (3) Simulated node restoration by downloading from MinIO and executing `pg_restore` into an isolated drill database (`vulcan_drill_*`) in 6.10s, achieving a measured RTO of **6.10s** (SLA target: < 300.0s, passing by 49x); (4) Audited data parity with 100% exact match across all 2,022 execution jobs and 2,076 audit records, with the cryptographic Merkle hash chain verified **100% VALID** across all 2,076 sequential records; (5) Isolated drill database cleanly torn down and temporary archives purged (total drill duration: 8.37s).
       2. *Operational Scheduling:* Automated via `scripts/schedule_backup.sh` installed as an active cron job on the VM host (`0 2 * * * ~/vulcan/scripts/schedule_backup.sh >> ~/vulcan/logs/backup.log 2>&1`). Executes nightly binary `pg_dump`, SHA-256 validation, MinIO S3 archival to `backups/daily/`, automated 7-day retention policy pruning, and structured JSON telemetry logging, operating hermetically via containerized `deploy-backend` with zero host package drift. Status updated to 🟢 Operational.
 18. **`INFRA-30` (Release Pipeline & SBOM Scan):**
-    - *Audit Finding & Correction:* CI pipeline runs `gitleaks` (secret detection), but no SBOM (Software Bill of Materials) artifact or container vulnerability scanning is integrated. Status corrected to ⚪ Planned.
+    - *Audit Finding & Implementation:* Fully implemented and operationalized across local verification and CI/CD:
+      1. *Dual-Format Generator:* `scripts/generate_sbom.py` and `scripts/generate_sbom.sh` extract comprehensive dependency trees across backend Python (66 packages) and frontend npm (144 packages), producing valid SPDX 2.3 JSON (`vulcan-sbom.spdx.json`), CycloneDX 1.5 JSON (`vulcan-sbom.cyclonedx.json`), and cryptographic metadata manifest (`sbom-manifest.json`).
+      2. *CI Stage 5 & Trivy Vulnerability Scan:* Integrated into `.github/workflows/vulcan-ci.yml` (Stage 5 `sbom-gate`) with Anchore Syft CLI, Trivy CVE vulnerability scanning, SARIF reporting, and automated artifact archival (retention: 14 days), as well as release SBOM archiving in `deploy.yml`.
+      3. *Clean-Checkout Gating:* Added as Stage 5 to `scripts/verify-clean-checkout.sh`, ensuring SBOM generation is hermetically reproducible. Status upgraded to 🟢 Operational.
 19. **`CHAT-20` (500-Scenario Golden Eval Gate):**
     - *Audit Finding & Correction:* Test dataset in `backend/tests/test_ai_reasoning_evals.py` currently tests ~200 scenarios across routing, slot-filling, and injection refusal, not the 500 scenarios declared in the item name. Status corrected to 🟡 In Progress.
 20. **`BKND-18` (Decoupled 75-Runner Fleet):**

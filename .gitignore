@@ -123,3 +123,7 @@ docs/e2e/evidence/**/*.zip
 docs/e2e/report/**/*.webm
 docs/e2e/report/**/*.zip
 
+# Software Bill of Materials (SBOM) Ephemeral Outputs
+sbom/
+*.spdx.json
+*.cyclonedx.json
