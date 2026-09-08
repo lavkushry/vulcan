@@ -41,7 +41,12 @@ export function useJobStream(jobId: string | null) {
       const tokenParam = token ? `&token=${encodeURIComponent(token)}` : "";
       ws = new WebSocket(`${getWsBaseUrl()}/api/v1/ws/jobs/${jobId}?last_seq=${lastSeq}${tokenParam}`);
       if (typeof window !== "undefined") {
-        (window as any).__vulcan_ws = ws;
+        (window as any).__vulcan_ws = {
+          close: () => ws?.close(),
+          get readyState() {
+            return ws ? ws.readyState : WebSocket.CLOSED;
+          },
+        };
       }
       ws.onopen = () => {
         setLive(true);

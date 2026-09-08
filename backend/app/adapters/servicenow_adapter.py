@@ -47,6 +47,7 @@ class ServiceNowGateway(IServiceNowGateway):
                 "start_time": "2026-01-01T00:00:00Z",
                 "end_time": "2027-01-01T00:00:00Z",
                 "ci": "pnc-core-db01",
+                "type": "e2e-fixture",
                 "work_notes": []
             },
             "CHG-998811": {
@@ -55,6 +56,7 @@ class ServiceNowGateway(IServiceNowGateway):
                 "start_time": "2026-01-01T00:00:00Z",
                 "end_time": "2027-01-01T00:00:00Z",
                 "ci": "f5-edge-vip-02.pnc.com",
+                "type": "e2e-fixture",
                 "work_notes": []
             },
             "CHG-DEMO-001": {

@@ -594,13 +594,15 @@ def _format_job_response(job: ExecutionJob, current_user: Optional[str] = None) 
             if policy_manager.check_user_permission(current_user, Permission.JOB_APPROVE):
                 can_approve = True
                 can_reject = True
+                disabled_reason = None
             else:
                 can_approve = False
                 can_reject = False
                 disabled_reason = f"RBAC Policy: User [{current_user}] lacks [job:approve] permission"
         else:
-            can_approve = True
-            can_reject = True
+            can_approve = False
+            can_reject = False
+            disabled_reason = "Unauthenticated: Identity required to evaluate approval authority"
     else:
         can_approve = False
         can_reject = False
@@ -730,7 +732,7 @@ def resolve_intent(req: ResolveIntentRequest):
 @router.get("/jobs")
 def list_jobs(request: Request, current_user: Optional[str] = Query(None)):
     """List all jobs in the control plane."""
-    user = current_user or request.headers.get("x-vulcan-user")
+    user = current_user or getattr(request.state, "user_id", None) or request.headers.get("x-vulcan-user")
     all_jobs = container.job_repo.list_jobs(limit=1000)
     if not all_jobs:
         all_jobs = list(container.jobs.values())
@@ -812,7 +814,7 @@ def get_job(correlation_id: str, request: Request, current_user: Optional[str] =
     if not job:
         raise HTTPException(status_code=404, detail="Job not found.")
 
-    user = current_user or request.headers.get("x-vulcan-user")
+    user = current_user or getattr(request.state, "user_id", None) or request.headers.get("x-vulcan-user")
     return _format_job_response(job, current_user=user)
 
 

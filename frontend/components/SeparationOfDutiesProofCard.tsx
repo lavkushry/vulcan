@@ -68,13 +68,19 @@ export const SeparationOfDutiesProofCard: React.FC<SeparationOfDutiesProofCardPr
   }, [approvalRequestedAt, circuitBreakerRemainingSeconds]);
 
   const isTimedOut = remainingTime <= 0;
-  const canApprove = !isSelfApproval && !isTimedOut && (capabilities ? capabilities.can_approve : true);
+  // Fail-closed server-governed authority with client defense-in-depth:
+  const canApprove = !isSelfApproval && !isTimedOut && (capabilities ? capabilities.can_approve : false);
 
+  // Render server-provided domain reason directly, with client circuit-breaker overrides
   const disabledReason = isTimedOut
     ? "Fail-Closed Circuit Breaker: 15-minute approval window has expired (TIMEOUT_DENIED)"
+    : capabilities?.disabled_reason
+    ? capabilities.disabled_reason
     : isSelfApproval
-    ? "Requester cannot approve their own high-risk job (SOX 404)"
-    : (capabilities?.disabled_reason || "Authorize execution");
+    ? `Maker-Checker violation: Requester [${requesterId}] cannot self-approve (SOX 404)`
+    : !canApprove
+    ? "Approval gated by server-side policy"
+    : "Authorize execution";
 
   const defaultPolicies: PolicyProof[] = [
     {
