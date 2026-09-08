@@ -232,6 +232,9 @@ function ActionsContent() {
     <div className="flex h-full">
       {/* ──── PACK TREE (Left) ──── */}
       <div className="w-[220px] flex-shrink-0 border-r border-glass-border flex flex-col bg-glass-surface/30">
+        <div className="px-3 py-2 border-b border-glass-border flex items-center justify-between">
+          <h1 className="text-[11px] font-mono font-semibold uppercase tracking-wider text-slate-400">Action Catalog</h1>
+        </div>
         <div className="px-3 py-2.5 border-b border-glass-border">
           <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-glass-surface border border-glass-border">
             <Search size={13} className="text-slate-500" />
