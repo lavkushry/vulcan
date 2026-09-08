@@ -1,0 +1,146 @@
+# PROJECT VULCAN — PILOT READINESS DOSSIER
+## The honest front door: every claim linked to captured evidence
+
+**Document version:** 1.0 | **Compiled:** 2026-09-08 | **Status:** Pilot-Ready (conditional — see §9)  
+**Posture:** Governance-proven, AI-staged.
+
+---
+
+## 0. How to read this document
+- Every claim below carries: **Evidence** (link to code, report, or CI run), **Method** (how it was verified), **Date**, and **Caveat** (what it does *not* prove).
+- If a link is dead, or the artifact contradicts the claim, **this document is wrong** — file an issue; do not patch the prose.
+- Nothing here is forward-looking. Planned work lives in the Master Opportunity Register ([`docs/MASTER_OPPORTUNITY_REGISTER.md`](MASTER_OPPORTUNITY_REGISTER.md)), not in this dossier.
+- **Freshness rule:** any claim older than 30 days at read time should be re-verified using §11 before being relied upon.
+
+---
+
+## 1. Posture statement
+Project Vulcan is an enterprise automation control plane designed for banking-grade, governed execution of Ansible and Terraform playbooks. As of 2026-09-08, the system is deployed on an isolated OCI VM cluster and empirically verified across all critical governance invariants (strict maker-checker separation of duties with 403 enforcement, 14-state frozen finite state machine, write-before-run cryptographic Merkle audit chaining), durability backplanes (worker SIGKILL orphan reaping, Redis monotonic fencing, and nightly backup with 6.84s RTO and 100% data parity), and infrastructure security (loopback-only network lockdown, automated port-contract gates, and zero-exposure credential rotation). What remains deliberately staged or simulated are the external AI reasoning models (awaiting live embedding credentials under the 2026-09-22 protocol), physical runner job execution fleets (API control plane HTTP throughput verified under 75 operators, while playbook runners executed via in-process simulation), and enterprise connectors (ServiceNow and CyberArk operating against fail-closed contract stubs).
+
+---
+
+## 2. As-built deployment topology
+| Component | Reality | Evidence |
+|---|---|---|
+| Host | Single Oracle OCI VM (`141.148.195.233`), Ubuntu 24.04 LTS ARM64 | [`docs/LOAD_AND_CHAOS_BENCHMARK_REPORT.md`](LOAD_AND_CHAOS_BENCHMARK_REPORT.md#infrastructure-backplane-specifications) |
+| Containers | 6 running services: `vulcan-backend` (2 uvicorn workers), `vulcan-frontend`, `vulcan-postgres` (pg16 + pgvector), `vulcan-redis` (7.2-alpine), `vulcan-minio`, `vulcan-sandbox` | [`deploy/docker-compose.yml`](../deploy/docker-compose.yml) |
+| Network | Loopback-only host bindings (`127.0.0.1:8000`, `127.0.0.1:3000`, `127.0.0.1:9000-9001`) + host `DOCKER-USER` iptables drops (`eth0` 3000, 8000, 9000 DROP) + OCI ingress = SSH (22) only; operator access via SSH tunnel | [`scripts/verify-clean-checkout.sh`](../scripts/verify-clean-checkout.sh#L75) |
+| Persistence | PostgreSQL 16: catalog (10,467 items), execution jobs, Merkle audit ledger; MinIO S3: artifacts vault + automated nightly backups (`backups/daily/`, 7-day retention) | [`backend/migrations/003_vulcan_core_schema.sql`](../backend/migrations/003_vulcan_core_schema.sql), [`scripts/schedule_backup.sh`](../scripts/schedule_backup.sh) |
+| CI/CD | GitHub Actions: lint/typecheck → PyTest (179/179) → mutation engine (46/46) → browser E2E (13/13) → clean-checkout gates → gitleaks → deploy | [CI Run 34250664437](https://github.com/lavkushry/vulcan/actions/runs/34250664437), [Deploy Run 34250664829](https://github.com/lavkushry/vulcan/actions/runs/34250664829) |
+| Deliberately NOT | No high-availability / multi-region quorum, no Kubernetes orchestration, single-node Redis (not 5-node Redlock), single-host PID liveness namespace | See §8 |
+
+---
+
+## 3. Verified claims — Governance & safety
+| Claim | Evidence | Method | Date | Caveat |
+|---|---|---|---|---|
+| Maker-checker absolute: requester ≠ approver + `APPROVING_LEAD` role, 403 both ways | [`backend/app/domain/entities.py`](../backend/app/domain/entities.py#L90), [`backend/app/api/routes.py`](../backend/app/api/routes.py#L650) | Live API probes + 6 mutation tests killed (`MUT-MC-01`..`06`) | 2026-09-08 | Enforced in domain entities + API routes; UI disabling is belt-and-suspenders |
+| 14-state frozen FSM; illegal transitions rejected | [`backend/app/domain/entities.py`](../backend/app/domain/entities.py#L30), [`backend/tests/test_state_machine_mutations.py`](../backend/tests/test_state_machine_mutations.py#L40) | Spec-matrix test suite + 11 FSM mutants killed (`MUT-FSM-01`..`11`) | 2026-09-08 | Terminal states (`SUCCESS`, `FAILED`, `REVERTED`) are immutable; recovery requires new job dispatch |
+| 15-min fail-closed approval timeout → `TIMEOUT_DENIED` | [`backend/app/core/workflow_engine.py`](../backend/app/core/workflow_engine.py#L40), [`backend/tests/test_state_machine_mutations.py`](../backend/tests/test_state_machine_mutations.py#L80) | Unit tests + background sweeper probe + 3 mutation kills (`MUT-TO-01`..`03`) | 2026-09-08 | Sweeper runs on a 15-second loop; transition occurs within 15s of deadline expiry |
+| INV-1 steel cage: CANDIDATE never executes; CURATED requires 40-hex SHA (DB CHECK both directions) | [`backend/migrations/005_catalog_curation_schema.sql`](../backend/migrations/005_catalog_curation_schema.sql#L35), [`backend/app/domain/entities.py`](../backend/app/domain/entities.py#L110) | Live PostgreSQL `pg_constraint` assertion + domain validation + 4 mutants killed (`MUT-ST-01`..`04`) | 2026-09-08 | Promotion path requires signed PR merge; manual direct curation not exercised end-to-end |
+| Refusal gate: out-of-catalog queries fail closed | [`backend/app/use_cases/resolve_intent.py`](../backend/app/use_cases/resolve_intent.py#L180), [`backend/tests/test_api_endpoints.py`](../backend/tests/test_api_endpoints.py#L150) | Live HTTP intent probes + caught-and-fixed RRF zero-score bypass (`test_find_matching_playbook_refusal`) | 2026-09-08 | Threshold calibrated against synthetic embeddings (`semantic-cluster-1536`); requires recalibration on real models (§8) |
+| Write-before-execute audit; Merkle chain unbroken through chaos + load | [`backend/app/adapters/postgres_audit_adapter.py`](../backend/app/adapters/postgres_audit_adapter.py#L80), [`scripts/drill_backup_restore.py`](../scripts/drill_backup_restore.py#L285) | `verify_integrity()` SHA-256 traversal + SQL `LAG()` chain continuity (0 breaks across 2,076 records) | 2026-09-08 | Ledger serialization uses row-level lock on chain head; represents potential throughput bottleneck under >500 req/s |
+
+---
+
+## 4. Verified claims — Durability & recovery
+| Claim | Evidence | Method | Date | Caveat |
+|---|---|---|---|---|
+| Worker SIGKILL mid-job → `FAILED(WORKER_LOST)` in ≤2.1s; healthy control job untouched | [`scripts/run_chaos_drills.py`](../scripts/run_chaos_drills.py#L180), [`docs/LOAD_AND_CHAOS_BENCHMARK_REPORT.md`](LOAD_AND_CHAOS_BENCHMARK_REPORT.md#drill-3-multi-worker-crash-simulation-and-failover-resilience) | Live multi-worker chaos drill (2 runs) injecting ungraceful `SIGKILL` to PID 54 | 2026-09-08 | PID reaper is single-host; cross-host node loss requires cluster orchestrator heartbeat |
+| Redis lease expiry + monotonic fencing + Lua CAS release on real Redis | [`backend/app/adapters/redlock_adapter.py`](../backend/app/adapters/redlock_adapter.py#L90), [`scripts/run_chaos_drills.py`](../scripts/run_chaos_drills.py#L110) | Live chaos drill (Layer 2) against Redis 7.2 with real `pexpire`, `INCR`, and atomic Lua CAS | 2026-09-08 | Single-node Redis backplane; network partition tolerance of Redlock not tested across multiple Redis instances |
+| Backup: nightly cron, SHA-256, MinIO archival, 7-day retention; RTO 6.84s, 100% parity (2,022 jobs / 2,076 ledger records) | [`scripts/schedule_backup.sh`](../scripts/schedule_backup.sh), [`scripts/drill_backup_restore.py`](../scripts/drill_backup_restore.py), [`backend/app/api/server.py`](../backend/app/api/server.py#L112) | Executed 5-phase disaster recovery drill + active nightly cron (`0 2 * * *`) + `/ready` freshness probe (<26h) | 2026-09-08 | Restore executed into isolated database on same OCI VM host; cross-region node rebuild not exercised |
+| WS cross-worker fanout via Redis pub/sub | [`backend/app/api/websockets.py`](../backend/app/api/websockets.py#L60), [`docs/LOAD_AND_CHAOS_BENCHMARK_REPORT.md`](LOAD_AND_CHAOS_BENCHMARK_REPORT.md#real-time-websocket-log-fanout-benchmark) | Multi-client broadcast load test (75 subscribers, 900 stream lines delivered at 600 lines/s) | 2026-09-08 | 1.5s burst delivery; tail latency (~595ms p95) reflects client async buffer flush intervals |
+| S3 multipart abort → zero orphaned parts | [`backend/app/adapters/s3_multipart_adapter.py`](../backend/app/adapters/s3_multipart_adapter.py#L180), [`scripts/run_chaos_drills.py`](../scripts/run_chaos_drills.py#L150) | Live MinIO drill uploading 2x5MB chunks, aborting mid-flight, asserting `NoSuchUpload` via AWS APIs | 2026-09-08 | Tested against local MinIO container; AWS S3 cross-region latency and eventual consistency not tested |
+
+---
+
+## 5. Verified claims — Performance (honestly framed)
+| Claim | Evidence | Method | Date | Caveat |
+|---|---|---|---|---|
+| Catalog hybrid search p95: dense ~14ms, sparse ~12ms, fused ~27ms at 10,467 items | [`scripts/benchmark_catalog_search.py`](../scripts/benchmark_catalog_search.py), [`docs/LOAD_AND_CHAOS_BENCHMARK_REPORT.md`](LOAD_AND_CHAOS_BENCHMARK_REPORT.md) | PostgreSQL HNSW + pg_trgm GIN query benchmarks with `EXPLAIN ANALYZE` | 2026-09-08 | Embeddings are synthetic (`semantic-cluster-1536`); verifies query execution plumbing, not semantic relevance |
+| API control plane: 75 concurrent operator sessions, 0 errors, p95 510ms | [`scripts/run_load_test.py`](../scripts/run_load_test.py), [`docs/LOAD_AND_CHAOS_BENCHMARK_REPORT.md`](LOAD_AND_CHAOS_BENCHMARK_REPORT.md#high-concurrency-load-test-report) | Locust-mode headless load runner executing 1,504 requests over 30s | 2026-09-08 | Measures API control plane HTTP throughput (**50.13 req/s** gross, **60.09 req/s** steady-state), **not** physical playbook runner capacity |
+| intent/resolve p95 560ms | [`docs/LOAD_AND_CHAOS_BENCHMARK_REPORT.md`](LOAD_AND_CHAOS_BENCHMARK_REPORT.md#detailed-endpoint-latency-breakdown) | High-concurrency load run (501 intent resolution requests under 75 operators) | 2026-09-08 | Exceeds 500ms Karpathy intent budget by 60ms (+12%), passes 1,500ms API SLA; will shift with external LLM API latency |
+| WS connect p95 18ms; fanout 600 lines/s | [`docs/LOAD_AND_CHAOS_BENCHMARK_REPORT.md`](LOAD_AND_CHAOS_BENCHMARK_REPORT.md#real-time-websocket-log-fanout-benchmark) | WebSocket subscriber benchmark (340 connects, 900 fanout lines) | 2026-09-08 | Fanout was a 1.5s burst; long-lived sustained multi-hour streaming was not soaked |
+
+---
+
+## 6. Verified claims — Verification infrastructure
+| Claim | Evidence | Method | Date | Caveat |
+|---|---|---|---|---|
+| Mutation testing: 46/46 governance mutants killed; tautology found & fixed | [`scripts/run_domain_mutation_tests.py`](../scripts/run_domain_mutation_tests.py), [`docs/MUTATION_TESTING_REPORT.md`](MUTATION_TESTING_REPORT.md) | Hand-rolled AST/token replacement engine executed as CI Stage 1 gate (25.2s) | 2026-09-08 | 46 targeted banking governance mutants; assesses domain invariants, not full codebase mutation coverage |
+| Browser E2E: 13/13 (incl. governed happy path, WS reconnect, refusal, a11y) | [`tests/e2e/`](../tests/e2e/), [CI Run 34250664437](https://github.com/lavkushry/vulcan/actions/runs/34250664437) | Playwright Chromium headless in CI & live loopback tunnel; video/trace artifacts captured | 2026-09-08 | Found 5 real defects (auth timing, selector collisions, UI SoD bypass); tests mock external auth via Bearer injection |
+| Two-layer chaos suite (unit 0.53s CI / live 10.65s) | [`scripts/run_chaos_drills.py`](../scripts/run_chaos_drills.py), [`backend/tests/test_chaos_invariants.py`](../backend/tests/test_chaos_invariants.py) | Layer 1 in-memory mocks in CI; Layer 2 live Docker integration suite on VM | 2026-09-08 | Layer 1 proves math invariants in RAM; Layer 2 requires live container network |
+| Clean-checkout gates: tests, migrations, port-contract, connection-string secrets, gitleaks | [`scripts/verify-clean-checkout.sh`](../scripts/verify-clean-checkout.sh), [CI Run 34250664437](https://github.com/lavkushry/vulcan/actions/runs/34250664437) | Four-stage fail-closed shell contract executed locally and in CI Stage 3 | 2026-09-08 | Requires bash, python3, and npm in runner environment |
+
+---
+
+## 7. Verified claims — Security posture
+| Claim | Evidence | Method | Date | Caveat |
+|---|---|---|---|---|
+| Perimeter: only SSH(22) public; port-contract gate prevents compose drift | [`scripts/verify-clean-checkout.sh`](../scripts/verify-clean-checkout.sh#L75), [`docs/WALKTHROUGH_LIVE_VERIFICATION.md`](WALKTHROUGH_LIVE_VERIFICATION.md) | External socket probing across ports 22, 3000, 8000, 9000, 9001, 2222, 5432, 6379 | 2026-09-08 | Oracle Cloud Infrastructure web console access represents break-glass boundary |
+| Auth: bearer middleware, server-side token→identity map, fail-closed | [`backend/app/api/auth.py`](../backend/app/api/auth.py#L30), [`backend/tests/test_auth_and_execution_rbac.py`](../backend/tests/test_auth_and_execution_rbac.py) | 401/403 live HTTP probes with unauthorized, invalid, and role-mismatched tokens | 2026-09-08 | Static bearer tokens; external enterprise SSO (Okta/Ping) and dynamic token rotation not integrated |
+| Credential hygiene: stdin-only rotation protocol; 5 incidents logged with gates added | [`docs/INCIDENTS.md`](INCIDENTS.md), [`scripts/verify-clean-checkout.sh`](../scripts/verify-clean-checkout.sh#L110) | Forensic incident register + connection-string regex gate + live credential rotation | 2026-09-08 | Historical credentials exist in immutable git history; rotation is the sole effective remediation |
+
+---
+
+## 8. Deferred, simulated, and out of scope — read this before trusting §3–§7
+1. **AI search quality is NOT measured.** Active provider: `semantic-cluster-1536` (deterministic synthetic clustering). The ≥99.2% routing precision PRD claim is a *target*, not a result. Real embeddings, calibration thresholds, and golden evals await API credentials (§9).
+2. **Execution is simulation-first.** Real Ansible runs only against `vulcan-sandbox` (2 playbooks, real OS changes verified). Load-test executions were simulated. No production infrastructure is touched.
+3. **Single-host assumptions:** Redis is single-node (Redlock semantics are real but not multi-datacenter); orphan reaper uses PID liveness (one PID namespace); runners are in-process threads.
+4. **Floating-branch execution:** playbooks run from the deployed working tree, not a SHA-pinned checkout — a documented pilot exception.
+5. **Missing operational capabilities:** Prometheus metrics endpoint `/metrics` exists live on `:8000/metrics` (INFRA-16) but has no scraping Prometheus daemon/alertmanager deployed; structured logging is partial (INFRA-24); no SBOM artifact exists (INFRA-30); backup freshness is enforced in `/ready` (<26h).
+6. **Enterprise connectors are fail-closed mocks:** ServiceNow Gateway (unknown tickets rejected fail-closed, valid tickets simulated), CyberArk PAM (RAM-only mock lease provider).
+7. **Register truth:** 79/127 implemented (62.2%) — see [`docs/MASTER_OPPORTUNITY_REGISTER.md`](MASTER_OPPORTUNITY_REGISTER.md); all 21 spot-audited rows verified.
+
+---
+
+## 9. The 2026-09-22 decision protocol
+- **If credentials are provided:** run the staged activation sequence (re-embed catalog → calibrate refusal thresholds → golden eval benchmark → latency benchmark, all captured) and upgrade §5 and §8 accordingly.
+- **If not:** formally reclassify AI search-quality claims as *deferred indefinitely* in the PRD; this dossier's posture statement stands as final.
+- Either outcome is a legitimate pilot conclusion. Silence is not.
+
+---
+
+## 10. Incident history
+See [`docs/INCIDENTS.md`](INCIDENTS.md) (`SEC-INC-01` through `SEC-INC-05`) — five credential-exposure events, each with forensic root cause, immediate remediation, and an automated preventive CI gate added. The recurrence pattern and its structural fixes are part of the permanent audit record.
+
+---
+
+## 11. Reproduction — re-verify any claim from a clean checkout
+To independently re-verify the claims in this dossier from a completely fresh repository clone:
+
+```bash
+# 1. Clone and verify clean checkout gates (unit tests, migrations, build, port contract, secrets gate)
+git clone https://github.com/lavkushry/vulcan.git
+cd vulcan
+bash scripts/verify-clean-checkout.sh
+
+# 2. Run domain governance mutation testing engine (46/46 mutants killed)
+python3 scripts/run_domain_mutation_tests.py
+
+# 3. Run browser E2E test suite (requires loopback tunnel to live or local stack)
+cd frontend && npm install && npx playwright test
+
+# 4. Run distributed systems chaos drill suite
+python3 scripts/run_chaos_drills.py --mode unit
+# (For live VM mode against real Redis 7.2, MinIO, PostgreSQL 16):
+# python3 scripts/run_chaos_drills.py --mode live
+
+# 5. Run live disaster recovery & backup/restore RTO drill (measured RTO ~6.8s)
+python3 scripts/drill_backup_restore.py
+
+# 6. Test operational backup script (MinIO upload + 7-day retention)
+bash scripts/schedule_backup.sh
+
+# 7. Run 75-concurrency load benchmark harness
+python3 scripts/run_load_test.py --mode unit
+```
+
+---
+
+## 12. Sign-off
+| Role | Name | Date | Note |
+|---|---|---|---|
+| Engineering Owner | Lavkush Kumar (`lavkush@deepmind.com`) | 2026-09-08 | Zero-exposure credential hygiene, clean-checkout gates green, operational backup verified |
+| Verification Owner | Architecture Review Board (Uncle Bob, Alex Xu, Karpathy, Walke) | 2026-09-08 | Invariants mutation-tested (46/46 killed), 13/13 E2E green, 79/127 register items verified |
+| Decision Owner (§9) | Product & Executive Stakeholder | 2026-09-22 | Live embedding API key provided, or search quality claims formally deferred |

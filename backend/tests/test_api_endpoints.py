@@ -258,6 +258,8 @@ class TestAPIEndpoints(unittest.TestCase):
         self.assertEqual(res_ready.status_code, 200)
         self.assertEqual(res_ready.json()["status"], "READY")
         self.assertTrue(res_ready.json()["checks"]["catalog_loaded"])
+        self.assertIn("backup_fresh", res_ready.json()["checks"])
+        self.assertTrue(res_ready.json()["checks"]["backup_fresh"])
 
         # 3. Prometheus Metrics
         res_metrics = self.client.get("/metrics")

@@ -105,13 +105,37 @@ def create_app() -> FastAPI:
             "uptime_seconds": round(time.time() - SERVER_START_TIME, 2)
         }
 
-    # Readiness Probe (INFRA-17)
+    # Readiness Probe (INFRA-17, Operational Backup Freshness Guarantee)
     @app.get("/ready", tags=["Observability"])
     def readiness_probe():
-        """Kubernetes / Compose service readiness probe verifying subsystem health."""
+        """Kubernetes / Compose service readiness probe verifying subsystem health & backup freshness."""
         catalog_ok = len(container.catalog) > 0
         audit_ok = container.audit_logger.verify_chain()
-        is_ready = catalog_ok and audit_ok
+
+        # Operational Backup Freshness Guarantee (Nightly cron SLA: newest snapshot < 26 hours old)
+        backup_fresh = True
+        backup_age_hours = None
+        latest_backup_key = None
+        if hasattr(container, "storage_gateway") and container.storage_gateway and not container.storage_gateway.mock_mode:
+            try:
+                s3 = container.storage_gateway.s3_client
+                if s3:
+                    bucket = container.storage_gateway.bucket_name
+                    res = s3.list_objects_v2(Bucket=bucket, Prefix="backups/")
+                    contents = [c for c in res.get("Contents", []) if c["Key"].endswith(".dump")]
+                    if contents:
+                        newest = max(contents, key=lambda x: x["LastModified"])
+                        age_sec = (datetime.now(timezone.utc) - newest["LastModified"]).total_seconds()
+                        backup_age_hours = round(age_sec / 3600.0, 2)
+                        latest_backup_key = newest["Key"]
+                        backup_fresh = backup_age_hours <= 26.0
+                    else:
+                        backup_fresh = False
+            except Exception as e:
+                logger.warning("Backup freshness check in /ready failed: %s", e)
+                backup_fresh = False
+
+        is_ready = catalog_ok and audit_ok and backup_fresh
         status_code = 200 if is_ready else 503
         provider_name = getattr(container.embedding_provider, "provider_name", "unknown")
         return JSONResponse(
@@ -121,6 +145,9 @@ def create_app() -> FastAPI:
                 "checks": {
                     "catalog_loaded": catalog_ok,
                     "audit_chain_valid": audit_ok,
+                    "backup_fresh": backup_fresh,
+                    "backup_age_hours": backup_age_hours,
+                    "latest_backup": latest_backup_key,
                     "lock_manager_active": True,
                     "embedding_provider_name": provider_name
                 },
