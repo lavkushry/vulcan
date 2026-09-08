@@ -35,6 +35,20 @@ class TestPolicyEngine(unittest.TestCase):
         self.assertIn(Permission.AUDIT_VERIFY, audit_perms)
         self.assertNotIn(Permission.JOB_REQUEST, audit_perms)
 
+    def test_pol_role_permission_auditor_job_request_denied(self):
+        # Auditor role lacks Permission.JOB_REQUEST -> evaluate must DENY with ROLE_PERM
+        result = self.engine.evaluate(
+            user_id="auditor.eve",
+            user_role=UserRole.AUDITOR,
+            action_identifier="net-f5-cert-renew",
+            risk_tier="LOW",
+            environment="DEV",
+            parameters={"hostname": "f5-edge-01.internal"}
+        )
+        self.assertEqual(result.decision, PolicyDecision.DENY)
+        self.assertIn("ROLE_PERM", result.denied_policies)
+        self.assertTrue(any("does not have permission to request jobs" in r for r in result.reasons))
+
     def test_pol_001_maker_checker_self_approval_blocked(self):
         # Alice requests and attempts to approve her own job -> DENY
         result = self.engine.evaluate(

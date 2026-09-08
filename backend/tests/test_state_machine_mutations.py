@@ -39,6 +39,7 @@ from app.domain.exceptions import (
     ParameterValidationError,
     PolicyViolationError,
     ResourceLockedError,
+    SecretLintError,
     StateTransitionError,
 )
 from app.ports.interfaces import (
@@ -430,3 +431,114 @@ class TestStateMachineMutations:
             job.apply_approval_decision(decision2, evaluated_at=now + timedelta(seconds=10))
         assert "Cannot apply approval decision in status [QUEUED]" in str(exc.value)
         assert job.approver_id == "bob_lead"
+
+    def test_mutation_enforce_maker_checker_timeout_fails_closed(self):
+        """Mutation 10: Calling enforce_maker_checker after 15m window must fail-closed."""
+        job = make_job(requester_id="alice_dev")
+        now = datetime.now(timezone.utc)
+        job.request_approval(now)
+        # 16 minutes later (> 900s)
+        later = now + timedelta(seconds=960)
+        with pytest.raises(ApprovalTimeoutError) as exc:
+            job.enforce_maker_checker(approver_id="bob_lead", decided_at=later)
+        assert "Approval window expired" in str(exc.value)
+        assert job.status == JobStatus.TIMEOUT_DENIED
+
+    def test_mutation_parsed_to_running_illegal(self):
+        """Mutation 11: PARSED -> RUNNING jump is illegal; must raise StateTransitionError."""
+        job = make_job()
+        job.parse()
+        assert job.status == JobStatus.PARSED
+        assert JobStatus.RUNNING not in ExecutionJob._TRANSITIONS[JobStatus.PARSED]
+        with pytest.raises(StateTransitionError) as exc:
+            job.transition_to(JobStatus.RUNNING, "Illegal skip from PARSED to RUNNING")
+        assert "Illegal state transition from [PARSED] to [RUNNING]" in str(exc.value)
+
+    def test_mutation_enforce_maker_checker_precondition_guard(self):
+        """Mutation 12: enforce_maker_checker must reject if status != PENDING_APPROVAL."""
+        job = make_job(requester_id="alice_dev")
+        assert job.status == JobStatus.SUBMITTED
+        with pytest.raises(StateTransitionError) as exc:
+            job.enforce_maker_checker(approver_id="bob_lead")
+        assert "must be PENDING_APPROVAL" in str(exc.value)
+
+    def test_mutation_steel_cage_curated_sha_and_candidate_null_sha(self):
+        """Mutation 13: CURATED items require 40-char SHA; CANDIDATE items require null SHA."""
+        with pytest.raises(ParameterValidationError) as exc1:
+            CatalogItem(
+                id="item-bad-sha",
+                identifier="net-test-curated",
+                name="Test Curated",
+                engine=ExecutionEngineType.ANSIBLE,
+                git_repo="git@github.internal.bank.com:repo.git",
+                git_commit_sha="invalid-short-sha",
+                curation_status=CurationStatus.CURATED
+            )
+        assert "40-character Git commit SHA" in str(exc1.value)
+
+        with pytest.raises(ParameterValidationError) as exc2:
+            CatalogItem(
+                id="item-candidate-with-sha",
+                identifier="net-test-cand",
+                name="Test Candidate",
+                engine=ExecutionEngineType.ANSIBLE,
+                git_repo="git@github.internal.bank.com:repo.git",
+                git_commit_sha="a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3e",
+                curation_status=CurationStatus.CANDIDATE
+            )
+        assert "unreviewed candidates must have null SHA" in str(exc2.value)
+
+    def test_mutation_parameter_string_type_validation(self):
+        """Mutation 14: Non-string value passed to string property raises ParameterValidationError."""
+        item = make_catalog_item()
+        with pytest.raises(ParameterValidationError) as exc:
+            make_job(
+                catalog_item=item,
+                parameters={"vip_ip": "10.0.0.1", "hostname": 12345, "cert_valid_days": 90}
+            )
+        assert "must be string, got int" in str(exc.value)
+
+    def test_mutation_parameter_minimum_bound_validation(self):
+        """Mutation 15: Numeric value below schema minimum raises ParameterValidationError."""
+        item = make_catalog_item()
+        with pytest.raises(ParameterValidationError) as exc:
+            make_job(
+                catalog_item=item,
+                parameters={"vip_ip": "10.0.0.1", "hostname": "f5-edge-01.pnc.com", "cert_valid_days": 0}
+            )
+        assert "is below minimum 1" in str(exc.value)
+
+    def test_mutation_parameter_secret_linting_private_key_and_assignment(self):
+        """Mutation 16: Private keys and password assignments trigger SecretLintError."""
+        item = make_catalog_item()
+        with pytest.raises(SecretLintError) as exc1:
+            make_job(
+                catalog_item=item,
+                parameters={
+                    "vip_ip": "10.0.0.1",
+                    "hostname": "-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA0...",
+                    "cert_valid_days": 90
+                }
+            )
+        assert "High-entropy secret pattern detected" in str(exc1.value)
+
+        with pytest.raises(SecretLintError) as exc2:
+            make_job(
+                catalog_item=item,
+                parameters={
+                    "vip_ip": "10.0.0.1",
+                    "hostname": "password = 'SuperSecretCredential99!'",
+                    "cert_valid_days": 90
+                }
+            )
+        assert "High-entropy secret pattern detected" in str(exc2.value)
+
+    def test_mutation_audit_record_merkle_hash_payload_sensitivity(self):
+        """Mutation 17: Modifying prev_hash or action alters computed SHA-256 Merkle hash."""
+        payload = {"op": "test"}
+        h_base = AuditRecord.compute_hash("C1", "2026-01-01T00:00:00Z", "alice", "DISPATCH", payload, "prev_hash_1")
+        h_diff_prev = AuditRecord.compute_hash("C1", "2026-01-01T00:00:00Z", "alice", "DISPATCH", payload, "prev_hash_2")
+        assert h_base != h_diff_prev
+
+        h_diff_action = AuditRecord.compute_hash("C1", "2026-01-01T00:00:00Z", "alice", "EXECUTE", payload, "prev_hash_1")
+        assert h_base != h_diff_action
