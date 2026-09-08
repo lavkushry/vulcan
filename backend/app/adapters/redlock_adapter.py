@@ -236,11 +236,30 @@ class RedlockManager(ILockManager):
         Returns False if the lock was expired, stolen, or held by another owner.
         """
         with self._lock:
-            if self.redis_nodes and resource_id in self._active_mutexes:
-                mutex = self._active_mutexes[resource_id]
-                mutex.release()
-                del self._active_mutexes[resource_id]
-                return True
+            if self.redis_nodes:
+                lock_key = f"lock:resource:{resource_id}"
+                token = owner_token
+                if not token and resource_id in self._active_mutexes:
+                    token = self._active_mutexes[resource_id].lock_value
+                if token:
+                    released = False
+                    for client in self.redis_nodes:
+                        try:
+                            res = client.eval(LUA_RELEASE_SCRIPT, 1, lock_key, token)
+                            if res:
+                                released = True
+                        except Exception as e:
+                            logger.error(f"Error releasing lock on Redis node: {e}")
+                    if resource_id in self._active_mutexes:
+                        self._active_mutexes[resource_id]._stop_watchdog.set()
+                        del self._active_mutexes[resource_id]
+                    return released
+                elif resource_id in self._active_mutexes:
+                    mutex = self._active_mutexes[resource_id]
+                    mutex.release()
+                    del self._active_mutexes[resource_id]
+                    return True
+                return False
             elif resource_id in self._fallback_locks:
                 expiry, cur_owner, _ = self._fallback_locks[resource_id]
                 now = time.time()
@@ -282,8 +301,18 @@ class RedlockManager(ILockManager):
 
     def get_fencing_token(self, resource_id: str) -> Optional[int]:
         with self._lock:
-            if self.redis_nodes and resource_id in self._active_mutexes:
-                return self._active_mutexes[resource_id].fencing_token
+            if self.redis_nodes:
+                if resource_id in self._active_mutexes:
+                    return self._active_mutexes[resource_id].fencing_token
+                key = f"token:resource:{resource_id}"
+                for client in self.redis_nodes:
+                    try:
+                        val = client.get(key)
+                        if val is not None:
+                            return int(val)
+                    except Exception:
+                        pass
+                return None
             elif resource_id in self._fallback_locks:
                 return self._fallback_locks[resource_id][2]
             return None
