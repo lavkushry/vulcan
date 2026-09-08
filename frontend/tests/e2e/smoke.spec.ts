@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { setupAuth } from './helpers';
 
 /**
  * Project Vulcan: Platform E2E Smoke Suite
@@ -8,6 +9,9 @@ import { test, expect } from '@playwright/test';
  */
 
 test.describe('Vulcan Operator Console Smoke Tests', () => {
+  test.beforeEach(async ({ page }) => {
+    await setupAuth(page);
+  });
   test('Actions page loads and renders task list', async ({ page }) => {
     await page.goto('/actions');
     await expect(page).toHaveTitle(/Vulcan/i);

@@ -105,12 +105,12 @@ test.describe('Flow 1: Governed Happy Path (Maker-Checker & Execution)', () => {
     await expect(textBuffer).toContainText('[PROJECT VULCAN RUNNER]', { timeout: 15000 });
     await expect(textBuffer).toContainText('PLAY [Expand Database Tablespace Disk Volume]', { timeout: 15000 });
 
-    // Assert Job Reaches SUCCESS
-    const successBadge = page.locator('text=SUCCESS').first();
-    await expect(successBadge).toBeVisible({ timeout: 25000 });
+    // Assert Job Reaches SUCCESS in JobDetail inspector
+    const successBadge = page.locator('[data-testid="job-detail-status"]');
+    await expect(successBadge).toHaveText('SUCCESS', { timeout: 25000 });
 
-    // 10. Extract Correlation ID from UI and Back-Verify Cryptographic Merkle Record
-    const corrIdEl = page.locator('span.text-cyan-400:has-text("EXEC-")').first();
+    // 10. Extract Correlation ID from JobDetail and Back-Verify Cryptographic Merkle Record
+    const corrIdEl = page.locator('[data-testid="job-detail-correlation-id"]');
     const corrId = (await corrIdEl.innerText()).trim();
     expect(corrId).toMatch(/^EXEC-[A-F0-9]{4,}$/);
 

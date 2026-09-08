@@ -87,9 +87,9 @@ export function JobDetail({ job, currentUser, onChanged }: {
     <section className="flex h-full min-h-0 flex-1 flex-col bg-[#07090E]">
       {/* Top Header */}
       <header className="flex flex-wrap items-center gap-3 border-b border-slate-800/80 px-5 py-3 bg-[#0C101A]/60 font-mono">
-        <span className="text-sm font-bold text-cyan-400">{job.correlation_id}</span>
+        <span className="text-sm font-bold text-cyan-400" data-testid="job-detail-correlation-id">{job.correlation_id}</span>
         <span className="text-sm text-slate-200">{job.name}</span>
-        <span className={`rounded border px-2 py-0.5 text-xs font-semibold ${STATUS_STYLE[status] ?? ""}`}>
+        <span className={`rounded border px-2 py-0.5 text-xs font-semibold ${STATUS_STYLE[status] ?? ""}`} data-testid="job-detail-status">
           {status}
         </span>
         {job.servicenow_chg && (
