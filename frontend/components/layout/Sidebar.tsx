@@ -92,6 +92,7 @@ export function Sidebar() {
               key={item.id}
               onClick={() => router.push(item.href)}
               title={collapsed ? item.label : undefined}
+              aria-label={item.label}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all group relative ${
                 active
                   ? 'bg-cyan-500/10 text-cyan-400 shadow-sm'
@@ -124,6 +125,7 @@ export function Sidebar() {
           onClick={() => setCollapsed(!collapsed)}
           className="w-full flex items-center justify-center py-2 rounded-lg text-slate-500 hover:text-slate-300 hover:bg-white/[0.04] transition-colors"
           title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
           {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
         </button>

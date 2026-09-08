@@ -117,6 +117,7 @@ export function Header({ currentUser, onUserChange, onOpenCommandPalette }: Head
             onClick={() => router.push('/history')}
             className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/15 border border-amber-500/40 text-amber-300 font-mono text-[11px] hover:bg-amber-500/25 transition-all animate-pulse"
             title="Tasks awaiting Maker-Checker Lead Approval"
+            aria-label={`${pendingCount} Pending Approvals awaiting Maker-Checker Lead Approval`}
           >
             <Bell size={12} className="text-amber-400" />
             <span>{pendingCount} Pending Approval{pendingCount > 1 ? 's' : ''}</span>
@@ -142,6 +143,7 @@ export function Header({ currentUser, onUserChange, onOpenCommandPalette }: Head
           <select
             value={currentUser}
             onChange={(e) => onUserChange(e.target.value)}
+            aria-label="Active user persona"
             className="bg-transparent text-xs text-slate-300 border-none outline-none cursor-pointer font-mono"
           >
             {DEMO_USERS.map((u) => (
