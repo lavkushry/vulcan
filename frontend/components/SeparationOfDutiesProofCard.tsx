@@ -68,13 +68,13 @@ export const SeparationOfDutiesProofCard: React.FC<SeparationOfDutiesProofCardPr
   }, [approvalRequestedAt, circuitBreakerRemainingSeconds]);
 
   const isTimedOut = remainingTime <= 0;
-  const canApprove = capabilities
-    ? (capabilities.can_approve && !isTimedOut)
-    : (!isSelfApproval && !isTimedOut);
+  const canApprove = !isSelfApproval && !isTimedOut && (capabilities ? capabilities.can_approve : true);
 
   const disabledReason = isTimedOut
     ? "Fail-Closed Circuit Breaker: 15-minute approval window has expired (TIMEOUT_DENIED)"
-    : (capabilities?.disabled_reason || (isSelfApproval ? "Requester cannot approve their own high-risk job (SOX 404)" : "Authorize execution"));
+    : isSelfApproval
+    ? "Requester cannot approve their own high-risk job (SOX 404)"
+    : (capabilities?.disabled_reason || "Authorize execution");
 
   const defaultPolicies: PolicyProof[] = [
     {

@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { setupAuth } from './helpers';
+import { setupAuth, TOKENS } from './helpers';
 
 /**
  * Project Vulcan: Milestone C.1 — Flow 1: Governed Happy Path
@@ -40,18 +40,18 @@ test.describe('Flow 1: Governed Happy Path (Maker-Checker & Execution)', () => {
     // 3. Enter Natural Language Intent
     const promptInput = page.locator('[data-testid="chat-assistant-input"]');
     await expect(promptInput).toBeVisible();
-    const intentText = 'Drain pool member 10.100.2.14 on f5-edge-vip-01.pnc.com in PROD';
+    const intentText = 'Expand Postgres tablespace db-main-prod by 500GB';
     await promptInput.fill(intentText);
 
     // Click send
     await page.locator('[data-testid="chat-submit-btn"]').click();
 
     // 4. Assert Slot Card Renders Inline
-    const cardTitle = page.locator('text=F5 LTM Pool Member Drain').or(page.locator('text=net-f5-pool-member-drain'));
+    const cardTitle = page.locator('text=Database Tablespace Storage Expansion').or(page.locator('text=db-expand-tablespace'));
     await expect(cardTitle.first()).toBeVisible({ timeout: 15000 });
 
-    // Assert pre-filled slot values
-    const targetInput = page.locator('input[value*="f5-edge-vip-01.pnc.com"]').first();
+    // Assert pre-filled slot inputs
+    const targetInput = page.locator('input[placeholder="e.g. f5-edge-01.internal"]').first();
     await expect(targetInput).toBeVisible();
 
     // 5. Submit for Maker-Checker Approval
@@ -106,13 +106,17 @@ test.describe('Flow 1: Governed Happy Path (Maker-Checker & Execution)', () => {
     const successBadge = page.locator('text=SUCCESS').first();
     await expect(successBadge).toBeVisible({ timeout: 25000 });
 
-    // 10. Extract Correlation ID from UI Header and Back-Verify Cryptographic Merkle Record
-    const corrIdEl = page.locator('header span.text-cyan-400').first();
+    // 10. Extract Correlation ID from UI and Back-Verify Cryptographic Merkle Record
+    const corrIdEl = page.locator('span.text-cyan-400:has-text("EXEC-")').first();
     const corrId = (await corrIdEl.innerText()).trim();
     expect(corrId).toMatch(/^EXEC-[A-F0-9]{4,}$/);
 
     // Verify directly against Backend REST API
-    const apiRes = await request.get(`http://127.0.0.1:8000/api/v1/jobs/${corrId}`);
+    const apiRes = await request.get(`http://127.0.0.1:8000/api/v1/jobs/${corrId}`, {
+      headers: {
+        Authorization: `Bearer ${TOKENS.bob}`
+      }
+    });
     expect(apiRes.ok()).toBeTruthy();
     const jobData = await apiRes.json();
     expect(jobData.status).toBe('SUCCESS');

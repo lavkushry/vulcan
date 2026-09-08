@@ -38,9 +38,9 @@ test.describe('Flow 3: Fail-Closed Refusal Gate (Safety & Ungrounded Intent)', (
     const refusalBanner = page.locator('text=SAFETY REFUSAL: UNGROUNDED OR DISALLOWED INTENT');
     await expect(refusalBanner).toBeVisible({ timeout: 15000 });
 
-    // Assert that the intent is marked REFUSED
-    const refusalText = page.locator('text=INTENT REFUSED');
-    await expect(refusalText).toBeVisible();
+    // Assert that the refusal reason is rendered
+    const refusalReason = page.locator('text=Out-of-catalog intent');
+    await expect(refusalReason).toBeVisible();
 
     // Assert that NO execution card was rendered
     const launchBtn = page.locator('button:has-text("SUBMIT FOR APPROVAL"), button:has-text("LAUNCH ACTION NOW")');

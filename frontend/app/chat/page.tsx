@@ -27,7 +27,7 @@ function ChatConsoleContent() {
 
   const refreshJobs = useCallback(async () => {
     try {
-      const data = await api.listJobs();
+      const data = await api.listJobs(currentUser);
       setJobs(data);
       // If no job selected, auto-select first or latest running
       if (!selectedId && data.length > 0) {
@@ -36,7 +36,7 @@ function ChatConsoleContent() {
     } catch {
       /* ignore */
     }
-  }, [selectedId]);
+  }, [selectedId, currentUser]);
 
   useEffect(() => {
     refreshJobs();
