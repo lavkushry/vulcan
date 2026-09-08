@@ -31,6 +31,7 @@ async def lifespan(app: FastAPI):
 
     # Start distributed approval sweeper with Redlock leader election (Milestone B)
     if hasattr(container, "approval_sweeper") and container.approval_sweeper:
+        container.approval_sweeper.event_publisher = ws_hub.publish
         container.approval_sweeper.start(loop)
 
     yield

@@ -130,12 +130,10 @@ class AppContainer:
 
         # 5. Distributed Approval Sweeper with Redlock Leader Election
         from app.core.approval_sweeper import ApprovalSweeper
-        from app.api.websockets import ws_hub
         self.approval_sweeper = ApprovalSweeper(
             job_repo=self.job_repo,
             audit_logger=self.audit_logger,
             lock_manager=self.lock_manager,
-            event_publisher=ws_hub.publish,
             interval_seconds=float(os.getenv("VULCAN_SWEEPER_INTERVAL", "5.0")),
             timeout_seconds=int(os.getenv("VULCAN_APPROVAL_TIMEOUT", "900"))
         )
