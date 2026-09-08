@@ -207,28 +207,58 @@ def run_drill(db_url: str = None, s3_endpoint: str = None, s3_bucket: str = None
     print(f"\n{BOLD}[PHASE 2/5] Archiving Backup to MinIO S3 Object Storage...{RESET}")
     t0_upload = time.time()
 
-    import boto3
-    s3_client = boto3.client(
-        "s3",
-        endpoint_url=s3_endpoint,
-        aws_access_key_id=access_key,
-        aws_secret_access_key=secret_key,
-        region_name="us-east-1",
-    )
+    try:
+        import boto3
+        has_boto3 = True
+    except ImportError:
+        has_boto3 = False
 
     s3_key = f"backups/{dump_filename}"
-    try:
-        s3_client.upload_file(
-            Filename=str(local_dump_path),
-            Bucket=s3_bucket,
-            Key=s3_key,
-            ExtraArgs={"Metadata": {"sha256": dump_sha256, "timestamp": timestamp}}
+
+    if has_boto3:
+        s3_client = boto3.client(
+            "s3",
+            endpoint_url=s3_endpoint,
+            aws_access_key_id=access_key,
+            aws_secret_access_key=secret_key,
+            region_name="us-east-1",
         )
-        head_res = s3_client.head_object(Bucket=s3_bucket, Key=s3_key)
-        assert head_res["ContentLength"] == dump_size_bytes
-    except Exception as e:
-        logger.error(f"MinIO S3 upload verification failed: {e}")
-        return False
+        try:
+            s3_client.upload_file(
+                Filename=str(local_dump_path),
+                Bucket=s3_bucket,
+                Key=s3_key,
+                ExtraArgs={"Metadata": {"sha256": dump_sha256, "timestamp": timestamp}}
+            )
+            head_res = s3_client.head_object(Bucket=s3_bucket, Key=s3_key)
+            assert head_res["ContentLength"] == dump_size_bytes
+        except Exception as e:
+            logger.error(f"MinIO S3 upload verification failed: {e}")
+            return False
+    else:
+        # Hermetic containerized fallback via deploy-backend (zero host dependencies)
+        container_s3_url = "http://minio:9000"
+        upload_py = f"""
+import boto3, os
+s3 = boto3.client('s3', endpoint_url=os.environ['S3_ENDPOINT'], aws_access_key_id=os.environ['AWS_ACCESS_KEY_ID'], aws_secret_access_key=os.environ['AWS_SECRET_ACCESS_KEY'], region_name='us-east-1')
+s3.upload_file('{local_dump_path}', '{s3_bucket}', '{s3_key}', ExtraArgs={{'Metadata': {{'sha256': '{dump_sha256}', 'timestamp': '{timestamp}'}}}})
+head = s3.head_object(Bucket='{s3_bucket}', Key='{s3_key}')
+assert head['ContentLength'] == {dump_size_bytes}
+"""
+        cmd = [
+            "docker", "run", "--rm",
+            "--network", "deploy_default",
+            "-v", f"{temp_dir}:{temp_dir}",
+            "-e", f"S3_ENDPOINT={container_s3_url}",
+            "-e", f"AWS_ACCESS_KEY_ID={access_key}",
+            "-e", f"AWS_SECRET_ACCESS_KEY={secret_key}",
+            "deploy-backend",
+            "python3", "-c", upload_py
+        ]
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        if res.returncode != 0:
+            logger.error(f"Containerized S3 upload failed: {res.stderr}")
+            return False
 
     upload_duration = time.time() - t0_upload
     print(f"  {GREEN}✓{RESET} Archived to s3://{s3_bucket}/{s3_key} ({upload_duration:.2f}s)")
@@ -240,11 +270,33 @@ def run_drill(db_url: str = None, s3_endpoint: str = None, s3_bucket: str = None
     t0_restore = time.time()
 
     restore_download_path = temp_dir / f"restore_{dump_filename}"
-    s3_client.download_file(
-        Bucket=s3_bucket,
-        Key=s3_key,
-        Filename=str(restore_download_path)
-    )
+    if has_boto3:
+        s3_client.download_file(
+            Bucket=s3_bucket,
+            Key=s3_key,
+            Filename=str(restore_download_path)
+        )
+    else:
+        download_py = f"""
+import boto3, os
+s3 = boto3.client('s3', endpoint_url=os.environ['S3_ENDPOINT'], aws_access_key_id=os.environ['AWS_ACCESS_KEY_ID'], aws_secret_access_key=os.environ['AWS_SECRET_ACCESS_KEY'], region_name='us-east-1')
+s3.download_file(Bucket='{s3_bucket}', Key='{s3_key}', Filename='{restore_download_path}')
+"""
+        cmd = [
+            "docker", "run", "--rm",
+            "--network", "deploy_default",
+            "-v", f"{temp_dir}:{temp_dir}",
+            "-e", f"S3_ENDPOINT=http://minio:9000",
+            "-e", f"AWS_ACCESS_KEY_ID={access_key}",
+            "-e", f"AWS_SECRET_ACCESS_KEY={secret_key}",
+            "deploy-backend",
+            "python3", "-c", download_py
+        ]
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        if res.returncode != 0:
+            logger.error(f"Containerized S3 download failed: {res.stderr}")
+            return False
+
     download_sha256 = compute_sha256(restore_download_path)
     if download_sha256 != dump_sha256:
         logger.error("Restored dump SHA-256 mismatch! Archive corruption detected.")
