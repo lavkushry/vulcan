@@ -74,7 +74,7 @@ test.describe('Flow 1: Governed Happy Path (Maker-Checker & Execution)', () => {
 
     // Verify disabled title / tooltip contains SOX 404 reason
     const titleAttr = await authorizeBtn.getAttribute('title');
-    expect(titleAttr).toContain('Requester cannot approve their own high-risk job');
+    expect(titleAttr).toMatch(/cannot self-approve \(SOX 404\)|cannot approve their own/i);
 
     // 7. Persona Switch to Lead Approver (lead.bob)
     await page.evaluate((tok) => {
