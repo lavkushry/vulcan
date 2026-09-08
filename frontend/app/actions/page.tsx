@@ -53,9 +53,7 @@ function ActionsContent() {
 
   // Fetch catalog
   useEffect(() => {
-    const BASE = getApiBaseUrl();
-    fetch(`${BASE}/api/v1/catalog`)
-      .then((r) => r.json())
+    api.getCatalog()
       .then((items) => {
         setCatalog(items);
         // Auto-expand all categories
@@ -242,6 +240,7 @@ function ActionsContent() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search packs…"
+              aria-label="Search packs"
               className="flex-1 bg-transparent text-xs text-slate-300 placeholder-slate-600 outline-none"
             />
           </div>
@@ -308,6 +307,7 @@ function ActionsContent() {
               value={actionSearch}
               onChange={(e) => setActionSearch(e.target.value)}
               placeholder="Filter actions…"
+              aria-label="Filter actions"
               className="flex-1 bg-transparent text-xs text-slate-300 placeholder-slate-600 outline-none"
             />
           </div>

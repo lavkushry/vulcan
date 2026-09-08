@@ -117,3 +117,9 @@ backend/data/corpus/*
 !backend/data/corpus/candidates_500.json
 *.jsonl
 
+# Playwright E2E test runs & traces
+docs/e2e/evidence/*
+!docs/e2e/evidence/.gitkeep
+docs/e2e/report/*
+!docs/e2e/report/.gitkeep
+

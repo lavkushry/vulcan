@@ -400,7 +400,12 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
       </div>
 
       {/* Quick Prompts Carousel Bar */}
-      <div className="px-5 py-2.5 bg-canvas-void/80 border-b border-glass-border/40 overflow-x-auto no-scrollbar flex items-center gap-2">
+      <div
+        role="region"
+        aria-label="Quick prompt suggestions"
+        tabIndex={0}
+        className="px-5 py-2.5 bg-canvas-void/80 border-b border-glass-border/40 overflow-x-auto no-scrollbar flex items-center gap-2 focus:outline-none"
+      >
         <span className="text-[10px] font-mono text-slate-500 uppercase tracking-wider whitespace-nowrap flex items-center gap-1 mr-1">
           <Zap className="w-3 h-3 text-cyan-400" /> Try:
         </span>
@@ -830,6 +835,7 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
             value={inputPrompt}
             onChange={(e) => setInputPrompt(e.target.value)}
             placeholder="Ask Copilot to run any task (e.g. 'Renew SSL cert on F5' or 'Scale AWS EKS nodes')..."
+            aria-label="Ask Copilot to run a task"
             className="flex-1 bg-transparent text-xs text-slate-100 placeholder-slate-500 py-2.5 outline-none font-sans"
           />
           <div className="flex items-center gap-2 pr-1">
@@ -840,6 +846,7 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
               type="submit"
               data-testid="chat-submit-btn"
               disabled={!inputPrompt.trim() || isThinking}
+              aria-label="Send message"
               className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all duration-200 ${
                 inputPrompt.trim() && !isThinking
                   ? 'bg-gradient-to-r from-cyan-400 to-blue-500 text-black shadow-glow-cyan/40 hover:scale-105 active:scale-95'

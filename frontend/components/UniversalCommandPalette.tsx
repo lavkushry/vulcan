@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Terminal, Database, Cloud, HardDrive, ArrowRight, ShieldCheck, X } from 'lucide-react';
 import { getApiBaseUrl } from '@/lib/env';
+import { api } from '@/lib/api';
 
 interface CatalogItem {
   id: string;
@@ -33,10 +34,9 @@ export default function UniversalCommandPalette({
   useEffect(() => {
     if (!isOpen) return;
     setLoading(true);
-    fetch(`${getApiBaseUrl()}/api/v1/catalog`)
-      .then(res => res.json())
+    api.getCatalog()
       .then(data => {
-        setItems(data.items || data);
+        setItems((data as any).items || data);
       })
       .catch(err => console.error("Failed to fetch catalog:", err))
       .finally(() => setLoading(false));

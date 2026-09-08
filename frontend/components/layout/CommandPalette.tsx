@@ -59,11 +59,11 @@ export function CommandPalette({ open, onClose, currentUser }: CommandPalettePro
     setLoading(true);
     try {
       // Fetch matching catalog items
-      const BASE = getApiBaseUrl();
-      const res = await fetch(`${BASE}/api/v1/catalog?search=${encodeURIComponent(query.trim())}`);
-      if (res.ok) {
-        const items = await res.json();
+      try {
+        const items = await api.getCatalog(query.trim());
         setCatalogResults(items.slice(0, 6));
+      } catch {
+        /* ignore */
       }
       // Also resolve intent via NLP
       const intent = await api.resolveIntent(query.trim());

@@ -18,15 +18,15 @@ function MatrixContent() {
   const loadTasks = useCallback(async () => {
     setLoading(true);
     try {
-      const BASE = getApiBaseUrl();
-      const res = await fetch(`${BASE}/api/v1/tasks`);
-      if (res.ok) {
-        const data = await res.json();
-        const rawTasks = data.tasks || data;
+      try {
+        const data = await api.getTasks();
+        const rawTasks = (data as any)?.tasks || data;
         if (Array.isArray(rawTasks)) {
           setTasks(rawTasks);
           return;
         }
+      } catch {
+        /* fallback to listJobs */
       }
       // Fallback to jobs list mapped to TaskRecord
       const jobs = await api.listJobs(currentUser);

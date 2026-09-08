@@ -146,6 +146,7 @@ function HistoryContent() {
               value={searchQuery}
               onChange={(e) => { setSearchQuery(e.target.value); setPage(0); }}
               placeholder="Search by ID, playbook, CHG, host…"
+              aria-label="Search execution history"
               className="flex-1 bg-transparent text-xs text-slate-300 placeholder-slate-600 outline-none"
             />
           </div>
@@ -216,6 +217,7 @@ function HistoryContent() {
             <button
               disabled={page === 0}
               onClick={() => setPage(page - 1)}
+              aria-label="Previous page"
               className="p-1 rounded text-slate-500 hover:text-slate-300 disabled:opacity-30"
             >
               <ChevronLeft size={14} />
@@ -226,6 +228,7 @@ function HistoryContent() {
             <button
               disabled={page >= totalPages - 1}
               onClick={() => setPage(page + 1)}
+              aria-label="Next page"
               className="p-1 rounded text-slate-500 hover:text-slate-300 disabled:opacity-30"
             >
               <ChevronRight size={14} />

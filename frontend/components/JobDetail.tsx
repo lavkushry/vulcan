@@ -104,7 +104,12 @@ export function JobDetail({ job, currentUser, onChanged }: {
       </header>
 
       {/* 8-Step Progression Rail */}
-      <div className="px-5 py-2.5 border-b border-slate-800/80 bg-[#07090E] overflow-x-auto select-none">
+      <div
+        role="region"
+        aria-label="Execution progression steps"
+        tabIndex={0}
+        className="px-5 py-2.5 border-b border-slate-800/80 bg-[#07090E] overflow-x-auto select-none focus:outline-none"
+      >
         <div className="flex items-center gap-1.5 min-w-[640px] font-mono text-[10px]">
           {PROGRESSION_STEPS.map((step, idx) => {
             const isCompleted = idx < activeStepIdx;

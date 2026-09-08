@@ -50,6 +50,9 @@ export const api = {
   },
   rejectJob: (id: string, approver_id: string) => req<Job>("POST", `/api/v1/jobs/${id}/reject`, { approver_id }),
   listRoles: () => req<import("./types").RoleDefinition[]>("GET", "/api/v1/roles"),
+  getCatalog: (search?: string) =>
+    req<any[]>("GET", `/api/v1/catalog${search ? `?search=${encodeURIComponent(search)}` : ""}`),
+  getTasks: () => req<{ tasks: any[] } | any[]>("GET", "/api/v1/tasks"),
   listPolicies: () => req<import("./types").PolicyRule[]>("GET", "/api/v1/policies"),
   togglePolicy: (id: string) => req<{ ok: boolean; message: string }>("POST", `/api/v1/policies/${id}/toggle`),
   evaluatePolicy: (p: import("./types").PolicySimulationRequest) => req<import("./types").PolicyEvaluationResult>("POST", "/api/v1/policies/evaluate", p),

@@ -70,6 +70,7 @@ export const TerminalActionBar: React.FC<TerminalActionBarProps> = ({
           <input
             type="text"
             placeholder="Regex search..."
+            aria-label="Search terminal output"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
             className="pl-6 pr-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-[11px] text-slate-200 placeholder-slate-600 focus:outline-none focus:border-cyan-500 w-32 focus:w-44 transition-all"

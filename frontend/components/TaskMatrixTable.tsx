@@ -274,11 +274,13 @@ export default function TaskMatrixTable({
               value={searchQuery}
               onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
               placeholder="Search by ID, playbook, target node, ticket (e.g. EXEC-9821, f5-edge, CHG)..."
+              aria-label="Search task matrix"
               className="w-full pl-10 pr-4 py-2 text-xs rounded-xl bg-[#07090E] border border-slate-700 text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
             />
             {searchQuery && (
               <button 
                 onClick={() => setSearchQuery('')}
+                aria-label="Clear search"
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
               >
                 <X className="w-3.5 h-3.5" />
@@ -648,6 +650,7 @@ export default function TaskMatrixTable({
                         <button
                           onClick={() => onOpenTerminal(task)}
                           title="Open live execution terminal"
+                          aria-label={`Open live execution terminal for ${task.correlation_id || task.identifier}`}
                           className="p-1.5 rounded-lg border border-slate-700 bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-cyan-300 transition-colors"
                         >
                           <TerminalIcon className="w-3.5 h-3.5" />
