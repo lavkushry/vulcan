@@ -5,6 +5,7 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
 
 concurrency:
   group: vulcan-ci-${{ github.ref }}
@@ -63,6 +64,10 @@ jobs:
           POSTGRES_URL: "postgresql://vulcan_admin:vulcan_ci_secret@localhost:5432/vulcan_control_plane"
         run: |
           pytest tests/ -v --tb=short
+
+      - name: Run Domain Governance Mutation Testing Engine (Milestone C.2 Gate)
+        run: |
+          python ../scripts/run_domain_mutation_tests.py
 
   # ─── Stage 2: Frontend Type Safety & Production Standalone Build ───────────
   frontend-gate:
@@ -184,17 +189,26 @@ jobs:
           NEXT_PUBLIC_API_URL: "http://localhost:8000"
           NEXT_PUBLIC_WS_URL: "ws://localhost:8000"
         run: |
-          python -m uvicorn app.api.server:app --app-dir backend --host 127.0.0.1 --port 8000 &
-          cd frontend && npm start &
+          python -m uvicorn app.api.server:app --app-dir backend --host 127.0.0.1 --port 8000 > /tmp/backend.log 2>&1 &
+          cd frontend && npm start > /tmp/frontend.log 2>&1 &
 
           for i in $(seq 1 30); do
-            if curl -s http://127.0.0.1:8000/api/v1/health | grep -q "healthy" && curl -s http://127.0.0.1:3000 > /dev/null; then
-              echo "Services healthy!"
+            if curl -s -f http://127.0.0.1:8000/healthz > /dev/null && curl -s -f http://127.0.0.1:3000 > /dev/null; then
+              echo "Services healthy and answering probes!"
               break
             fi
             echo "Waiting for services to respond... ($i/30)"
             sleep 1
           done
+
+          if ! curl -s -f http://127.0.0.1:8000/healthz > /dev/null || ! curl -s -f http://127.0.0.1:3000 > /dev/null; then
+            echo "🔴 FATAL: Services failed to start within 30s"
+            echo "=== Backend Log ==="
+            cat /tmp/backend.log || true
+            echo "=== Frontend Log ==="
+            cat /tmp/frontend.log || true
+            exit 1
+          fi
 
       - name: Run Playwright E2E Test Suite
         working-directory: frontend

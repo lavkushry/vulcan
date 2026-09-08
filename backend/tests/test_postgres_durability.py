@@ -376,9 +376,9 @@ class TestPostgresRepositoriesContract:
     def setup_postgres(self):
         from app.adapters.postgres_job_repository import PostgresJobRepository
         from app.adapters.postgres_audit_adapter import PostgresAuditAdapter
-        self.job_repo = PostgresJobRepository(db_url=POSTGRES_URL)
-        self.audit_adapter = PostgresAuditAdapter(db_url=POSTGRES_URL)
         self.cat_item = create_sample_catalog_item()
+        self.job_repo = PostgresJobRepository(db_url=POSTGRES_URL, catalog=[self.cat_item])
+        self.audit_adapter = PostgresAuditAdapter(db_url=POSTGRES_URL)
 
     def test_postgres_job_repository_crud(self):
         """Test UPSERT, fetch, and pending approvals in PostgresJobRepository."""
@@ -449,6 +449,7 @@ class TestPostgresRepositoriesContract:
 def test_app_container_fail_closed_on_postgres_failure(monkeypatch):
     """Verify AppContainer fails closed (raises RuntimeError) when postgres fails to connect."""
     from app.config import AppContainer
+    monkeypatch.delenv("POSTGRES_URL", raising=False)
     monkeypatch.setenv("VULCAN_PERSISTENCE_BACKEND", "postgres")
     monkeypatch.setenv("DATABASE_URL", "postgresql://invalid:invalid@127.0.0.1:54999/nonexistent?connect_timeout=1")
     with pytest.raises(RuntimeError) as exc_info:

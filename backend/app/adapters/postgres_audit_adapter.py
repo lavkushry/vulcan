@@ -256,3 +256,13 @@ class PostgresAuditAdapter(IAuditLedgerRepository, IAuditLogger):
     def verify_chain(self) -> bool:
         """Alias for verify_integrity implementing IAuditLogger port."""
         return self.verify_integrity()
+
+    @property
+    def ledger(self) -> List[AuditRecord]:
+        """Provides uniform interface compatibility with MerkleAuditLogger."""
+        return self.get_chain()
+
+    @property
+    def records(self) -> List[AuditRecord]:
+        """Provides uniform interface compatibility with test audit loggers."""
+        return self.get_chain()
