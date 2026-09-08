@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { setupAuth, TOKENS } from './helpers';
 
 /**
  * Project Vulcan: Milestone C.1 — Flow 2: WebSocket Reconnect Resilience & In-Order Replay
@@ -26,6 +27,9 @@ test.describe('Flow 2: WebSocket Reconnect Resilience', () => {
 
     // 2. Dispatch a long-running execution task via API tagged with e2e.bot
     const dispatchRes = await request.post('http://127.0.0.1:8000/api/v1/tasks/dispatch', {
+      headers: {
+        'Authorization': `Bearer ${TOKENS.alice}`,
+      },
       data: {
         catalog_identifier: 'net-f5-pool-member-drain',
         target_resource_id: 'f5-edge-vip-02.pnc.com',
@@ -44,7 +48,8 @@ test.describe('Flow 2: WebSocket Reconnect Resilience', () => {
     const corrId = dispatchData.correlation_id;
     expect(corrId).toBeTruthy();
 
-    // 3. Navigate to Chat Console and select the active job
+    // 3. Setup Auth & Navigate to Chat Console and select the active job
+    await setupAuth(page);
     await page.goto('/chat');
     await expect(page).toHaveTitle(/Vulcan/i);
 

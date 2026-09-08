@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { setupAuth } from './helpers';
 
 /**
  * Project Vulcan: Milestone C.1 — Flow 1: Governed Happy Path
@@ -26,7 +27,8 @@ test.describe('Flow 1: Governed Happy Path (Maker-Checker & Execution)', () => {
       }
     });
 
-    // 2. Navigate to Chat Console as e2e.bot
+    // 2. Setup Auth & Navigate to Chat Console as e2e.bot
+    await setupAuth(page);
     await page.goto('/chat');
     await expect(page).toHaveTitle(/Vulcan/i);
 
@@ -36,18 +38,13 @@ test.describe('Flow 1: Governed Happy Path (Maker-Checker & Execution)', () => {
     await userSelect.selectOption('e2e.bot');
 
     // 3. Enter Natural Language Intent
-    const promptInput = page.locator('input[placeholder*="automate"], textarea').first();
+    const promptInput = page.locator('[data-testid="chat-assistant-input"]');
     await expect(promptInput).toBeVisible();
     const intentText = 'Drain pool member 10.100.2.14 on f5-edge-vip-01.pnc.com in PROD';
     await promptInput.fill(intentText);
 
-    // Click send or press Enter
-    const sendBtn = page.locator('button:has-text("Execute"), button[type="submit"]').last();
-    if (await sendBtn.isVisible()) {
-      await sendBtn.click();
-    } else {
-      await promptInput.press('Enter');
-    }
+    // Click send
+    await page.locator('[data-testid="chat-submit-btn"]').click();
 
     // 4. Assert Slot Card Renders Inline
     const cardTitle = page.locator('text=F5 LTM Pool Member Drain').or(page.locator('text=net-f5-pool-member-drain'));

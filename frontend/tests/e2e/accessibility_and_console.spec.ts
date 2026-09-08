@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
+import { setupAuth } from './helpers';
 
 /**
  * Project Vulcan: Milestone C.1 — Accessibility & Console Error Audits
@@ -29,6 +30,7 @@ test.describe('Platform Quality: Zero Console Errors & WCAG Accessibility', () =
         }
       });
 
+      await setupAuth(page);
       await page.goto(pageInfo.path);
       await expect(page).toHaveTitle(/Vulcan/i);
 

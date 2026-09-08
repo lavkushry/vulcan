@@ -146,9 +146,14 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
 
     try {
       const API_BASE = getApiBaseUrl();
+      const token = (typeof window !== 'undefined' ? window.localStorage.getItem('vulcan_api_token') : null) || process.env.NEXT_PUBLIC_VULCAN_API_TOKEN;
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
       const res = await fetch(`${API_BASE}/api/v1/intent/resolve`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ text })
       });
 
@@ -821,6 +826,7 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
           </div>
           <input
             type="text"
+            data-testid="chat-assistant-input"
             value={inputPrompt}
             onChange={(e) => setInputPrompt(e.target.value)}
             placeholder="Ask Copilot to run any task (e.g. 'Renew SSL cert on F5' or 'Scale AWS EKS nodes')..."
@@ -832,6 +838,7 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
             </span>
             <button
               type="submit"
+              data-testid="chat-submit-btn"
               disabled={!inputPrompt.trim() || isThinking}
               className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all duration-200 ${
                 inputPrompt.trim() && !isThinking
