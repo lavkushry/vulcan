@@ -330,8 +330,10 @@ def run_live_drill_1_real_redis(redis_url: str) -> bool:
         print(f"  {RED}✖ Redis token_key mismatch: got {raw_token_a}, expected {fencing_a}{RESET}")
         return False
 
-    # Step 2: Artificial stall (500ms > 300ms TTL)
-    print(f"  {YELLOW}▸{RESET} Simulating artificial execution stall (500ms > 300ms TTL)...")
+    # Step 2: Artificial stall & heartbeat loss (500ms > 300ms TTL)
+    print(f"  {YELLOW}▸{RESET} Simulating artificial execution stall & heartbeat loss (500ms > 300ms TTL)...")
+    if resource in lock_mgr._active_mutexes:
+        lock_mgr._active_mutexes[resource]._stop_watchdog.set()
     time.sleep(0.5)
 
     # Confirm key expired in Redis
