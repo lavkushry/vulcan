@@ -85,6 +85,8 @@ async def run_websocket_fanout_benchmark(
     # Quiesce briefly after heavy Locust soak
     await asyncio.sleep(2.0)
 
+    opener = urllib.request.build_opener()
+
     # 1. Create a job to stream
     create_req = urllib.request.Request(
         f"http://{host}:{port}/api/v1/jobs",
