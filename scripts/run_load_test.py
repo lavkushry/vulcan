@@ -317,7 +317,7 @@ def verify_merkle_chain_integrity(db_path_or_url: str, backend: str = "sqlite") 
     """Checks the cryptographic Merkle audit ledger chain after load testing."""
     if backend in ("postgres", "postgresql"):
         from app.adapters.postgres_audit_adapter import PostgresAuditAdapter
-        audit_repo = PostgresAuditAdapter(postgres_url=db_path_or_url)
+        audit_repo = PostgresAuditAdapter(db_url=db_path_or_url)
         is_valid = audit_repo.verify_integrity()
         chain = audit_repo.get_chain()
         return is_valid, len(chain)
