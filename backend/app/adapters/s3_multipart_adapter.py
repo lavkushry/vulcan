@@ -192,6 +192,8 @@ class S3MultipartGateway(IObjectStorageGateway):
 
         if self.mock_mode or not self.s3_client:
             if s3_uri in self._mock_objects:
+                if self._mock_objects[s3_uri].get("status") == "ABORTED":
+                    raise RuntimeError(f"Cannot complete multipart upload: upload {upload_id} for {s3_key} has been ABORTED")
                 self._mock_objects[s3_uri]["status"] = "COMPLETED"
                 self._mock_objects[s3_uri]["parts"] = parts
             return s3_uri
@@ -215,6 +217,7 @@ class S3MultipartGateway(IObjectStorageGateway):
         if self.mock_mode or not self.s3_client:
             if s3_uri in self._mock_objects:
                 self._mock_objects[s3_uri]["status"] = "ABORTED"
+                self._mock_objects[s3_uri]["parts"] = []
             return True
 
         try:
@@ -263,6 +266,16 @@ class S3MultipartGateway(IObjectStorageGateway):
         except Exception as err:
             logger.error("Failed to execute orphaned multipart cleanup: %s", err)
             return aborted_count
+
+    def get_parts_count(self, s3_key: str) -> int:
+        """Returns the number of buffered or completed parts for the given s3_key."""
+        s3_uri = f"s3://{self.bucket_name}/{s3_key}"
+        if self.mock_mode or not self.s3_client:
+            obj = self._mock_objects.get(s3_uri)
+            if not obj:
+                return 0
+            return len(obj.get("parts", []))
+        return 0
 
     def register_mock_artifact(self, uri: str, sha256: str):
         """Helper for test harness and local simulation."""

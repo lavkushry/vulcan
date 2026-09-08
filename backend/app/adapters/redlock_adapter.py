@@ -179,7 +179,7 @@ class RedlockManager(ILockManager):
         # Map: resource_id -> (expiry_timestamp, owner_token, fencing_token)
         self._fallback_locks: Dict[str, tuple] = {}
         self._fencing_counter: int = 1000
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
 
     def acquire(self, resource_id: str, ttl_seconds: int = 1800, owner_token: Optional[str] = None) -> bool:
         token = owner_token or f"tok-{uuid.uuid4().hex[:12]}"
@@ -287,3 +287,16 @@ class RedlockManager(ILockManager):
             elif resource_id in self._fallback_locks:
                 return self._fallback_locks[resource_id][2]
             return None
+
+    def validate_fencing_token(self, resource_id: str, token: int) -> bool:
+        """
+        Validates whether the provided fencing token is active and valid (not superseded or expired).
+        Returns False if the lock is not currently active, or if the current fencing token does not match.
+        """
+        with self._lock:
+            if not self.is_locked(resource_id):
+                return False
+            current = self.get_fencing_token(resource_id)
+            if current is None:
+                return False
+            return token == current

@@ -96,6 +96,7 @@ def create_app() -> FastAPI:
 
     # Liveness Probe (INFRA-17)
     @app.get("/healthz", tags=["Observability"])
+    @app.get("/health", tags=["Observability"])
     def liveness_probe():
         """Kubernetes / Compose container liveness probe."""
         return {

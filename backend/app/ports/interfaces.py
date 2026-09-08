@@ -35,6 +35,14 @@ class ILockManager(abc.ABC):
         """Inspect if the resource_id is currently held."""
         pass
 
+    def get_fencing_token(self, resource_id: str) -> Optional[int]:
+        """Returns the current monotonic fencing token for resource_id, if available."""
+        return None
+
+    def validate_fencing_token(self, resource_id: str, token: int) -> bool:
+        """Inspect if the given fencing token matches the current active token for resource_id."""
+        return True
+
 
 class ISecretProvider(abc.ABC):
     """Port for Just-In-Time privileged credential checkout into RAM (e.g. CyberArk PAM)."""
