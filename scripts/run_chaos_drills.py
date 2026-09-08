@@ -463,7 +463,7 @@ def run_live_drill_2_real_minio() -> bool:
         ])
         print(f"  {RED}✖ Complete on aborted upload unexpectedly succeeded!{RESET}")
         return False
-    except RuntimeError as ex:
+    except (RuntimeError, ClientError) as ex:
         print(f"  {GREEN}✓{RESET} Completion of aborted upload rejected fail-closed: {ex}")
 
     print(f"  {GREEN}{BOLD}↳ LIVE DRILL 2 PASSED: Real MinIO multipart abort & orphan purge verified in {time.time() - t0:.2f}s.{RESET}\n")
