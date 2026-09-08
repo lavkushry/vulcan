@@ -362,6 +362,7 @@ export default function TaskMatrixTable({
             <select
               value={selectedCategory}
               onChange={(e) => { setSelectedCategory(e.target.value); setCurrentPage(1); }}
+              aria-label="Filter by category"
               className="rounded-lg border border-slate-700 bg-[#07090E] px-2.5 py-1 text-xs text-slate-300 focus:outline-none focus:border-cyan-500"
             >
               {CATEGORIES.map(c => (
@@ -674,6 +675,7 @@ export default function TaskMatrixTable({
           <select
             value={pageSize}
             onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
+            aria-label="Rows per page"
             className="rounded border border-slate-700 bg-[#07090E] px-2 py-1 text-xs text-slate-300 focus:outline-none focus:border-cyan-500"
           >
             {[10, 25, 50, 100].map(size => (
