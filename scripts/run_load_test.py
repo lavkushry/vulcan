@@ -387,11 +387,18 @@ def main():
                 env["REDIS_URL"] = ""
                 env["SIMULATION_MODE"] = "true"
 
-            env["VULCAN_API_TOKENS"] = json.dumps({
+            test_tokens = {
                 "token-loadtest-op": "eng.alice",
                 "token-loadtest-lead": "lead.bob",
                 "token-loadtest-auditor": "admin.dave"
-            })
+            }
+            if os.environ.get("VULCAN_API_TOKENS"):
+                try:
+                    existing = json.loads(os.environ["VULCAN_API_TOKENS"])
+                    test_tokens.update(existing)
+                except Exception:
+                    pass
+            env["VULCAN_API_TOKENS"] = json.dumps(test_tokens)
             env["VULCAN_AUTH_DISABLED"] = "0"
             env["NO_PROXY"] = "*"
             env["no_proxy"] = "*"
@@ -431,8 +438,8 @@ def main():
         report_dir = REPO_ROOT / "tests" / "load" / "reports"
 
         locust_env = {}
-        if is_live and os.environ.get("VULCAN_API_TOKENS"):
-            locust_env["VULCAN_API_TOKENS"] = os.environ["VULCAN_API_TOKENS"]
+        if "VULCAN_API_TOKENS" in env:
+            locust_env["VULCAN_API_TOKENS"] = env["VULCAN_API_TOKENS"]
 
         success, stats = run_locust_headless(
             locustfile=locustfile,
