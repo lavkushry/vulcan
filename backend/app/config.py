@@ -115,14 +115,10 @@ class AppContainer:
                         self.catalog_repo.save(item)
                     logger.info("Seeded %d catalog items into PostgreSQL pgvector.", len(self.catalog))
             except Exception as e:
-                logger.warning("Failed to initialize PostgreSQL persistence (%s); falling back to SQLite/file.", e)
-                self.persistence_backend = "sqlite"
-                self.database_url = "data/vulcan.db"
-                self.job_repo = SQLiteJobRepository(db_path=self.database_url, catalog=self.catalog)
-                self.audit_repo = SQLiteAuditLedgerRepository(db_path=self.database_url)
-                self.audit_logger = MerkleAuditLogger(persistence_file="data/audit_ledger.jsonl")
-                self.catalog_repo = SQLiteCatalogRepository(db_path=self.database_url)
-                self.catalog_repo.seed_if_empty(self.catalog)
+                logger.critical("FATAL: Failed to initialize PostgreSQL persistence (%s). Refusing silent fallback to file ledger.", e)
+                raise RuntimeError(
+                    f"PostgreSQL persistence failed to initialize: {e}. Refusing silent degradation to file-based ledger."
+                ) from e
         else:
             self.job_repo = SQLiteJobRepository(db_path=self.database_url, catalog=self.catalog)
             self.audit_repo = SQLiteAuditLedgerRepository(db_path=self.database_url)

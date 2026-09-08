@@ -424,6 +424,7 @@ def dispatch_task(req: DispatchTaskRequest):
     job.transition_to(JobStatus.LOCKED, "Distributed lock acquired")
     job.transition_to(JobStatus.RUNNING, "Execution initiated")
     job.worker_pid = os.getpid()
+    job.dispatched_by = req.requester_id or "console.operator"
     container.jobs[correlation_id] = job
     container.job_repo.save(job)
 

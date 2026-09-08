@@ -26,6 +26,9 @@ The Master Opportunity Register unifies **127 architectural opportunities** mine
 | **Registry & Curation (`REG-XX`)** | 8 | 7 | 1 | 0 | **87.5%** |
 | **Total Across Architecture** | **127** | **84** | **25** | **18** | **66.1%** |
 
+> [!NOTE]
+> **Milestone A Deferral:** Milestone A (Live Embedding API Procurement & Empirical Gate Calibration) is formally deferred pending API key procurement — owner: user, review date: 2026-09-22. Deterministic semantic cluster vectors (`semantic-cluster-1536`) remain the active baseline until credentials are provided. If no key is provided by 2026-09-22, routing precision (≥99.2%) and search quality claims will be adjusted in the PRD.
+
 ---
 
 ## 2. Master Register: Frontend Console (`UI-01` – `UI-23`)

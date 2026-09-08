@@ -209,6 +209,7 @@ def run_durability_exit_gate(port: int = 8899, db_url: str = None, redis_url: st
             "catalog_identifier": "net-f5-pool-member-drain",
             "target_resource_id": "f5-edge-vip-01.pnc.com",
             "environment": "PROD",
+            "requester_id": "durability-gate-drill",
             "parameters": {
                 "pool_name": "pool_web_app_prod",
                 "member_ip": "10.100.2.14",

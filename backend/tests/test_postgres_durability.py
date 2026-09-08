@@ -444,3 +444,14 @@ class TestPostgresRepositoriesContract:
 
         # Verify full chain integrity
         assert self.audit_adapter.verify_integrity() is True
+
+
+def test_app_container_fail_closed_on_postgres_failure(monkeypatch):
+    """Verify AppContainer fails closed (raises RuntimeError) when postgres fails to connect."""
+    from app.config import AppContainer
+    monkeypatch.setenv("VULCAN_PERSISTENCE_BACKEND", "postgres")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://invalid:invalid@127.0.0.1:54999/nonexistent?connect_timeout=1")
+    with pytest.raises(RuntimeError) as exc_info:
+        AppContainer()
+    assert "Refusing silent degradation" in str(exc_info.value)
+

@@ -142,6 +142,7 @@ class BaseJobRunner(abc.ABC):
             raise ResourceLockedError(
                 f"Distributed target resource [{job.target_resource_id}] is locked by an active change."
             )
+        job.lock_owner_token = owner_token
         job.transition_to(JobStatus.LOCKED, "Distributed lock acquired")
 
         lease: Optional[EphemeralSecretLease] = None

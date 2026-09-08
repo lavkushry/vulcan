@@ -180,7 +180,7 @@ class ApprovalSweeper:
                 # 3. Release any held distributed lock for this job's target resource
                 try:
                     if job.target_resource_id:
-                        owner_token = f"runner-{job.id}-{job.correlation_id}"
+                        owner_token = getattr(job, "lock_owner_token", None) or f"runner-{job.id}-{job.correlation_id}"
                         released = self.lock_manager.release(
                             job.target_resource_id,
                             owner_token=owner_token
