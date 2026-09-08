@@ -50,7 +50,7 @@ class DistributedTargetMutex:
         self.resource_id = resource_id
         self.lock_key = f"lock:resource:{resource_id}"
         self.token_key = f"token:resource:{resource_id}"
-        self.lease_ms = lease_ms
+        self.lease_ms = int(lease_ms)
         self.retry_count = retry_count
         self.retry_delay_ms = retry_delay_ms
 
@@ -191,7 +191,7 @@ class RedlockManager(ILockManager):
                     extended_nodes = 0
                     for client in self.redis_nodes:
                         try:
-                            res = client.eval(LUA_EXTEND_SCRIPT, 1, lock_key, owner_token, ttl_seconds * 1000)
+                            res = client.eval(LUA_EXTEND_SCRIPT, 1, lock_key, owner_token, int(ttl_seconds * 1000))
                             if res:
                                 extended_nodes += 1
                         except Exception:
@@ -204,7 +204,7 @@ class RedlockManager(ILockManager):
                 mutex = DistributedTargetMutex(
                     redis_nodes=self.redis_nodes,
                     resource_id=resource_id,
-                    lease_ms=ttl_seconds * 1000
+                    lease_ms=int(ttl_seconds * 1000)
                 )
                 if owner_token:
                     mutex.lock_value = owner_token
