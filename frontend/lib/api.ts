@@ -82,6 +82,7 @@ export const api = {
 
 // Enterprise Banking Personas & RBAC Mapping
 export const DEMO_USERS = [
+  { id: "e2e.bot", label: "E2E Test Bot", role: "OPERATOR", roleBadge: "E2E Bot", desc: "Automated E2E Verification Bot" },
   { id: "eng.alice", label: "Alice Cooper", role: "OPERATOR", roleBadge: "Operator", desc: "Requesting Engineer" },
   { id: "lead.bob", label: "Bob Martin", role: "APPROVING_LEAD", roleBadge: "Approving Lead", desc: "Lead SRE / Approver" },
   { id: "sec.carol", label: "Carol Danvers", role: "SECURITY_ADMIN", roleBadge: "Security Admin", desc: "InfoSec & Compliance" },

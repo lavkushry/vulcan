@@ -13,6 +13,7 @@ export interface TerminalActionBarProps {
   droppedLines?: number;
   searchQuery: string;
   onSearchChange: (query: string) => void;
+  live?: boolean;
 }
 
 export const TerminalActionBar: React.FC<TerminalActionBarProps> = ({
@@ -25,6 +26,7 @@ export const TerminalActionBar: React.FC<TerminalActionBarProps> = ({
   droppedLines = 0,
   searchQuery,
   onSearchChange,
+  live = true,
 }) => {
   const [copied, setCopied] = useState<boolean>(false);
 
@@ -38,9 +40,18 @@ export const TerminalActionBar: React.FC<TerminalActionBarProps> = ({
     <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-1.5 bg-[#07090E] border-b border-slate-800 font-mono text-xs select-none">
       {/* Status & Buffer counter */}
       <div className="flex items-center gap-3">
-        <div className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-          <span className="font-semibold text-slate-300 text-[11px]">LIVE STDOUT</span>
+        <div className="flex items-center gap-1.5" data-testid="terminal-stream-status">
+          {live ? (
+            <>
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="font-semibold text-slate-300 text-[11px]">LIVE STDOUT</span>
+            </>
+          ) : (
+            <>
+              <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+              <span className="font-semibold text-amber-300 text-[11px]">RECONNECTING · STREAM DEGRADED</span>
+            </>
+          )}
         </div>
         <span className="text-slate-600">|</span>
         <span className="text-[10px] text-slate-400">

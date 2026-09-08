@@ -183,11 +183,19 @@ export function Terminal({ events, live }: { events: WsEvent[]; live: boolean })
         bufferLines={visibleEvents.length}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
+        live={live}
       />
 
       {/* xterm.js Canvas Host */}
-      <div className="flex-1 relative w-full h-full min-h-[300px] overflow-hidden p-2">
-        <div ref={terminalRef} className="w-full h-full" />
+      <div className="flex-1 relative w-full h-full min-h-[300px] overflow-hidden p-2" data-testid="live-terminal-container">
+        <div ref={terminalRef} className="w-full h-full" data-testid="xterm-instance" />
+        {/* Headless & screen-reader accessible live text buffer for a11y and test verification */}
+        <div className="sr-only" aria-live="polite" data-testid="terminal-text-buffer">
+          {visibleEvents
+            .filter((e) => e.type === "stdout")
+            .map((e) => e.data?.line ?? (typeof e.data === "string" ? e.data : e.data?.data) ?? "")
+            .join("\n")}
+        </div>
       </div>
 
       {/* Floating Scroll Paused Pill (UI-18) */}

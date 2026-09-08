@@ -21,6 +21,14 @@ class PolicyManager:
         self.engine = PolicyEngine()
         self.demo_users = [
             {
+                "id": "e2e.bot",
+                "name": "E2E Test Bot",
+                "role": UserRole.OPERATOR.value,
+                "title": "Automated End-to-End Verification Agent",
+                "department": "Quality & Verification Engineering",
+                "allowed_actions": ["catalog:read", "job:request", "dry_run:execute"]
+            },
+            {
                 "id": "eng.alice",
                 "name": "Alice Cooper",
                 "role": UserRole.OPERATOR.value,
@@ -102,6 +110,7 @@ class PolicyManager:
 
         # Role aliases / demo user fallback
         role_map = {
+            "e2e.bot": UserRole.OPERATOR,
             "lead.bob": UserRole.APPROVING_LEAD,
             "eng.alice": UserRole.OPERATOR,
             "engineer.alice": UserRole.OPERATOR,
