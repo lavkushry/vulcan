@@ -20,18 +20,19 @@ The Master Opportunity Register unifies **127 architectural opportunities** mine
 | Subsystem | Total Items | 🟢 Implemented | 🟡 In Progress | ⚪ Planned | Implementation Rate |
 | :--- | :---: | :---: | :---: | :---: | :---: |
 | **Frontend Console (`UI-XX`)** | 28 | 15 | 7 | 6 | **53.6%** |
-| **AI Chat Subsystem (`CHAT-XX`)** | 26 | 16 | 6 | 4 | **61.5%** |
-| **Backend Control Plane (`BKND-XX`)** | 35 | 26 | 5 | 4 | **74.3%** |
-| **Platform & Infra (`INFRA-XX`)** | 30 | 20 | 6 | 4 | **66.7%** |
+| **AI Chat Subsystem (`CHAT-XX`)** | 26 | 15 | 7 | 4 | **57.7%** |
+| **Backend Control Plane (`BKND-XX`)** | 35 | 24 | 7 | 4 | **68.6%** |
+| **Platform & Infra (`INFRA-XX`)** | 30 | 18 | 6 | 6 | **60.0%** |
 | **Registry & Curation (`REG-XX`)** | 8 | 7 | 1 | 0 | **87.5%** |
-| **Total Across Architecture** | **127** | **84** | **25** | **18** | **66.1%** |
+| **Total Across Architecture** | **127** | **79** | **28** | **20** | **62.2%** |
 
 > [!NOTE]
 > **Milestone A Deferral & Protocol:** Milestone A (Live Embedding API Procurement & Empirical Gate Calibration) is formally deferred pending API key procurement — owner: user, review date: 2026-09-22. Deterministic semantic cluster vectors (`semantic-cluster-1536`) remain the active baseline until credentials are provided. If no key is provided by 2026-09-22, routing precision (≥99.2%) and search quality claims will formally downgrade to deferred indefinitely in the PRD, solidifying the pilot posture as *governance-proven, AI-staged*.
 
 ---
 
-## 2. Master Register: Frontend Console (`UI-01` – `UI-23`)
+## 2. Master Register: Frontend Console (`UI-01` – `UI-28`)
+
 
 | ID | Initiative Name | Problem Killed | Persona | Prio | Phase | Status | Verification Artifact |
 | :--- | :--- | :--- | :---: | :---: | :---: | :---: | :--- |
@@ -89,7 +90,8 @@ The Master Opportunity Register unifies **127 architectural opportunities** mine
 | **CHAT-17** | Multi-Stage Injection Refusal | Prompt jailbreaks and instruction override | Karpathy | P0 | Phase 3 | 🟡 In Progress (Stage 1 of 4: Regex active; classifier pending) | `backend/tests/test_ai_prompt_injection_golden.py` |
 | **CHAT-18** | OpenTelemetry Dynamic HUD | Static hardcoded metrics in frontend | Alex Xu | P1 | Phase 5 | 🟢 Implemented | `frontend/components/TokenomicsHUD.tsx` |
 | **CHAT-19** | Conversational Merkle Binding | Inability to audit conversational intent later | Uncle Bob | P0 | Phase 4 | 🟢 Implemented | `backend/app/adapters/crypto_audit_adapter.py` |
-| **CHAT-20** | 500-Scenario Golden Eval Gate | Silent regressions in intent routing & safety | Karpathy | P0 | Phase 3 | 🟢 Implemented | `backend/tests/test_ai_reasoning_evals.py` |
+| **CHAT-20** | 500-Scenario Golden Eval Gate | Silent regressions in intent routing & safety | Karpathy | P0 | Phase 3 | 🟡 In Progress (~200/500 scenarios implemented in dataset) | `backend/tests/test_ai_reasoning_evals.py` |
+
 | **CHAT-21** | Zero-CLS Bento Streaming Render | UI freezing during conversational resolution | Jordan Walke | P1 | Phase 5 | 🟡 In Progress | `frontend/components/ChatAssistant.tsx` |
 | **CHAT-22** | SSE Transport over HTTP/2 | WebSocket drops across corporate proxies | Alex Xu | P1 | Phase 4 | ⚪ Planned | `backend/app/api/routes.py` |
 | **CHAT-23** | Cryptographic Stream Sentinel | Half-completed submissions on dropped streams | Uncle Bob | P0 | Phase 5 | 🟢 Implemented | `backend/app/api/websockets.py` |
@@ -120,8 +122,9 @@ The Master Opportunity Register unifies **127 architectural opportunities** mine
 | **BKND-15** | Lock Telemetry in Job Models | UI guessing lock status via setInterval | Jordan Walke | P2 | Phase 4 | 🟢 Implemented | `backend/app/domain/entities.py` |
 | **BKND-16** | Fail-Closed ServiceNow Gate | Synthetic governance illusion in test runs | Karpathy | P0 | Phase 2 | 🟢 Implemented | `backend/app/adapters/servicenow_adapter.py` |
 | **BKND-17** | Kill routes.py Simulation Loop | Bypassing BaseJobRunner safety template | Uncle Bob | P0 | Phase 1 | 🟢 Implemented | `backend/app/api/routes.py` |
-| **BKND-18** | Decoupled 75-Runner Fleet | Unbounded thread spawn in API process | Alex Xu | P0 | Phase 2 | 🟢 Verified | `scripts/run_load_test.py` |
-| **BKND-19** | CyberArk PAM RAM-Only Secrets | Hardcoded plaintext credentials in memory | Uncle Bob | P1 | Phase 2 | 🟢 Implemented | `backend/app/adapters/cyberark_adapter.py` |
+| **BKND-18** | Decoupled 75-Runner Fleet | Unbounded thread spawn in API process | Alex Xu | P0 | Phase 2 | 🟡 In Progress (Tested 75 concurrent operators; physical execution fleet decoupling pending) | `scripts/run_load_test.py` |
+| **BKND-19** | CyberArk PAM RAM-Only Secrets | Hardcoded plaintext credentials in memory | Uncle Bob | P1 | Phase 2 | 🟡 In Progress (Simulated adapter active in reality matrix; live CCP integration pending) | `backend/app/adapters/cyberark_adapter.py` |
+
 | **BKND-20** | Automated Rollback Execution | Orphaned degraded states after failure | Uncle Bob | P1 | Phase 1 | 🟢 Implemented | `backend/app/use_cases/runner.py` |
 | **BKND-21** | Mandatory Approval RBAC Gate | Any authenticated user approving any job | Jordan Walke | P0 | Phase 4 | 🟢 Implemented | `backend/app/api/routes.py` |
 | **BKND-22** | Distributed Idempotency Gate | Duplicate executions on double-click | Jordan Walke | P0 | Phase 4 | 🟢 Implemented | `backend/app/api/routes.py` |
@@ -166,15 +169,16 @@ The Master Opportunity Register unifies **127 architectural opportunities** mine
 | **INFRA-19**| Live MinIO Gateway Contracts | S3 upload mocks generating broken URLs | Alex Xu | P1 | Phase 2 | 🟢 Implemented | `backend/tests/test_s3_multipart.py` |
 | **INFRA-20**| Resilient DB Pool Manager | Socket exhaustion on transient blips | SRE Lead | P1 | Phase 2 | 🟢 Implemented | `backend/app/adapters/postgres_catalog_repository.py` |
 | **INFRA-21**| Probe Split: /healthz /readyz| Health checks pegging CPU under load | Alex Xu | P0 | Phase 2 | 🟢 Implemented | `backend/app/api/routes.py` |
-| **INFRA-22**| Prometheus Metrics (/metrics) | Blind operation without Prometheus metrics | SRE Lead | P0 | Phase 6 | 🟢 Implemented | `backend/app/api/routes.py` |
+| **INFRA-22**| Prometheus Metrics (/metrics) | Blind operation without Prometheus metrics | SRE Lead | P0 | Phase 6 | ⚪ Planned (No /metrics endpoint present) | `backend/app/api/routes.py` |
 | **INFRA-23**| AI Cost & Token Telemetry | Untracked LLM spend and quota overrun | Karpathy | P1 | Phase 6 | 🟢 Implemented | `backend/app/use_cases/resolve_intent.py` |
 | **INFRA-24**| Structured JSON Logging | Unstructured logs unparseable by Datadog | SRE Lead | P1 | Phase 6 | 🟡 In Progress | `backend/app/core/` |
 | **INFRA-25**| Universal Correlation ID | Disconnected traces across REST/WS/DB | Jordan Walke | P1 | Phase 6 | 🟢 Implemented | `backend/app/domain/entities.py` |
 | **INFRA-26**| Python 3.12/3.14 Parity | LLVM and wheel compilation errors | Karpathy | P0 | Phase 0 | 🟢 Implemented | `backend/pyproject.toml` |
 | **INFRA-27**| Golden Eval Dataset in CI | AI behavior silently drifting on prompt edits | Uncle Bob | P1 | Phase 6 | 🟢 Implemented | `backend/tests/test_ai_prompt_injection_golden.py` |
-| **INFRA-28**| Backup/Restore RTO Drills | Untested disaster recovery procedures | SRE Lead | P0 | Phase 6 | 🟢 Verified | `scripts/run_chaos_drills.py` |
+| **INFRA-28**| Backup/Restore RTO Drills | Untested disaster recovery procedures | SRE Lead | P0 | Phase 6 | 🟢 Verified | `scripts/drill_backup_restore.py` |
 | **INFRA-29**| Chaos Engineering Drill Suite | Unpredicted cascading failures under loss | Alex Xu | P1 | Phase 6 | 🟢 Verified | `scripts/run_chaos_drills.py` |
-| **INFRA-30**| Release Pipeline & SBOM Scan | Deploying images with uninspected CVEs | SRE Lead | P0 | Phase 6 | 🟢 Implemented | `.github/workflows/deploy.yml` |
+| **INFRA-30**| Release Pipeline & SBOM Scan | Deploying images with uninspected CVEs | SRE Lead | P0 | Phase 6 | ⚪ Planned (gitleaks is secret scanning, not SBOM; no SBOM artifact exists) | `.github/workflows/deploy.yml` |
+
 
 ---
 
@@ -234,10 +238,23 @@ In accordance with banking governance rules, 10 registered items were subjected 
     - *Audit Finding & Correction:* Dispatches live `action: rollback` execution playbooks via the API, but does not perform AST tree parsing on playbook sources. Renamed and status updated to 🟡 In Progress.
 13. **`CHAT-17` (Multi-Stage Prompt Injection Refusal):**
     - *Audit Finding & Correction:* Fast deterministic regex stage is fully implemented and tested against 50 adversarial attack vectors (`test_ai_prompt_injection_golden.py`). The full 4-stage architecture (including a specialized classifier model) is partially complete. Status updated to 🟡 In Progress (Stage 1 of 4).
-14. **`BKND-34` / `INFRA-28` / `INFRA-29` (Two-Layer Distributed Chaos & Fault Injection Suite):**
+14. **`BKND-34` / `INFRA-29` (Two-Layer Distributed Chaos & Fault Injection Suite):**
     - *Audit Finding:* Verified live in `scripts/run_chaos_drills.py` across two explicitly labeled layers:
       - **Layer 1 (Unit Invariant Suite):** In-memory mock suite executed in CI/CD in 0.53s (`backend/tests/test_chaos_invariants.py`).
-      - **Layer 2 (Production-Mirroring Integration Suite):** Executed inside `vulcan-backend` on the live VM against real Redis 7.2, MinIO S3, and PostgreSQL 16 multi-worker cluster on `:8899`. Verified: (1) Real Redis `pexpire`, monotonic token increment ($F_A=1 < F_B=2$), stale token rejection, and atomic Lua CAS compare-and-delete lock protection in 0.56s; (2) Real MinIO 5MB chunk multipart abort, 0 orphaned chunks confirmed via AWS S3 APIs (`NoSuchUpload`), and aborted completion rejection in 0.34s; (3) Real multi-worker crash (`kill -9` on victim worker PID 54), zero-downtime healthz response, victim job reaped to `FAILED (WORKER_LOST)`, **and critical invariant verified that concurrent control Job 2 on surviving Worker PID 55 was untouched and completed `SUCCESS`**, with Merkle audit hash chain verified 100% valid on PostgreSQL in 8.23s. All 3 live drills passed in 10.65s.
+      - **Layer 2 (Production-Mirroring Integration Suite):** Executed inside `vulcan-backend` on the live VM against real Redis 7.2, MinIO S3, and PostgreSQL 16 multi-worker cluster on `:8899`. Verified: (1) Real Redis `pexpire`, monotonic token increment ($F_A=1 < F_B=2$), stale token rejection, and atomic Lua CAS compare-and-delete lock protection in 0.56s; (2) Real MinIO 5MB chunk multipart abort, 0 orphaned chunks confirmed via AWS S3 APIs (`NoSuchUpload`), and aborted completion rejection in 0.34s; (3) Real multi-worker crash (`kill -9` on victim worker PID 54), zero-downtime healthz response, victim job reaped to `FAILED (WORKER_LOST)`, **and critical invariant verified that concurrent control Job 2 on surviving Worker PID 55 was untouched and completed `SUCCESS`**, with Merkle audit hash chain verified 100% valid on PostgreSQL in 8.23s. All 3 live drills passed in 10.65s. (Note: Previous mapping of INFRA-28 to this item was a false mapping and has been removed).
 15. **`BKND-18` (Production-Mirroring High-Concurrency Load & Soak Testing):**
-    - *Audit Finding:* Verified live in `scripts/run_load_test.py` and `tests/load/locustfile.py` on the live VM cluster (`uvicorn --workers 2` on `:8899` backed by PostgreSQL 16 and Redis 7.2). Executed 75 concurrent simulated operators across 4 user personas (`OperatorUser`, `LeadApproverUser`, `WebSocketTerminalUser`, `AuditorMonitorUser`). Completed 1,504 requests/events over a 30s soak duration with **0 failures (0.00% error rate)** at 60.09 req/s (5,191.8k ops/day equivalent, exceeding the 3,000 jobs/day target by >1,730x). Aggregated REST & WebSocket p50 was 330.00ms, p95 was 510.00ms, p99 was 600.00ms. Dedicated WebSocket broadcast fanout across 75 listeners on the Redis backplane delivered 900 stream lines at 600.0 lines/sec with p50 delivery latency of 18.63ms and p95 of 595.10ms. Little's Law throughput dynamics were validated ($L = \lambda \cdot W = 16.17$ in-flight requests). Post-load cryptographic Merkle hash chain was verified 100% valid on PostgreSQL (150 records intact from Genesis). Full empirical report documented in `docs/LOAD_AND_CHAOS_BENCHMARK_REPORT.md`.
+    - *Audit Finding:* Verified live in `scripts/run_load_test.py` and `tests/load/locustfile.py` on the live VM cluster (`uvicorn --workers 2` on `:8899` backed by PostgreSQL 16 and Redis 7.2). Executed 75 concurrent simulated operators across 4 user personas (`OperatorUser`, `LeadApproverUser`, `WebSocketTerminalUser`, `AuditorMonitorUser`). Completed 1,504 requests/events over a 30s soak duration with **0 failures (0.00% error rate)** at 60.09 req/s steady-state throughput (50.13 req/s gross rate). Aggregated REST & WebSocket p50 was 330.00ms, p95 was 510.00ms, p99 was 600.00ms. Dedicated WebSocket broadcast fanout across 75 listeners on the Redis backplane delivered 900 stream lines at 600.0 lines/sec (1.5s burst) with p50 delivery latency of 18.63ms and p95 of 595.10ms (tail clustering indicates async client flush interval). Little's Law throughput dynamics were validated ($L = \lambda \cdot W = 16.17$ in-flight requests). Post-load cryptographic Merkle hash chain was verified 100% valid on PostgreSQL (150 records intact from Genesis). Concurrency validates API control-plane throughput under 75 operators; execution runners remain in-process simulation. Full empirical report documented in `docs/LOAD_AND_CHAOS_BENCHMARK_REPORT.md`.
+16. **`INFRA-22` (Prometheus Metrics `/metrics`):**
+    - *Audit Finding & Correction:* No `/metrics` route exists on the FastAPI service; no Prometheus telemetry exporter has been deployed. Status corrected to ⚪ Planned.
+17. **`INFRA-28` (Backup/Restore RTO Drills):**
+    - *Audit Finding & Verification:* Empirically verified on the live VM cluster via `scripts/drill_backup_restore.py`. Executed a complete 5-phase disaster recovery drill: (1) Custom-format binary `pg_dump` generated in 1.46s (5,402,789 bytes, SHA-256 verified); (2) Archived to MinIO S3 object storage bucket `vulcan-artifacts/backups` in 0.24s; (3) Simulated node restoration by downloading from MinIO and executing `pg_restore` into an isolated drill database (`vulcan_drill_*`) in 6.10s, achieving a measured RTO of **6.10s** (SLA target: < 300.0s, passing by 49x); (4) Audited data parity with 100% exact match across all 2,022 execution jobs and 2,076 audit records, with the cryptographic Merkle hash chain verified **100% VALID** across all 2,076 sequential records; (5) Isolated drill database cleanly torn down and temporary archives purged (total drill duration: 8.37s). Status updated to 🟢 Verified.
+18. **`INFRA-30` (Release Pipeline & SBOM Scan):**
+    - *Audit Finding & Correction:* CI pipeline runs `gitleaks` (secret detection), but no SBOM (Software Bill of Materials) artifact or container vulnerability scanning is integrated. Status corrected to ⚪ Planned.
+19. **`CHAT-20` (500-Scenario Golden Eval Gate):**
+    - *Audit Finding & Correction:* Test dataset in `backend/tests/test_ai_reasoning_evals.py` currently tests ~200 scenarios across routing, slot-filling, and injection refusal, not the 500 scenarios declared in the item name. Status corrected to 🟡 In Progress.
+20. **`BKND-18` (Decoupled 75-Runner Fleet):**
+    - *Audit Finding & Correction:* The load test verified 75 concurrent operators interacting with the API control plane, but automation playbook runners remain in-process asyncio/threads within Uvicorn rather than a decoupled worker pool. Status corrected to 🟡 In Progress.
+21. **`BKND-19` (CyberArk PAM RAM-Only Secrets):**
+    - *Audit Finding & Correction:* The Architecture Reality Matrix explicitly documents CyberArk PAM as `DEMO / SIMULATED`. The live Central Credential Provider (CCP) adapter remains a stub. Status corrected to 🟡 In Progress.
+
 

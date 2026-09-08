@@ -5,7 +5,8 @@
 **Scope:** Milestone C.3 Leg 1 (Two-Layer Chaos & Fault Injection Suite) & Leg 2 (Production-Mirroring High-Concurrency Load & Soak Testing)  
 **Execution Environment:** Remote Production VM (`141.148.195.233`), Ubuntu 24.04 LTS, Docker Compose, PostgreSQL 16 + pgvector, Redis 7.2-alpine, MinIO S3, Multi-Worker Uvicorn (2 workers)  
 **Isolated Cluster Target:** `http://127.0.0.1:8899` *(Port 8000 strictly protected and reserved for production traffic)*  
-**Verification Protocol:** Zero Simulation Substitution — All production-mirroring claims backed by live containerized services and empirical measurements.
+**Verification Protocol:** Real Infrastructure Plane (PostgreSQL 16, Redis 7.2, MinIO S3) with Simulated Playbook Executions (Execution Plane).
+
 
 ---
 
@@ -25,8 +26,9 @@ To maintain uncompromising verification integrity and eliminate the illusion of 
    - Injects ungraceful process termination (`SIGKILL`) into a live uvicorn worker PID holding active job locks on real PostgreSQL, asserting fail-closed transition to `FAILED (WORKER_LOST)`, **while mathematically asserting that a concurrent healthy control job running on the surviving worker PID is preserved untouched**.
 3. **Production-Mirroring High-Concurrency Load & Soak Testing (75 Concurrent Operators)**:
    - 75 concurrent simulated operators across 4 user personas (including real-time `WebSocketTerminalUser`).
-   - Sized for enterprise capacity: 1,504 requests across 30 seconds of soak testing with **0.00% error rate (0 failures)**, throughput of **60.09 req/s** (~5.19M ops/day capacity equivalent vs 3,000 jobs/day target).
-   - Real-time WebSocket streaming throughput of **600.0 lines/sec** across 75 listeners with **p50 delivery latency of 18.63ms**.
+   - Measured API control plane capacity: 1,504 requests across a 30-second soak test with **0.00% error rate (0 failures)**, sustaining steady-state throughput of **60.09 req/s** (50.13 req/s gross rate over the full 30s window).
+   - **Empirical Proof:** *The API control plane sustains 75 concurrent operator sessions with 0 errors and p95 510ms under real PostgreSQL and Redis backplanes.* (Note: Playbook executions ran via the simulation engine; this benchmark characterizes API control plane capacity, not physical long-running runner fleet execution capacity).
+   - Real-time WebSocket streaming burst test of **600.0 lines/sec over 1.5 seconds** (900 lines) across 75 listeners with **p50 delivery latency of 18.63ms** and a tail cluster at p95 of **595.10ms**.
    - Little's Law validation ($L = \lambda \cdot W$) confirming linear queueing dynamics.
    - Post-load cryptographic Merkle hash chain verified **100% valid** on live PostgreSQL (150 sequential records unbroken from Genesis).
 
@@ -44,10 +46,10 @@ To maintain uncompromising verification integrity and eliminate the illusion of 
 | **Layer 2 Live Drill 3: Multi-Worker Crash** | Real PostgreSQL 16 + Redis 7.2 + 2 Workers | SIGKILL victim worker; reap victim to `WORKER_LOST`; **control job untouched** | Victim PID 54 killed, Job 1 reaped to `FAILED (WORKER_LOST)`; **Job 2 on PID 55 UNTOUCHED (`SUCCESS`)**; Merkle 100% valid (8.23s) | 🟢 **PASSED** |
 | **Soak Concurrency** | Live Cluster (:8899) | 75 concurrent operators across 4 personas | **75 concurrent users (1,504 requests completed)** | 🟢 **PASSED** |
 | **Soak Error Rate** | Live Cluster (:8899) | < 0.1% HTTP 5xx / drops | **0.00% (0 failures out of 1,504 requests)** | 🟢 **PASSED** |
-| **Throughput ($\lambda$)** | Live Cluster (:8899) | > 50 req/s (> 3,000 operations/day) | **60.09 req/s (5,191.8k ops/day capacity equiv.)** | 🟢 **PASSED** |
+| **Throughput ($\lambda$)** | Live Cluster (:8899) | > 50 req/s API throughput target | **60.09 req/s steady-state (50.13 req/s gross)** | 🟢 **PASSED** |
 | **Aggregated REST p95** | Live Cluster (:8899) | < 1,000ms under 75-concurrency soak | **510.00ms (p50: 330.00ms, p99: 600.00ms)** | 🟢 **PASSED** |
 | **WebSocket Stream Connect p95** | Live Cluster (:8899) | < 100ms WebSocket handshake | **18.00ms (p99: 33.00ms)** | 🟢 **PASSED** |
-| **WebSocket Broadcast Fanout** | Live Cluster (:8899) | Fanout across 75 listeners on Redis backplane | **600.0 lines/s; delivery p50: 18.63ms, p95: 595.10ms** | 🟢 **PASSED** |
+| **WebSocket Broadcast Fanout** | Live Cluster (:8899) | Fanout across 75 listeners on Redis backplane | **600.0 lines/s (1.5s burst); p50: 18.63ms, p95: 595.10ms** | 🟢 **PASSED** |
 | **Post-Load Cryptographic Ledger** | Real PostgreSQL 16 | Cryptographic SHA-256 Merkle chain unbroken | **100% VALID (150 records intact from Genesis)** | 🟢 **PASSED** |
 
 ---
@@ -86,7 +88,8 @@ python scripts/run_chaos_drills.py --mode live --port 8899
 - **Empirical Execution Trace:**
   ```text
   [LIVE DRILL 1/3] Real Redis 7.2 Lease-Expiry & Monotonic Fencing Race
-  Target: Real Redis (redis://:xSvmNW88-9r0updCJjhFOAkU9BVla6G7@redis:6379/0), pexpire, INCR, and atomic Lua CAS compare-and-delete.
+  Target: Real Redis (redis://:***@redis:6379/0), pexpire, INCR, and atomic Lua CAS compare-and-delete.
+
     ▸ Worker A acquired [prod-db-core-cluster-chaos] on REAL Redis with TTL=300ms, Fencing Token F_A=1
     ▸ Simulating artificial execution stall & heartbeat loss (500ms > 300ms TTL)...
     ✓ Real Redis key expired via pexpire as expected
@@ -166,45 +169,56 @@ WebSocket Fanout (75 subs)               900        0          595.10ms        5
 =====================================================================================
 ```
 
-### Detailed Distribution Metrics
+### Detailed Distribution Metrics & Latency Budget Analysis
 - **Total Requests / Events Completed:** 1,504
 - **Failed Requests:** 0 (0.00% error rate)
-- **Measured Throughput ($\lambda$):** 60.09 requests/second
-- **Average Latency:** 269.06ms
+- **Gross Arrival Rate:** 50.13 requests/second (1,504 requests / 30.0s total soak duration)
+- **Active Steady-State Throughput ($\lambda$):** 60.09 requests/second (measured across the 25.03s active sampling window post-ramp)
+- **Average Latency ($W$):** 269.06ms
 - **Median Latency (p50):** 330.00ms
 - **95th Percentile Latency (p95):** 510.00ms
 - **99th Percentile Latency (p99):** 600.00ms
 - **WebSocket Stream Connect Latency p95:** 18.00ms (p99: 33.00ms)
 
+#### Latency Budget Compliance
+- **Overall API Budget (< 1,500ms):** **PASS** across all endpoints. Aggregated p95 of 510.00ms and p99 of 600.00ms easily satisfy the 1,500ms ceiling.
+- **Intent Resolution Dedicated Budget (< 500ms):** **OVER BUDGET by 60ms (+12%)**. The observed `/api/v1/intent/resolve` p95 is **560.00ms** (p99: 640.00ms). While it complies with the general 1.5s API SLA, it exceeds the dedicated 500ms AI intent-budget established in the Karpathy architecture specification. This latency reflects hybrid dense+sparse ranking and schema validation under 75-operator load; this metric will be re-profiled when real embedding providers (OpenAI/Gemini) are calibrated.
+
 ---
 
-## 6. Real-Time WebSocket Event Stream Fanout
+## 6. Real-Time WebSocket Event Stream Fanout (Burst Benchmark)
 
 A dedicated broadcast fanout benchmark was conducted across 75 concurrent subscriber connections subscribed to a live execution stream over the Redis pub/sub backplane:
+- **Test Characterization:** **1.5-Second Burst Stream** (900 stdout lines delivered at 600.0 lines/second).
 - **Concurrent Subscribers:** 75
 - **Total Stream Lines Delivered:** 900
-- **Stream Fanout Throughput:** 600.0 lines/second
 - **Broadcast Delivery Latency p50:** 18.63ms
 - **Broadcast Delivery Latency p95:** 595.10ms
 - **Broadcast Delivery Latency p99:** 595.48ms
+- **Tail Cluster Investigation:** The tight clustering between p95 (595.10ms) and p99 (595.48ms) indicates an infrastructure batch-flush or event-loop polling tick in the async Redis pub/sub client buffer under 75 simultaneous subscriber socket writes, rather than random network packet jitter.
 
 ---
 
 ## 7. Capacity Sizing & Little's Law Validation
 
-Little's Law defines the fundamental operational relationship between concurrency ($L$), arrival throughput ($\lambda$), and residence/latency time ($W$):
-$$L = \lambda 	imes W$$
+### Category Distinction: API Control Plane vs. Job Execution Plane
+It is critical to distinguish between **API control-plane HTTP throughput** and **long-running job-execution runner capacity**:
+- **What Was Measured (API Control Plane):** 75 concurrent operators interacting with FastAPI (resolving intents, querying catalog, polling status, submitting jobs) with playbook runs executing via the in-process simulation engine (`SIMULATION_MODE=true`).
+- **What 3,000 Jobs/Day Means (Physical Execution Fleet):** 3,000 real Terraform/Ansible jobs executing on target infrastructure for ~5–15 minutes each requires dedicated runner fleet sizing ($L_{\text{runners}} = \lambda \cdot W$).
+- **Honest Finding:** Extrapolating 60.09 req/s of HTTP traffic to "5.19M operations/day" and claiming ">1,730x the 3,000 jobs/day target" is a category error. The rigorous, defensible finding is:
+  > **"The API control plane sustains 75 concurrent operator sessions with 0 errors and p95 510ms under real PostgreSQL 16 and Redis 7.2 backplanes."**
+  This proves the HTTP control plane and persistence layers are not bottlenecks under heavy operator concurrency.
+
+### Little's Law Theoretical Alignment
+Little's Law defines the operational relationship between concurrency ($L$), throughput ($\lambda$), and latency ($W$):
+$$L = \lambda \times W$$
 
 - **Empirical Parameters:**
-  - Concurrency Target ($L$): 75 concurrent simulated operators
-  - Measured Throughput ($\lambda$): 60.09 requests/second
-  - Measured Average Latency ($W$): 0.2691 seconds (269.06ms)
-  - Theoretical In-Flight Requests:
-    $$L_{\text{in-flight}} = 60.09 \times 0.2691 = 16.17 \text{ concurrent requests actively in service}$$
-- **Capacity Equivalence:**
-  - At an empirical throughput of 60.09 req/s under 2 uvicorn workers:
-    $$\text{Daily Capacity} = 60.09 \times 86,400 \approx 5,191,776 \text{ operations/day}$$
-  - This exceeds the architectural requirement of **3,000 jobs/day** by **>1,730x**, proving that even a modest 2-worker control plane instance easily accommodates high-throughput enterprise automation workloads with extensive headroom.
+  - Measured Steady-State Throughput ($\lambda$): 60.09 requests/second (50.13 req/s gross)
+  - Measured Mean Latency ($W$): 0.2691 seconds (269.06ms)
+  - Theoretical In-Flight Requests ($L_{\text{in-flight}}$):
+    $$L_{\text{in-flight}} = 60.09 \times 0.2691 = 16.17 \text{ concurrent in-flight requests}$$
+  - **Interpretation:** Across the 75 simulated operator client loops (with think times between operations), the 2-worker Uvicorn cluster maintained an average queue depth of ~16 requests in flight, operating well within server connection limits with zero dropped requests.
 
 ---
 

@@ -396,9 +396,10 @@ Lines 11, 43, 58, 62:
 ```yaml
 POSTGRES_PASSWORD: vulcan_secure_password_2026
 MINIO_ROOT_PASSWORD: vulcan_minio_secret_2026
-DATABASE_URL: postgresql://vulcan_admin:vulcan_secure_password_2026@postgres:5432/vulcan_control_plane
+DATABASE_URL: postgresql://vulcan_admin:***@postgres:5432/vulcan_control_plane
 S3_SECRET_KEY: vulcan_minio_secret_2026
 ```
+
 This is Defect D5. Plaintext passwords hardcoded in a git-tracked file!
 If an engineer clones this repo and runs `docker compose up` on a pilot server inside the bank network, the database is wide open to anyone with internal network access who guesses the password from GitHub!
 

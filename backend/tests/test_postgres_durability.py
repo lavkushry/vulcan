@@ -356,8 +356,9 @@ def test_orphan_reaper_ignores_job_without_worker_pid():
 POSTGRES_URL = (
     os.getenv("POSTGRES_URL")
     or os.getenv("DATABASE_URL")
-    or "postgresql://vulcan_admin:vulcan_secret_pnc_2026@localhost:5432/vulcan_control_plane"
+    or f"postgresql://{os.getenv('POSTGRES_USER', 'vulcan_admin')}@{os.getenv('POSTGRES_HOST', 'localhost')}:5432/{os.getenv('POSTGRES_DB', 'vulcan_control_plane')}"
 )
+
 
 
 def _is_postgres_available() -> bool:
@@ -451,8 +452,9 @@ def test_app_container_fail_closed_on_postgres_failure(monkeypatch):
     from app.config import AppContainer
     monkeypatch.delenv("POSTGRES_URL", raising=False)
     monkeypatch.setenv("VULCAN_PERSISTENCE_BACKEND", "postgres")
-    monkeypatch.setenv("DATABASE_URL", "postgresql://invalid:invalid@127.0.0.1:54999/nonexistent?connect_timeout=1")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://127.0.0.1:54999/nonexistent?connect_timeout=1")
     with pytest.raises(RuntimeError) as exc_info:
+
         AppContainer()
     assert "Refusing silent degradation" in str(exc_info.value)
 

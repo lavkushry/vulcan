@@ -41,8 +41,9 @@ class TestPostgresCatalogRepository(unittest.TestCase):
             os.getenv("POSTGRES_TEST_URL")
             or os.getenv("POSTGRES_URL")
             or os.getenv("DATABASE_URL")
-            or "postgresql://vulcan_admin:vulcan_secret_pnc_2026@localhost:5432/vulcan_control_plane"
+            or f"postgresql://{os.getenv('POSTGRES_USER', 'vulcan_admin')}@{os.getenv('POSTGRES_HOST', 'localhost')}:5432/{os.getenv('POSTGRES_DB', 'vulcan_control_plane')}"
         )
+
         try:
             cls.repo = PostgresCatalogRepository(db_url=cls.db_url)
             # Connectivity smoke test

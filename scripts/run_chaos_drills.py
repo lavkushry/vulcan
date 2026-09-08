@@ -296,8 +296,10 @@ def run_unit_drill_3_worker_crash() -> bool:
 
 def run_live_drill_1_real_redis(redis_url: str) -> bool:
     print(f"{BOLD}[LIVE DRILL 1/3] Real Redis 7.2 Lease-Expiry & Monotonic Fencing Race{RESET}")
-    print(f"{DIM}Target: Real Redis ({redis_url}), pexpire, INCR, and atomic Lua CAS compare-and-delete.{RESET}")
+    masked_url = re.sub(r'://([^:]*):[^@]+@', r'://\1:***@', redis_url)
+    print(f"{DIM}Target: Real Redis ({masked_url}), pexpire, INCR, and atomic Lua CAS compare-and-delete.{RESET}")
     t0 = time.time()
+
 
     import redis
     r_client = redis.from_url(redis_url)

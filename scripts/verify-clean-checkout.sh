@@ -108,6 +108,19 @@ done
 echo "✓ Platform configuration and infrastructure files verified."
 echo ""
 
+# Connection-String Secrets Gate: Zero plaintext credentials in connection URLs across docs/, scripts/, backend/
+echo "Checking for embedded connection-string credentials across docs/, scripts/, backend/..."
+FOUND_CREDS=$(git grep -I -nE '(redis|postgres(ql)?|mysql|amqp)://[^ ]*:[^ @]+@' docs/ scripts/ backend/ 2>/dev/null | grep -v ':\*\*\*@' | grep -v ':\${' || true)
+if [ -n "$FOUND_CREDS" ]; then
+    echo "🔴 GATE FAILURE: Embedded connection-string credentials detected in git-tracked files:"
+    echo "$FOUND_CREDS"
+    echo "All connection strings in docs/, scripts/, and backend/ must be masked (e.g. redis://:***@...) or loaded via environment variables."
+    exit 1
+fi
+echo "✓ Connection-string secrets gate: 0 embedded credentials found across docs/, scripts/, backend/."
+echo ""
+
+
 echo "===================================================================="
 echo "  CLEAN CHECKOUT VERIFICATION SUCCESSFUL: ALL GATES GREEN"
 echo "===================================================================="

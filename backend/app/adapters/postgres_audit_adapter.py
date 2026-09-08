@@ -34,8 +34,9 @@ class PostgresAuditAdapter(IAuditLedgerRepository, IAuditLogger):
             db_url
             or os.getenv("POSTGRES_URL")
             or os.getenv("DATABASE_URL")
-            or "postgresql://vulcan_admin:vulcan_secret_pnc_2026@localhost:5432/vulcan_control_plane"
+            or f"postgresql://{os.getenv('POSTGRES_USER', 'vulcan_admin')}@{os.getenv('POSTGRES_HOST', 'localhost')}:5432/{os.getenv('POSTGRES_DB', 'vulcan_control_plane')}"
         )
+
         self._ensure_tables()
 
     def _get_connection(self):
