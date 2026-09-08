@@ -542,21 +542,6 @@ def run_live_drill_3_multiworker_durability(port: int = 8899) -> bool:
             data_1 = json.loads(resp.read().decode("utf-8"))
             corr_id_1 = data_1["correlation_id"]
 
-        # Step 5: Dispatch Job 2 (healthy control job)
-        payload_2 = json.dumps({
-            "catalog_identifier": "net-f5-pool-member-drain",
-            "target_resource_id": "f5-edge-vip-02.pnc.com",
-            "environment": "PROD",
-            "requester_id": "chaos-drill-2",
-            "parameters": {"pool_name": "pool_prod", "member_ip": "10.0.0.2", "member_port": 8443},
-            "servicenow_chg": "CHG-0091823"
-        }).encode("utf-8")
-
-        req_2 = urllib.request.Request(dispatch_url, data=payload_2, headers={"Content-Type": "application/json", **auth_headers})
-        with urllib.request.urlopen(req_2, timeout=5) as resp:
-            data_2 = json.loads(resp.read().decode("utf-8"))
-            corr_id_2 = data_2["correlation_id"]
-
         # Identify owning worker for Job 1
         job_1_info_url = f"http://127.0.0.1:{port}/api/v1/jobs/{corr_id_1}"
         with urllib.request.urlopen(urllib.request.Request(job_1_info_url, headers=auth_headers), timeout=3) as resp:
@@ -564,8 +549,39 @@ def run_live_drill_3_multiworker_durability(port: int = 8899) -> bool:
             victim_pid = job_1_data.get("worker_pid") or uvicorn_workers[0]
             survivor_pid = [p for p in uvicorn_workers if p != victim_pid][0]
 
+        # Step 5: Dispatch Job 2 (healthy control job) ensuring it lands on the survivor worker PID
+        corr_id_2 = None
+        control_worker_pid = None
+        for attempt in range(12):
+            payload_2 = json.dumps({
+                "catalog_identifier": "net-f5-pool-member-drain",
+                "target_resource_id": f"f5-edge-vip-02-{attempt}.pnc.com",
+                "environment": "PROD",
+                "requester_id": f"chaos-drill-2-{attempt}",
+                "parameters": {"pool_name": "pool_prod", "member_ip": "10.0.0.2", "member_port": 8443},
+                "servicenow_chg": "CHG-0091823"
+            }).encode("utf-8")
+            req_2 = urllib.request.Request(dispatch_url, data=payload_2, headers={"Content-Type": "application/json", **auth_headers})
+            with urllib.request.urlopen(req_2, timeout=5) as resp:
+                data_2 = json.loads(resp.read().decode("utf-8"))
+                candidate_corr = data_2["correlation_id"]
+
+            job_2_info_url = f"http://127.0.0.1:{port}/api/v1/jobs/{candidate_corr}"
+            with urllib.request.urlopen(urllib.request.Request(job_2_info_url, headers=auth_headers), timeout=3) as resp:
+                cand_data = json.loads(resp.read().decode("utf-8"))
+                cand_pid = cand_data.get("worker_pid")
+                if cand_pid == survivor_pid:
+                    corr_id_2 = candidate_corr
+                    control_worker_pid = cand_pid
+                    break
+            time.sleep(0.1)
+
+        if not corr_id_2:
+            corr_id_2 = candidate_corr
+            control_worker_pid = cand_pid
+
         print(f"  {CYAN}▸{RESET} Job 1 ({corr_id_1}) RUNNING on Worker PID {victim_pid} (Victim)")
-        print(f"  {CYAN}▸{RESET} Job 2 ({corr_id_2}) RUNNING on Worker PID {survivor_pid} (Control)")
+        print(f"  {CYAN}▸{RESET} Job 2 ({corr_id_2}) RUNNING on Worker PID {control_worker_pid} (Control)")
 
         # Step 6: Inject SIGKILL to victim PID
         print(f"  {YELLOW}▸{RESET} CHAOS INJECTION: Sending SIGKILL to Worker PID {victim_pid} (Job 1 owner)...")
