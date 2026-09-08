@@ -185,6 +185,22 @@ class RedlockManager(ILockManager):
         token = owner_token or f"tok-{uuid.uuid4().hex[:12]}"
         with self._lock:
             if self.redis_nodes:
+                # 1. Attempt lease renewal if owner_token already holds this lock
+                if owner_token:
+                    lock_key = f"lock:resource:{resource_id}"
+                    extended_nodes = 0
+                    for client in self.redis_nodes:
+                        try:
+                            res = client.eval(LUA_EXTEND_SCRIPT, 1, lock_key, owner_token, ttl_seconds * 1000)
+                            if res:
+                                extended_nodes += 1
+                        except Exception:
+                            pass
+                    quorum = (len(self.redis_nodes) // 2) + 1
+                    if extended_nodes >= quorum:
+                        return True
+
+                # 2. Acquire fresh lock across Redis nodes
                 mutex = DistributedTargetMutex(
                     redis_nodes=self.redis_nodes,
                     resource_id=resource_id,
@@ -202,7 +218,11 @@ class RedlockManager(ILockManager):
                 if resource_id in self._fallback_locks:
                     expiry, cur_owner, _ = self._fallback_locks[resource_id]
                     if now < expiry:
-                        # Lock is actively held
+                        if cur_owner == token:
+                            # Re-entrant lease renewal by same owner
+                            self._fallback_locks[resource_id] = (now + ttl_seconds, token, self._fencing_counter)
+                            return True
+                        # Lock is actively held by another owner
                         return False
                 # Lock is free or expired: acquire with owner_token and monotonic fencing token
                 self._fencing_counter += 1

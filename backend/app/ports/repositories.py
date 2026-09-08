@@ -37,6 +37,11 @@ class IJobRepository(abc.ABC):
         """Retrieves all jobs currently in PENDING_APPROVAL status."""
         pass
 
+    @abc.abstractmethod
+    def get_running_jobs(self) -> List[ExecutionJob]:
+        """Retrieves all jobs currently in RUNNING or LOCKED status (for orphan reaper)."""
+        pass
+
 
 class IAuditLedgerRepository(abc.ABC):
     """Abstract persistence port for cryptographic Merkle audit records."""

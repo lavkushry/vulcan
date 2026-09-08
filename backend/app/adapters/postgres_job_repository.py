@@ -51,6 +51,8 @@ class PostgresJobRepository(IJobRepository):
                     cur.execute("SELECT to_regclass('public.execution_jobs') AS tbl;")
                     row = cur.fetchone()
                     if row and row.get("tbl") is not None:
+                        cur.execute("ALTER TABLE execution_jobs ADD COLUMN IF NOT EXISTS worker_pid INT;")
+                        conn.commit()
                         return  # Already migrated, skip DDL to avoid multi-worker lock contention
                     cur.execute("""
                         CREATE TABLE IF NOT EXISTS execution_jobs (
@@ -75,7 +77,8 @@ class PostgresJobRepository(IJobRepository):
                             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                             started_at TIMESTAMPTZ,
                             completed_at TIMESTAMPTZ,
-                            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                            worker_pid INT
                         );
                         CREATE INDEX IF NOT EXISTS idx_execution_jobs_status ON execution_jobs(status);
                         CREATE INDEX IF NOT EXISTS idx_execution_jobs_correlation_id ON execution_jobs(correlation_id);
@@ -85,6 +88,7 @@ class PostgresJobRepository(IJobRepository):
                     """)
                     cur.execute("ALTER TABLE execution_jobs ADD COLUMN IF NOT EXISTS dispatched_by VARCHAR(128);")
                     cur.execute("ALTER TABLE execution_jobs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();")
+                    cur.execute("ALTER TABLE execution_jobs ADD COLUMN IF NOT EXISTS worker_pid INT;")
                 conn.commit()
         except Exception as e:
             logger.warning("Could not verify execution_jobs table on init: %s", e)
@@ -132,14 +136,14 @@ class PostgresJobRepository(IJobRepository):
                 parameters, servicenow_chg, storage_artifact_uri,
                 storage_artifact_sha256, approval_requested_at,
                 approval_decision, exit_code, error_message,
-                created_at, started_at, completed_at, updated_at
+                created_at, started_at, completed_at, updated_at, worker_pid
             ) VALUES (
                 %s, %s, %s, %s, %s,
                 %s, %s, %s, %s, %s,
                 %s::jsonb, %s, %s,
                 %s, %s,
                 %s::jsonb, %s, %s,
-                %s, %s, %s, %s
+                %s, %s, %s, %s, %s
             )
             ON CONFLICT (id) DO UPDATE SET
                 status = EXCLUDED.status,
@@ -154,7 +158,8 @@ class PostgresJobRepository(IJobRepository):
                 error_message = EXCLUDED.error_message,
                 started_at = EXCLUDED.started_at,
                 completed_at = EXCLUDED.completed_at,
-                updated_at = EXCLUDED.updated_at;
+                updated_at = EXCLUDED.updated_at,
+                worker_pid = EXCLUDED.worker_pid;
         """
 
         with self._get_connection() as conn:
@@ -182,6 +187,7 @@ class PostgresJobRepository(IJobRepository):
                     job.started_at,
                     job.completed_at,
                     now_utc,
+                    getattr(job, "worker_pid", None),
                 ))
             conn.commit()
 
@@ -218,6 +224,7 @@ class PostgresJobRepository(IJobRepository):
         job.status = JobStatus(row["status"])
         job.approver_id = row.get("approver_id")
         job.dispatched_by = row.get("dispatched_by")
+        job.worker_pid = row.get("worker_pid")
         job.exit_code = row.get("exit_code")
         job.error_message = row.get("error_message")
 
@@ -292,6 +299,12 @@ class PostgresJobRepository(IJobRepository):
 
     def get_pending_approvals(self) -> List[ExecutionJob]:
         return self.list_jobs(status=JobStatus.PENDING_APPROVAL, limit=500)
+
+    def get_running_jobs(self) -> List[ExecutionJob]:
+        """Retrieves all RUNNING and LOCKED jobs for orphan reaper inspection."""
+        running = self.list_jobs(status=JobStatus.RUNNING, limit=500)
+        locked = self.list_jobs(status=JobStatus.LOCKED, limit=500)
+        return running + locked
 
     def count(self, status: Optional[JobStatus] = None) -> int:
         with self._get_connection() as conn:

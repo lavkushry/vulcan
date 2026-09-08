@@ -74,6 +74,9 @@ class InMemoryJobRepo:
     def get_pending_approvals(self) -> List[ExecutionJob]:
         return [j for j in self.jobs.values() if j.status == JobStatus.PENDING_APPROVAL]
 
+    def get_running_jobs(self) -> List[ExecutionJob]:
+        return [j for j in self.jobs.values() if j.status in (JobStatus.RUNNING, JobStatus.LOCKED)]
+
     def list_jobs(self, status=None, limit=100, offset=0) -> List[ExecutionJob]:
         res = list(self.jobs.values())
         if status:
@@ -222,6 +225,130 @@ def test_websocket_hub_cross_worker_handling():
     assert correlation_id in hub.buffers
     assert len(hub.buffers[correlation_id]) == 1
     assert hub.buffers[correlation_id][0]["data"]["line"] == "Remote peer log line 1"
+
+
+def test_orphan_reaper_transitions_running_to_failed():
+    """
+    Test that reap_orphaned_jobs() detects RUNNING jobs whose worker PID is dead
+    and transitions them fail-closed to FAILED with WORKER_LOST reason and audit record.
+    """
+    cat_item = create_sample_catalog_item()
+    job_repo = InMemoryJobRepo()
+    audit_logger = InMemoryAuditLogger()
+    lock_mgr = RedlockManager(redis_nodes=[])
+
+    sweeper = ApprovalSweeper(
+        job_repo=job_repo,
+        audit_logger=audit_logger,
+        lock_manager=lock_mgr,
+        worker_id="leader-sweeper-01"
+    )
+
+    # Job with a non-existent PID (definitely dead)
+    dead_pid = 99999999
+    job_orphaned = ExecutionJob(
+        job_id="job-orphan-01",
+        correlation_id="VULC-ORPHAN01",
+        catalog_item=cat_item,
+        requester_id="alice",
+        target_resource_id="app-01",
+        parameters={"target": "app-01"},
+        servicenow_chg="CHG-0019288"
+    )
+    job_orphaned.parse()
+    job_orphaned.transition_to(JobStatus.QUEUED)
+    job_orphaned.transition_to(JobStatus.LOCKED)
+    job_orphaned.transition_to(JobStatus.RUNNING)
+    job_orphaned.worker_pid = dead_pid
+    job_repo.save(job_orphaned)
+
+    reaped = sweeper.reap_orphaned_jobs()
+
+    assert len(reaped) == 1
+    assert reaped[0].id == "job-orphan-01"
+    assert job_orphaned.status == JobStatus.FAILED
+    assert "WORKER_LOST" in (job_orphaned.error_message or "")
+
+    # Audit record check
+    assert len(audit_logger.records) == 1
+    assert audit_logger.records[0].action == "WORKER_LOST"
+    assert audit_logger.records[0].correlation_id == "VULC-ORPHAN01"
+    assert audit_logger.records[0].payload.get("dead_worker_pid") == dead_pid
+
+
+def test_orphan_reaper_leaves_alive_worker_alone():
+    """Test that reap_orphaned_jobs() does not touch RUNNING jobs whose worker is alive."""
+    cat_item = create_sample_catalog_item()
+    job_repo = InMemoryJobRepo()
+    audit_logger = InMemoryAuditLogger()
+    lock_mgr = RedlockManager(redis_nodes=[])
+
+    sweeper = ApprovalSweeper(
+        job_repo=job_repo,
+        audit_logger=audit_logger,
+        lock_manager=lock_mgr,
+        worker_id="leader-sweeper-01"
+    )
+
+    # Job owned by current process (alive)
+    job_healthy = ExecutionJob(
+        job_id="job-healthy-01",
+        correlation_id="VULC-HLTH01",
+        catalog_item=cat_item,
+        requester_id="bob",
+        target_resource_id="app-02",
+        parameters={"target": "app-02"},
+        servicenow_chg="CHG-0019289"
+    )
+    job_healthy.parse()
+    job_healthy.transition_to(JobStatus.QUEUED)
+    job_healthy.transition_to(JobStatus.LOCKED)
+    job_healthy.transition_to(JobStatus.RUNNING)
+    job_healthy.worker_pid = os.getpid()
+    job_repo.save(job_healthy)
+
+    reaped = sweeper.reap_orphaned_jobs()
+
+    assert len(reaped) == 0
+    assert job_healthy.status == JobStatus.RUNNING
+    assert len(audit_logger.records) == 0
+
+
+def test_orphan_reaper_ignores_job_without_worker_pid():
+    """Test that reap_orphaned_jobs() ignores RUNNING jobs without recorded worker_pid."""
+    cat_item = create_sample_catalog_item()
+    job_repo = InMemoryJobRepo()
+    audit_logger = InMemoryAuditLogger()
+    lock_mgr = RedlockManager(redis_nodes=[])
+
+    sweeper = ApprovalSweeper(
+        job_repo=job_repo,
+        audit_logger=audit_logger,
+        lock_manager=lock_mgr,
+        worker_id="leader-sweeper-01"
+    )
+
+    job_no_pid = ExecutionJob(
+        job_id="job-nopid-01",
+        correlation_id="VULC-NOPID01",
+        catalog_item=cat_item,
+        requester_id="charlie",
+        target_resource_id="app-03",
+        parameters={"target": "app-03"},
+        servicenow_chg="CHG-0019290"
+    )
+    job_no_pid.parse()
+    job_no_pid.transition_to(JobStatus.QUEUED)
+    job_no_pid.transition_to(JobStatus.LOCKED)
+    job_no_pid.transition_to(JobStatus.RUNNING)
+    job_no_pid.worker_pid = None
+    job_repo.save(job_no_pid)
+
+    reaped = sweeper.reap_orphaned_jobs()
+
+    assert len(reaped) == 0
+    assert job_no_pid.status == JobStatus.RUNNING
+    assert len(audit_logger.records) == 0
 
 
 # ─── 3. PostgreSQL Contract Tests (Executed when Postgres is available) ──────

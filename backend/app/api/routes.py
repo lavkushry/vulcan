@@ -3,6 +3,7 @@ Project Vulcan: REST API Presentation Routes
 Author: Alex Xu & Uncle Bob
 Exposes enterprise endpoints for Intent Resolution, Job Orchestration, Maker-Checker, and 10GB S3 Storage.
 """
+import os
 import threading
 import uuid
 from datetime import datetime, timezone
@@ -422,6 +423,7 @@ def dispatch_task(req: DispatchTaskRequest):
     job.transition_to(JobStatus.QUEUED, "Dispatched from automation hub")
     job.transition_to(JobStatus.LOCKED, "Distributed lock acquired")
     job.transition_to(JobStatus.RUNNING, "Execution initiated")
+    job.worker_pid = os.getpid()
     container.jobs[correlation_id] = job
     container.job_repo.save(job)
 
@@ -622,6 +624,7 @@ def _format_job_response(job: ExecutionJob, current_user: Optional[str] = None) 
         "requester_id": job.requester_id,
         "approver_id": job.approver_id,
         "dispatched_by": getattr(job, "dispatched_by", None),
+        "worker_pid": getattr(job, "worker_pid", None),
         "target_resource_id": job.target_resource_id,
         "target_resource": job.target_resource_id,
         "parameters": job.parameters,
@@ -974,6 +977,7 @@ def trigger_execution(correlation_id: str, request: Request):
             )
 
     job.dispatched_by = actor
+    job.worker_pid = os.getpid()
     container.job_repo.save(job)
 
     # Synchronous write-before-execute audit record (Uncle Bob invariant)

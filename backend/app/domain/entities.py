@@ -239,6 +239,7 @@ class ExecutionJob:
         self.started_at: Optional[datetime] = None
         self.completed_at: Optional[datetime] = None
         self.error_message: Optional[str] = None
+        self.worker_pid: Optional[int] = None
 
         # Validate inputs upon instantiation
         self._validate_parameters()

@@ -123,6 +123,97 @@ class ApprovalSweeper:
 
         return timed_out_jobs
 
+    def reap_orphaned_jobs(self) -> List[ExecutionJob]:
+        """
+        Detects RUNNING/LOCKED jobs whose owning worker_pid is dead.
+        Transitions them to FAILED with reason WORKER_LOST, writes Merkle audit record,
+        and releases any held distributed lock.
+        Enforces: "Every job must reach a terminal state."
+        """
+        now = datetime.now(timezone.utc)
+        reaped: List[ExecutionJob] = []
+
+        try:
+            running = self.job_repo.get_running_jobs()
+        except Exception as e:
+            logger.error("Failed to query running jobs for orphan reaper: %s", e)
+            return []
+
+        for job in running:
+            pid = getattr(job, "worker_pid", None)
+            if pid is None:
+                continue  # No PID recorded — cannot determine liveness
+
+            if self._is_pid_alive(pid):
+                continue  # Worker still alive — job is healthy
+
+            # Worker is dead → reap the orphaned job
+            reason = f"WORKER_LOST: owning worker PID {pid} no longer alive"
+            logger.warning(
+                "Reaping orphaned job [%s] (%s): %s",
+                job.id, job.correlation_id, reason
+            )
+            try:
+                job.transition_to(JobStatus.FAILED, reason)
+                job.error_message = reason
+                job.completed_at = now
+
+                # 1. Commit synchronous Merkle audit record
+                self.audit_logger.record(
+                    job=job,
+                    action="WORKER_LOST",
+                    payload={
+                        "reason": "WORKER_LOST",
+                        "dead_worker_pid": pid,
+                        "job_status_before": "RUNNING",
+                        "catalog_identifier": job.catalog_item.identifier,
+                        "correlation_id": job.correlation_id,
+                        "requester_id": job.requester_id
+                    },
+                    actor="system.orphan_reaper"
+                )
+
+                # 2. Persist updated job status
+                self.job_repo.save(job)
+                reaped.append(job)
+
+                # 3. Release any held distributed lock for this job
+                try:
+                    self.lock_manager.release(
+                        f"job:{job.id}",
+                        owner_token=str(pid)
+                    )
+                except Exception as lock_err:
+                    logger.debug("Lock release for reaped job [%s]: %s (may already be expired)", job.id, lock_err)
+
+                # 4. Broadcast real-time status update to WebSocket clients
+                if self.event_publisher:
+                    self.event_publisher(
+                        job.correlation_id,
+                        "status",
+                        {
+                            "status": "FAILED",
+                            "reason": reason,
+                            "job_id": job.id,
+                            "correlation_id": job.correlation_id
+                        }
+                    )
+            except Exception as ex:
+                logger.error("Error reaping orphaned job [%s]: %s", job.id, ex)
+
+        return reaped
+
+    @staticmethod
+    def _is_pid_alive(pid: int) -> bool:
+        """Portable PID liveness check (POSIX signal 0 + Linux /proc fallback)."""
+        try:
+            os.kill(pid, 0)
+            return True
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True  # Process exists but we lack permission
+
     async def run_loop(self):
         """Main async background loop with Redlock leader election."""
         logger.info(
@@ -156,6 +247,14 @@ class ApprovalSweeper:
                     swept = await asyncio.to_thread(self.sweep_once)
                     if swept:
                         logger.info("Sweeper denied %d expired jobs.", len(swept))
+
+                    # 3. As leader, reap any orphaned jobs left by crashed workers
+                    reaped = await asyncio.to_thread(self.reap_orphaned_jobs)
+                    if reaped:
+                        logger.warning(
+                            "Reaped %d orphaned RUNNING jobs: %s",
+                            len(reaped), [j.correlation_id for j in reaped]
+                        )
                 else:
                     if self._is_leader:
                         logger.warning("👑 Worker [%s] lost leadership lock.", self.worker_id)

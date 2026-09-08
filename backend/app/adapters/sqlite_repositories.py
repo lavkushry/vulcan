@@ -82,7 +82,8 @@ class SQLiteJobRepository(IJobRepository):
                 error_message TEXT,
                 created_at TEXT NOT NULL,
                 started_at TEXT,
-                completed_at TEXT
+                completed_at TEXT,
+                worker_pid INTEGER
             );
             CREATE INDEX IF NOT EXISTS idx_jobs_status ON execution_jobs(status);
             CREATE INDEX IF NOT EXISTS idx_jobs_correlation ON execution_jobs(correlation_id);
@@ -90,6 +91,10 @@ class SQLiteJobRepository(IJobRepository):
         """)
         try:
             self._conn.execute("ALTER TABLE execution_jobs ADD COLUMN dispatched_by TEXT;")
+        except Exception:
+            pass
+        try:
+            self._conn.execute("ALTER TABLE execution_jobs ADD COLUMN worker_pid INTEGER;")
         except Exception:
             pass
         self._conn.commit()
@@ -113,8 +118,8 @@ class SQLiteJobRepository(IJobRepository):
                     parameters, servicenow_chg, storage_artifact_uri,
                     storage_artifact_sha256, approval_requested_at,
                     approval_decision, exit_code, error_message,
-                    created_at, started_at, completed_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    created_at, started_at, completed_at, worker_pid
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     status=excluded.status,
                     parameters=excluded.parameters,
@@ -127,7 +132,8 @@ class SQLiteJobRepository(IJobRepository):
                     exit_code=excluded.exit_code,
                     error_message=excluded.error_message,
                     started_at=excluded.started_at,
-                    completed_at=excluded.completed_at
+                    completed_at=excluded.completed_at,
+                    worker_pid=excluded.worker_pid
             """, (
                 job.id,
                 job.correlation_id,
@@ -150,6 +156,7 @@ class SQLiteJobRepository(IJobRepository):
                 job.created_at.isoformat(),
                 job.started_at.isoformat() if job.started_at else None,
                 job.completed_at.isoformat() if job.completed_at else None,
+                getattr(job, "worker_pid", None),
             ))
             self._conn.commit()
 
@@ -178,6 +185,7 @@ class SQLiteJobRepository(IJobRepository):
         job.status = JobStatus(row["status"])
         job.approver_id = row["approver_id"]
         job.dispatched_by = row["dispatched_by"] if "dispatched_by" in row.keys() else None
+        job.worker_pid = row["worker_pid"] if "worker_pid" in row.keys() else None
         job.exit_code = row["exit_code"]
         job.error_message = row["error_message"]
 
@@ -235,6 +243,12 @@ class SQLiteJobRepository(IJobRepository):
 
     def get_pending_approvals(self) -> List[ExecutionJob]:
         return self.list_jobs(status=JobStatus.PENDING_APPROVAL, limit=500)
+
+    def get_running_jobs(self) -> List[ExecutionJob]:
+        """Retrieves all RUNNING and LOCKED jobs for orphan reaper inspection."""
+        running = self.list_jobs(status=JobStatus.RUNNING, limit=500)
+        locked = self.list_jobs(status=JobStatus.LOCKED, limit=500)
+        return running + locked
 
 
 # ===========================================================================
