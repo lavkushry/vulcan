@@ -7,7 +7,7 @@
 > but does **NOT** measure real-world generalization against live semantic variation. Real-world generalization
 > remains unmeasured until the live model evaluation on September 22, 2026.
 
-- **Evaluation Timestamp**: `2026-09-09T04:22:45Z`
+- **Evaluation Timestamp**: `2026-09-09T04:45:36Z`
 - **Provider Mode**: `FAKE`
 - **Dataset Source**: `evals/golden/scenarios.v2.jsonl`
 - **Total Scenarios Evaluated**: **500**
@@ -38,24 +38,44 @@ The remaining **27** non-matches bifurcate into two operationally distinct popul
   The hermetic resolver confidently matched an incorrect playbook (`status: NEEDS_INPUT` or `READY`).
   These 12 scenarios isolate the exact quality gap that dense vector embeddings must eliminate on September 22.
 
-## 3. ITSM Multi-Platform Ticket Governance (Flag 1)
+## 3. Operator Experience Derived Scorecard (The Baseline Triple)
+
+Combining Top-1 accuracy with disambiguation choice card outcomes reveals what an operator actually experiences at the console:
+
+| Operator Outcome | Scenarios | Percentage | Operational Meaning |
+| :--- | :---: | :---: | :--- |
+| **Correct playbook, first try** | **123** | **82.0%** | Immediate intent match without manual disambiguation |
+| **Choice card containing the right answer** | **11** | **7.3%** | Operator selects target playbook from presented Bento card |
+| **Choice card without the right answer (dead end)** | **4** | **2.7%** | Disambiguation triggered or top-3 pool lacks target playbook |
+| **Silently routed to the wrong playbook** | **12** | **8.0%** | Confident incorrect Top-1 match (quality defect) |
+
+> [!IMPORTANT]
+> ### The Baseline Triple (Scorecard for Sept 22 Live Provider)
+> - **Operator-Reachable Correct**: **89.3%** (134 / 150)
+> - **Silently Wrong**: **8.0%** (12 / 150)
+> - **Dead-End Choice Cards**: **2.7%** (4 / 150)
+>
+> That triple is the honest shape of the fake provider — and it is precisely the scorecard the live model
+> gets graded against on the 22nd: **Does 89.3% reachable go up, and does 8.0% silent go to zero?**
+
+## 4. ITSM Multi-Platform Ticket Governance (Flag 1)
 
 - Broadened ticket pattern detection across ServiceNow (`CHG`, `INC`, `RITM`) and Remedy (`CRQ`).
 - All routing prompts decouple ticket trigger tokens, preventing artificial gate tripping.
 - Fail-closed verification: any unknown or unapproved ticket (`CRQ-UNKNOWN-404`, `CHG-FABRICATED-999`) halts with `REFUSED`.
 
-## 4. Telemetry, Tokenomics & Operational Metrics
+## 5. Telemetry, Tokenomics & Operational Metrics
 
 | Metric | Measured Value | Standard / Limit | Status |
 | :--- | :---: | :---: | :---: |
-| **Latency p50** | `0.65 ms` | `< 50.0 ms` | PASS |
-| **Latency p95** | `1.19 ms` | `< 100.0 ms` | PASS |
-| **Latency Mean** | `0.64 ms` | `< 50.0 ms` | PASS |
+| **Latency p50** | `0.87 ms` | `< 50.0 ms` | PASS |
+| **Latency p95** | `1.85 ms` | `< 100.0 ms` | PASS |
+| **Latency Mean** | `0.88 ms` | `< 50.0 ms` | PASS |
 | **Mean Tokens / Call** | `430.8` | Working memory budget | PASS |
 | **Max Tokens / Call** | `653` | `< 2,500` max limit | PASS |
 | **Disambiguation Rate** | `3.20%` | Semantic ambivalence gate | INFORMATIONAL |
 
-## 5. CI Regression Gate & Ratchet Rule Verification (Flag 2)
+## 6. CI Regression Gate & Ratchet Rule Verification (Flag 2)
 
 > [!NOTE]
 > **THE RATCHET RULE**: Gate thresholds may strictly ratchet UP, never silently down.
