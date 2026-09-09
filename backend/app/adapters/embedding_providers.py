@@ -329,9 +329,9 @@ class GeminiEmbeddingProvider(IEmbeddingProvider):
     Uses HTTP REST API with zero external library requirements.
     """
 
-    def __init__(self, api_key: Optional[str] = None, model: str = "text-embedding-004"):
+    def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None):
         self.api_key = api_key or os.getenv("GEMINI_API_KEY") or ""
-        self.model = model
+        self.model = model or os.getenv("GEMINI_EMBEDDING_MODEL") or "gemini-embedding-001"
         self._dim = 1536
         if not self.api_key:
             logger.warning("GeminiEmbeddingProvider initialized without GEMINI_API_KEY.")

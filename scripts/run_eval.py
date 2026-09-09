@@ -103,7 +103,7 @@ def run_evaluation(
             print("To run in hermetic offline mode without keys, use: python3 scripts/run_eval.py --provider fake", file=sys.stderr)
             sys.exit(2)
         os.environ["VULCAN_CHAT_PROVIDER"] = "gemini" if gemini_key else "openai"
-        os.environ["VULCAN_EMBEDDING_PROVIDER"] = "openai" if openai_key else "fastembed"
+        os.environ["VULCAN_EMBEDDING_PROVIDER"] = "gemini" if gemini_key else ("openai" if openai_key else "fastembed")
     else:
         os.environ["VULCAN_CHAT_PROVIDER"] = "deterministic_fake"
         os.environ["VULCAN_EMBEDDING_PROVIDER"] = "fastembed"
