@@ -4,6 +4,8 @@ Author: Alex Xu & Uncle Bob
 Configures lifespan, CORS middleware, WebSocket loop binding, and route registry.
 """
 import asyncio
+import collections
+import logging
 import os
 import time
 import uuid
@@ -17,8 +19,15 @@ from app.api.auth import APIKeyMiddleware, load_token_map
 from app.api.routes import router, container
 from app.api.curation_routes import curation_router
 from app.api.websockets import ws_hub
+from app.adapters.structured_logger import setup_structured_logging
+
+logger = logging.getLogger("vulcan.server")
 
 SERVER_START_TIME = time.time()
+
+# RED Telemetry Tracking (INFRA-22 Rate, Errors, Duration)
+_REQUEST_COUNTS = collections.defaultdict(int)
+_REQUEST_DURATION_SUM = collections.defaultdict(float)
 
 
 @asynccontextmanager
@@ -43,6 +52,13 @@ async def lifespan(app: FastAPI):
 
 
 def create_app() -> FastAPI:
+    # INFRA-24: Activate structured JSON logging before any other initialization
+    log_level_name = os.getenv("LOG_LEVEL", "INFO").upper()
+    log_level = getattr(logging, log_level_name, logging.INFO)
+    use_json = os.getenv("LOG_FORMAT", "json").lower() != "text"
+    setup_structured_logging(level=log_level, use_json=use_json)
+    logger.info("Structured logging initialized", extra={"log_format": "json" if use_json else "text", "log_level": log_level_name})
+
     app = FastAPI(
         title="Project Vulcan: Enterprise Automation Control Plane",
         description="High-reliability banking automation platform OS (PNC Bank Standard)",
@@ -75,6 +91,34 @@ def create_app() -> FastAPI:
         request.state.correlation_id = corr_id
         response = await call_next(request)
         response.headers["X-Vulcan-Correlation-Id"] = corr_id
+        return response
+
+    # INFRA-24: Structured Request Logging Middleware
+    @app.middleware("http")
+    async def request_logging_middleware(request: Request, call_next):
+        start = time.time()
+        response = await call_next(request)
+        duration_ms = round((time.time() - start) * 1000, 2)
+        corr_id = getattr(request.state, "correlation_id", "-")
+        # INFRA-22: Record RED metrics (Rate, Errors, Duration)
+        path = request.url.path
+        endpoint_group = path if (path.startswith("/api/") or path in ("/healthz", "/health", "/ready", "/metrics")) else "other"
+        _REQUEST_COUNTS[(request.method, str(response.status_code), endpoint_group)] += 1
+        _REQUEST_DURATION_SUM[(request.method, endpoint_group)] += (time.time() - start)
+
+        # Skip noisy health/ready probes at INFO level; log at DEBUG
+        log_fn = logger.debug if path in ("/healthz", "/health", "/ready") else logger.info
+        log_fn(
+            "%s %s %s %.1fms",
+            request.method, path, response.status_code, duration_ms,
+            extra={
+                "correlation_id": corr_id,
+                "method": request.method,
+                "path": path,
+                "status_code": response.status_code,
+                "duration_ms": duration_ms,
+            }
+        )
         return response
 
     # Standardized Consistent Error Envelope (BKND-18)
@@ -193,7 +237,27 @@ def create_app() -> FastAPI:
             f'vulcan_jobs_total{{status="SUCCESS"}} {success_jobs}',
             f'vulcan_jobs_total{{status="FAILED"}} {failed_jobs}',
             f'vulcan_jobs_total{{status="ALL"}} {jobs_count}',
+            "",
+            "# HELP vulcan_http_requests_total Total incoming HTTP requests handled by the control plane (RED Rate/Errors).",
+            "# TYPE vulcan_http_requests_total counter",
         ]
+        if _REQUEST_COUNTS:
+            for (m, sc, ep), count in sorted(_REQUEST_COUNTS.items()):
+                lines.append(f'vulcan_http_requests_total{{method="{m}",status="{sc}",endpoint="{ep}"}} {count}')
+        else:
+            lines.append('vulcan_http_requests_total{method="GET",status="200",endpoint="/metrics"} 0')
+
+        lines.extend([
+            "",
+            "# HELP vulcan_http_request_duration_seconds_sum Total request latency sum in seconds (RED Duration).",
+            "# TYPE vulcan_http_request_duration_seconds_sum counter",
+        ])
+        if _REQUEST_DURATION_SUM:
+            for (m, ep), dur in sorted(_REQUEST_DURATION_SUM.items()):
+                lines.append(f'vulcan_http_request_duration_seconds_sum{{method="{m}",endpoint="{ep}"}} {dur:.4f}')
+        else:
+            lines.append('vulcan_http_request_duration_seconds_sum{method="GET",endpoint="/metrics"} 0.0000')
+
         return "\n".join(lines) + "\n"
 
     app.include_router(router)

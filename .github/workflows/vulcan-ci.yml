@@ -289,8 +289,25 @@ jobs:
           docker build -t vulcan-backend:ci -f backend/Dockerfile backend/
           echo "─── Scanning Backend Container Image with Trivy ───"
           trivy image --severity HIGH,CRITICAL --ignore-unfixed --format table vulcan-backend:ci
-          # Enforce fail-closed on exploitable CRITICAL vulnerabilities in container image
+          # Enforce fail-closed on exploitable CRITICAL vulnerabilities in backend image
           trivy image --severity CRITICAL --ignore-unfixed --exit-code 1 vulcan-backend:ci
+
+      - name: Build & Scan Deployable Frontend Container Image (INFRA-30)
+        run: |
+          echo "─── Building Frontend Container Image (deploy-frontend surface) ───"
+          docker build -t vulcan-frontend:ci -f frontend/Dockerfile frontend/
+          echo "─── Scanning Frontend Container Image with Trivy ───"
+          trivy image --severity HIGH,CRITICAL --ignore-unfixed --format table vulcan-frontend:ci
+          # Enforce fail-closed on exploitable CRITICAL vulnerabilities in frontend image
+          trivy image --severity CRITICAL --ignore-unfixed --exit-code 1 vulcan-frontend:ci
+
+      - name: Scan Infrastructure Baseline Images (INFRA-30 Inventory)
+        run: |
+          echo "─── Scanning Infrastructure Baseline Images (Inventory Tracking) ───"
+          for img in redis:7.2-alpine pgvector/pgvector:pg16 minio/minio:latest; do
+            echo "Scanning $img..."
+            trivy image --severity HIGH,CRITICAL --ignore-unfixed --format table $img || true
+          done
 
       - name: Generate Trivy SARIF Report for GitHub Security
         if: always()

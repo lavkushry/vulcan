@@ -22,7 +22,7 @@ if [ ! -d "backend/.venv" ]; then
     echo "Creating virtual environment in backend/.venv..."
     python3 -m venv backend/.venv
     ./backend/.venv/bin/pip install --upgrade pip
-    ./backend/.venv/bin/pip install -r backend/requirements.txt
+    ./backend/.venv/bin/pip install -r backend/requirements-dev.txt
 fi
 
 echo "Running full PyTest suite across all 9 suites..."

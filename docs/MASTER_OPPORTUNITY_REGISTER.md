@@ -169,15 +169,15 @@ The Master Opportunity Register unifies **127 architectural opportunities** mine
 | **INFRA-19**| Live MinIO Gateway Contracts | S3 upload mocks generating broken URLs | Alex Xu | P1 | Phase 2 | 🟢 Implemented | `backend/tests/test_s3_multipart.py` |
 | **INFRA-20**| Resilient DB Pool Manager | Socket exhaustion on transient blips | SRE Lead | P1 | Phase 2 | 🟢 Implemented | `backend/app/adapters/postgres_catalog_repository.py` |
 | **INFRA-21**| Probe Split: /healthz /readyz| Health checks pegging CPU under load | Alex Xu | P0 | Phase 2 | 🟢 Implemented | `backend/app/api/routes.py` |
-| **INFRA-22**| Prometheus Metrics (/metrics) | Blind operation without Prometheus metrics | SRE Lead | P0 | Phase 6 | 🟢 Operational (Live /metrics endpoint verified via HTTP 200 probe, returning Prometheus gauges wired to PostgresJobRepository) | `backend/app/api/server.py`, `http://141.148.195.233:8000/metrics` |
+| **INFRA-22**| Prometheus Metrics (/metrics) | Blind operation without Prometheus metrics | SRE Lead | P0 | Phase 6 | 🟢 Operational (Live /metrics endpoint verified via HTTP 200 probe, returning inventory gauges and RED rate/duration counters wired to PostgresJobRepository) | `backend/app/api/server.py`, `http://141.148.195.233:8000/metrics` |
 | **INFRA-23**| AI Cost & Token Telemetry | Untracked LLM spend and quota overrun | Karpathy | P1 | Phase 6 | 🟢 Implemented | `backend/app/use_cases/resolve_intent.py` |
-| **INFRA-24**| Structured JSON Logging | Unstructured logs unparseable by Datadog | SRE Lead | P1 | Phase 6 | 🟡 In Progress | `backend/app/core/` |
+| **INFRA-24**| Structured JSON Logging | Unstructured logs unparseable by Datadog | SRE Lead | P1 | Phase 6 | 🟡 In Progress (JSON formatter wired into app startup and request logging middleware; awaiting live log verification in production container) | `backend/app/core/`, `backend/app/adapters/structured_logger.py` |
 | **INFRA-25**| Universal Correlation ID | Disconnected traces across REST/WS/DB | Jordan Walke | P1 | Phase 6 | 🟢 Implemented | `backend/app/domain/entities.py` |
 | **INFRA-26**| Python 3.12/3.14 Parity | LLVM and wheel compilation errors | Karpathy | P0 | Phase 0 | 🟢 Implemented | `backend/pyproject.toml` |
 | **INFRA-27**| Golden Eval Dataset in CI | AI behavior silently drifting on prompt edits | Uncle Bob | P1 | Phase 6 | 🟢 Implemented | `backend/tests/test_ai_prompt_injection_golden.py` |
 | **INFRA-28**| Operational Backup & RTO Drills | Untested disaster recovery procedures | SRE Lead | P0 | Phase 6 | 🟢 Operational | `scripts/schedule_backup.sh`, `scripts/drill_backup_restore.py` |
 | **INFRA-29**| Chaos Engineering Drill Suite | Unpredicted cascading failures under loss | Alex Xu | P1 | Phase 6 | 🟢 Verified | `scripts/run_chaos_drills.py` |
-| **INFRA-30**| Release Pipeline & SBOM Scan | Deploying images with uninspected CVEs | SRE Lead | P0 | Phase 6 | 🟢 Operational (Automated SPDX 2.3 & CycloneDX 1.5 SBOM generation, Trivy CVE scan & SARIF in CI) | `scripts/generate_sbom.sh`, `.github/workflows/vulcan-ci.yml` |
+| **INFRA-30**| Release Pipeline & SBOM Scan | Deploying images with uninspected CVEs | SRE Lead | P0 | Phase 6 | 🟢 Operational (Automated SPDX 2.3 & CycloneDX 1.5 SBOM generation, dual-container image build & fail-closed CRITICAL Trivy CVE scan in CI) | `scripts/generate_sbom.sh`, `.github/workflows/vulcan-ci.yml` |
 
 
 ---
