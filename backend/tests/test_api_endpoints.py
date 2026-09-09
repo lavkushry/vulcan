@@ -50,6 +50,22 @@ class TestAPIEndpoints(unittest.TestCase):
         self.assertEqual(data["playbook_identifier"], "net-f5-cert-renew")
         self.assertEqual(data["parameters"]["vip_ip"], "10.200.1.50")
 
+    def test_intent_resolution_quota_exhausted_returns_429(self):
+        """POST /api/v1/intent/resolve returns HTTP 429 when upstream quota is exhausted (INV-AI-01)."""
+        from unittest.mock import patch
+        from app.use_cases.resolve_intent import IntentResolutionResult
+
+        fake_res = IntentResolutionResult(
+            status="SERVICE_UNAVAILABLE",
+            refusal_reason="AI Provider Quota Exhausted: Daily upstream API request limit reached.",
+            tokens_used=0
+        )
+        with patch.object(container.intent_resolver, "resolve", return_value=fake_res):
+            response = self.client.post("/api/v1/intent/resolve", json={"prompt": "restart postgres"})
+            self.assertEqual(response.status_code, 429)
+            self.assertIn("AI Provider Quota Exhausted", response.json()["detail"])
+            self.assertEqual(response.headers.get("retry-after"), "86400")
+
     def test_e2e_job_submission_approval_and_execution_lifecycle(self):
         """Full lifecycle: Submit -> Maker-Checker Approval -> Execution -> Success."""
         # 1. Submit High-Risk Job

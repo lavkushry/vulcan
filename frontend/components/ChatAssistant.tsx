@@ -61,6 +61,7 @@ interface Message {
   cardData?: any;
   executionResult?: any;
   isRefusal?: boolean;
+  isQuotaExhausted?: boolean;
   refusalReason?: string;
   suggestions?: { identifier: string; name: string }[];
   disambiguation?: {
@@ -162,10 +163,41 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
 
       if (!res.ok) {
         let errDetail = `Backend returned HTTP ${res.status}`;
+        let isQuota = res.status === 429;
         try {
           const errJson = await res.json();
           errDetail = errJson.detail || errJson.message || errDetail;
+          if (typeof errDetail === 'object' && errDetail !== null) {
+            errDetail = (errDetail as any).message || JSON.stringify(errDetail);
+          }
+          if (typeof errDetail === 'string' && (errDetail.toLowerCase().includes('quota') || errDetail.toLowerCase().includes('resource_exhausted'))) {
+            isQuota = true;
+          }
         } catch { /* ignore */ }
+
+        if (isQuota) {
+          setMessages([
+            ...newMessages,
+            {
+              id: assistantMsgId,
+              sender: 'assistant',
+              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              text: `The upstream AI provider daily request quota has been reached (1,000 req/day free-tier limit). To prevent unverified synthetic operations and protect banking safety (Invariant INV-AI-01), natural language intent resolution is temporarily paused.\n\nAll core control plane services remain 100% operational. Please proceed with manual playbook execution:`,
+              isQuotaExhausted: true,
+              refusalReason: errDetail,
+              thoughtProcess: {
+                time: `${elapsed}s`,
+                steps: [
+                  `Upstream Provider: Google Gemini Embedding / Chat API`,
+                  `Status: HTTP 429 RESOURCE_EXHAUSTED (EmbedContentRequestsPerDayPerProjectPerModel-FreeTier)`,
+                  `Fail-Closed Invariant INV-AI-01: Prohibits unverified heuristic guessing`,
+                  `Operator Routing: Manual playbook execution via Command Palette (Cmd + K) authorized`
+                ]
+              }
+            }
+          ]);
+          return;
+        }
 
         setMessages([
           ...newMessages,
@@ -504,8 +536,30 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
                   </div>
                 )}
 
+                {/* AI Quota Exhaustion Banner (INV-AI-01) */}
+                {msg.isQuotaExhausted && (
+                  <div className="rounded-2xl border border-amber-500/50 bg-amber-950/30 p-5 shadow-2xl backdrop-blur-xl space-y-3">
+                    <div className="flex items-center gap-2 text-amber-300 font-bold text-sm">
+                      <AlertTriangle className="w-5 h-5 text-amber-400" />
+                      <span>UPSTREAM AI PROVIDER QUOTA EXHAUSTED</span>
+                    </div>
+                    <div className="text-xs text-amber-100 font-sans leading-relaxed whitespace-pre-line">
+                      {msg.text}
+                    </div>
+                    <div className="p-3 rounded-xl bg-slate-950/70 border border-amber-500/20 text-xs font-mono text-slate-300 space-y-1">
+                      <div className="text-amber-400 font-bold">✦ MANUAL EXECUTION ALTERNATIVES:</div>
+                      <div>• Press <kbd className="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-amber-200">Cmd + K</kbd> to open the Universal Command Palette and select from the 120 curated playbooks.</div>
+                      <div>• Navigate to the <strong className="text-white">Task Matrix</strong> to monitor and manage running executions.</div>
+                    </div>
+                    <div className="pt-2 border-t border-amber-500/20 flex items-center justify-between text-[11px] text-amber-400/70 font-mono">
+                      <span>Invariant: INV-AI-01 (Fail-Closed)</span>
+                      <span>Resets: Next 24h Quota Window</span>
+                    </div>
+                  </div>
+                )}
+
                 {/* Refusal HUD Banner (UI-03 / CHAT-06) */}
-                {msg.isRefusal && (
+                {!msg.isQuotaExhausted && msg.isRefusal && (
                   <div className="rounded-2xl border border-rose-500/50 bg-rose-950/30 p-5 shadow-2xl backdrop-blur-xl space-y-3">
                     <div className="flex items-center gap-2 text-rose-300 font-bold text-sm">
                       <AlertTriangle className="w-5 h-5 text-rose-400" />

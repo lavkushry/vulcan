@@ -77,7 +77,7 @@ The Master Opportunity Register unifies **127 architectural opportunities** mine
 | **CHAT-04** | Boundary Intent State Machine | Brittle scripts and dual-endpoint conflict | Karpathy | P0 | Phase 3 | 🟢 Implemented | `backend/app/use_cases/resolve_intent.py` |
 | **CHAT-05** | pgvector HNSW Vector Index | In-memory catalog scaling bottleneck | Alex Xu | P0 | Phase 3 | 🟢 Implemented | `backend/app/adapters/postgres_catalog_repository.py` |
 | **CHAT-06** | Two-Stage Hybrid RRF Search | Dense search missing exact IPs, CVEs, tags | Karpathy | P0 | Phase 3 | 🟢 Implemented | `backend/app/adapters/postgres_catalog_repository.py` |
-| **CHAT-07** | Deterministic Keyword Fallback | Service failure when embedding API unavailable | Uncle Bob | P1 | Phase 3 | 🟢 Implemented | `backend/app/adapters/embedding_providers.py` |
+| **CHAT-07** | Deterministic Keyword Fallback & Multi-Provider Engine | Service failure or quota exhaustion when embedding API unavailable | Uncle Bob | P1 | Phase 3 | 🟢 Implemented | `backend/app/adapters/embedding_providers.py` |
 | **CHAT-08** | Ambivalence Disambiguation Card | Autonomous guessing on twin playbooks | Jordan Walke | P0 | Phase 5 | 🟢 Implemented | `frontend/components/DisambiguationBentoCard.tsx` |
 | **CHAT-09** | Pydantic Grammar Slot Decoding | LLM parameter hallucinations & schema errors | Karpathy | P0 | Phase 3 | 🟢 Implemented | `backend/app/use_cases/resolve_intent.py` |
 | **CHAT-10** | Absolute Prohibition of Defaults | Silent pre-filling of unconfirmed values | Uncle Bob | P0 | Phase 3 | 🟢 Implemented | `backend/app/use_cases/resolve_intent.py` |
@@ -132,7 +132,7 @@ The Master Opportunity Register unifies **127 architectural opportunities** mine
 | **BKND-24** | Standardized Error Envelopes | Frontend parsing unstructured error strings | Jordan Walke | P1 | Phase 4 | 🟢 Implemented | `backend/app/api/routes.py` |
 | **BKND-25** | Capabilities in ViewModels | Frontend re-implementing banking policy | Jordan Walke | P1 | Phase 4 | 🟢 Implemented | `backend/app/api/routes.py` |
 | **BKND-26** | Calibrated Refusal Gate | Zero-Score Trap on out-of-catalog noise | Karpathy | P0 | Phase 1 | 🟢 Implemented | `backend/app/adapters/postgres_catalog_repository.py` |
-| **BKND-27** | `IEmbeddingProvider` Port | Hardcoded token-hash noise vectors | Uncle Bob | P0 | Phase 1 | 🟢 Implemented | `backend/app/adapters/embedding_providers.py` |
+| **BKND-27** | `IEmbeddingProvider` Multi-Provider Port | Hardcoded token-hash noise vectors & vendor lock-in | Uncle Bob | P0 | Phase 1 | 🟢 Implemented | `backend/app/adapters/embedding_providers.py` |
 | **BKND-28** | Real Tiktoken Budget Gate | Tautological min(x, 2500) budget formula | Karpathy | P0 | Phase 1 | 🟢 Implemented | `backend/app/use_cases/resolve_intent.py` |
 | **BKND-29** | Python 3.14 Compatible FSM | C-extension compiler breakages in runtime | Karpathy | P1 | Phase 1 | 🟢 Implemented | `backend/app/use_cases/resolve_intent.py` |
 | **BKND-30** | Software 1.0 Log Windowing | Diagnostic context overflow from large stdout | Karpathy | P1 | Phase 1 | 🟢 Implemented | `backend/app/use_cases/diagnose_failure.py` |
@@ -265,5 +265,10 @@ In accordance with banking governance rules, 10 registered items were subjected 
     - *Audit Finding & Correction:* The load test verified 75 concurrent operators interacting with the API control plane, but automation playbook runners remain in-process asyncio/threads within Uvicorn rather than a decoupled worker pool. Status corrected to 🟡 In Progress.
 21. **`BKND-19` (CyberArk PAM RAM-Only Secrets):**
     - *Audit Finding & Correction:* The Architecture Reality Matrix explicitly documents CyberArk PAM as `DEMO / SIMULATED`. The live Central Credential Provider (CCP) adapter remains a stub. Status corrected to 🟡 In Progress.
+22. **`BKND-27` / `CHAT-07` (Hugging Face Serverless Inference & Multi-Provider Architecture Integration):**
+    - *Operationalization & Verification:* Integrated Hugging Face Serverless Inference API as an active embedding provider (`HuggingFaceEmbeddingProvider`) utilizing model `BAAI/bge-large-en-v1.5` over the modern high-performance inference router (`https://router.huggingface.co/hf-inference/models/BAAI/bge-large-en-v1.5`).
+    - *Orthogonal Dimension Padding (1024 → 1536):* Implemented deterministic zero-padding with L2 unit normalization (`norm == 1.0`), preserving original cosine similarity angles between non-zero coordinates while satisfying PostgreSQL `vector(1536)` schema constraints without requiring destructive table migrations or application downtime.
+    - *Fail-Closed Quota Governance (`INV-AI-01`):* Integrated fail-fast detection of HTTP 429 rate limits, immediately raising `AIProviderQuotaExhaustedError` (`quota_id: HuggingFaceInferenceServerlessRateLimit`) and propagating an RFC 7807 error envelope to `/ready` and `/api/v1/intent/resolve`, strictly forbidding synthetic degradation.
+    - *Refusal Gate Calibration:* Generated `docs/refusal_gate_calibration_huggingface.json` with empirical thresholds: `min_dense_no_sparse: 0.400`, `min_dense_with_sparse: 0.300`, `min_sparse_cutoff: 0.200`, `rrf_dense_floor: 0.300`. Verified full unit test coverage (24/24 passing in `test_embedding_providers.py`) and CI evaluation harness support (`scripts/run_eval.py --provider huggingface`). Status upgraded to 🟢 Implemented.
 
 

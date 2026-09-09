@@ -1,5 +1,5 @@
 {
-  "evaluation_timestamp": "2026-09-09T04:46:22Z",
+  "evaluation_timestamp": "2026-09-09T06:25:36Z",
   "provider": "fake",
   "scenarios_source": "evals/golden/scenarios.v2.jsonl",
   "total_scenarios": 500,
@@ -16,10 +16,10 @@
     "out_of_scope_refusal_recall_percent": 100.0,
     "false_refusal_rate_percent": 0.0,
     "disambiguation_halt_rate_percent": 3.2,
-    "latency_p50_ms": 2.56,
-    "latency_p95_ms": 6.3,
-    "latency_mean_ms": 3.44,
-    "tokens_per_call_mean": 430.8,
+    "latency_p50_ms": 1.01,
+    "latency_p95_ms": 2.18,
+    "latency_mean_ms": 0.98,
+    "tokens_per_call_mean": 427.2,
     "tokens_per_call_max": 653,
     "token_budget_limit": 2500,
     "token_budget_compliant": true

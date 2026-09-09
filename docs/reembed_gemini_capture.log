@@ -1,0 +1,15 @@
+2026-09-09 05:13:03,660 [INFO] Active Embedding Provider: gemini/gemini-embedding-001 (dim=1536)
+2026-09-09 05:13:03,675 [INFO] Fetched 120 catalog items to embed from database.
+2026-09-09 05:13:13,160 [INFO]   [+] Embedded 100 / 120 items (batch: 9.18s | rate: 10.5 items/s)
+2026-09-09 05:13:15,019 [INFO]   [+] Embedded 120 / 120 items (batch: 1.80s | rate: 10.6 items/s)
+2026-09-09 05:13:15,019 [INFO] ==================================================================
+2026-09-09 05:13:15,019 [INFO]  Re-Embedding Complete:
+2026-09-09 05:13:15,019 [INFO]    - Provider:       gemini/gemini-embedding-001
+2026-09-09 05:13:15,019 [INFO]    - Total Items:    120
+2026-09-09 05:13:15,019 [INFO]    - Total Time:     11.34 seconds
+2026-09-09 05:13:15,019 [INFO]    - Avg Throughput: 10.6 items/sec
+2026-09-09 05:13:15,019 [INFO] ==================================================================
+2026-09-09 05:13:15,035 [INFO] DB Verification: Total=10467 | With Embedding=10467
+2026-09-09 05:13:15,035 [INFO] Running post-reembedding maintenance: VACUUM ANALYZE catalog_items...
+2026-09-09 05:13:15,637 [INFO] Running post-reembedding maintenance: REINDEX INDEX idx_catalog_items_embedding_hnsw...
+2026-09-09 05:13:19,432 [INFO] Post-reembedding maintenance completed successfully.

@@ -8,7 +8,7 @@ import threading
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
-from fastapi import APIRouter, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, HTTPException, Query, Request, WebSocket, WebSocketDisconnect, status
 from pydantic import BaseModel, Field
 
 from app.api.websockets import ws_hub
@@ -658,6 +658,19 @@ def resolve_intent(req: ResolveIntentRequest):
     """
     query = req.text or req.prompt or ""
     result = container.intent_resolver.resolve(query, req.ambient_params)
+
+    if result.status == "SERVICE_UNAVAILABLE":
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=(
+                result.refusal_reason or (
+                    "AI Provider Quota Exhausted: Daily upstream API request limit reached. "
+                    "Fail-closed governance active — use manual playbook selection via Command Palette (Cmd + K)."
+                )
+            ),
+            headers={"Retry-After": "86400"}
+        )
+
     cat_item = result.catalog_item
 
     all_param_specs = []

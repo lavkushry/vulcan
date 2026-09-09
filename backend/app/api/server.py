@@ -143,6 +143,7 @@ def create_app() -> FastAPI:
         msg = str(exc.detail)
         return JSONResponse(
             status_code=exc.status_code,
+            headers=exc.headers,
             content={
                 "error_code": error_code,
                 "message": msg,
@@ -196,6 +197,10 @@ def create_app() -> FastAPI:
         is_ready = catalog_ok and audit_ok and backup_fresh
         status_code = 200 if is_ready else 503
         provider_name = getattr(container.embedding_provider, "provider_name", "unknown")
+        ai_quota_exhausted = bool(
+            getattr(getattr(container, "embedding_provider", None), "quota_exhausted", False) or
+            getattr(getattr(container, "chat_provider", None), "quota_exhausted", False)
+        )
         return JSONResponse(
             status_code=status_code,
             content={
@@ -207,9 +212,13 @@ def create_app() -> FastAPI:
                     "backup_age_hours": backup_age_hours,
                     "latest_backup": latest_backup_key,
                     "lock_manager_active": True,
-                    "embedding_provider_name": provider_name
+                    "embedding_provider_name": provider_name,
+                    "ai_quota_exhausted": ai_quota_exhausted,
+                    "ai_status": "QUOTA_EXHAUSTED" if ai_quota_exhausted else "OPERATIONAL"
                 },
                 "embedding_provider_name": provider_name,
+                "ai_quota_exhausted": ai_quota_exhausted,
+                "ai_status": "QUOTA_EXHAUSTED" if ai_quota_exhausted else "OPERATIONAL",
                 "timestamp": datetime.now(timezone.utc).isoformat()
             }
         )

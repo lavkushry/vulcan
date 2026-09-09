@@ -24,6 +24,7 @@ import urllib.error
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from app.domain.exceptions import AIProviderQuotaExhaustedError
 from app.ports.interfaces import IEmbeddingProvider
 
 logger = logging.getLogger("vulcan.embedding_providers")
@@ -368,6 +369,8 @@ class GeminiEmbeddingProvider(IEmbeddingProvider):
         self.api_key = api_key or os.getenv("GEMINI_API_KEY") or ""
         self.model = model or os.getenv("GEMINI_EMBEDDING_MODEL") or "gemini-embedding-001"
         self._dim = 1536
+        self._query_cache: Dict[str, List[float]] = {}
+        self.quota_exhausted: bool = False
         if not self.api_key:
             logger.warning("GeminiEmbeddingProvider initialized without GEMINI_API_KEY.")
 
@@ -418,6 +421,11 @@ class GeminiEmbeddingProvider(IEmbeddingProvider):
         if not self.api_key:
             raise ValueError("GEMINI_API_KEY is not configured for GeminiEmbeddingProvider.")
 
+        # L1 Query Cache: Zero-token latency for repeated scenario and operator queries
+        cache_key = text.strip()
+        if cache_key in self._query_cache:
+            return self._query_cache[cache_key]
+
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:embedContent?key={self.api_key}"
         payload = {
             "model": f"models/{self.model}",
@@ -433,8 +441,8 @@ class GeminiEmbeddingProvider(IEmbeddingProvider):
             headers={"Content-Type": "application/json"},
             method="POST"
         )
-        max_retries = 5
-        base_delay = 2.0
+        max_retries = 6
+        base_delay = 3.0
         for attempt in range(max_retries):
             try:
                 with urllib.request.urlopen(req, timeout=45) as resp:
@@ -445,16 +453,64 @@ class GeminiEmbeddingProvider(IEmbeddingProvider):
                         values = values + [0.0] * (self._dim - len(values))
                     elif len(values) > self._dim:
                         values = values[:self._dim]
-                    return _l2_normalize(values)
+                    normalized = _l2_normalize(values)
+                    self._query_cache[cache_key] = normalized
+                    return normalized
             except urllib.error.HTTPError as e:
+                err_body = {}
+                try:
+                    err_body = json.loads(e.read().decode("utf-8"))
+                except Exception:
+                    pass
+
+                err_info = err_body.get("error", {})
+                status_code_str = err_info.get("status", "")
+                err_msg = err_info.get("message", "")
+                details = err_info.get("details", [])
+
+                is_daily_quota = False
+                quota_id = ""
+                retry_delay_val = 0.0
+
+                for d in details:
+                    if d.get("@type", "").endswith("QuotaFailure"):
+                        for v in d.get("violations", []):
+                            qid = v.get("quotaId", "")
+                            if "PerDay" in qid or "Daily" in qid:
+                                is_daily_quota = True
+                            if qid:
+                                quota_id = qid
+                    elif d.get("@type", "").endswith("RetryInfo"):
+                        rd = d.get("retryDelay", "")
+                        if rd.endswith("s"):
+                            try:
+                                retry_delay_val = float(rd[:-1])
+                            except ValueError:
+                                pass
+
+                # Fail-closed fast on daily quota exhaustion — never burn minutes looping
+                if status_code_str == "RESOURCE_EXHAUSTED" or is_daily_quota or "PerDay" in err_msg or "quota exceeded" in err_msg.lower():
+                    logger.error("Gemini API daily quota exhausted: %s (quota_id: %s)", err_msg, quota_id)
+                    self.quota_exhausted = True
+                    raise AIProviderQuotaExhaustedError(
+                        message=f"Gemini API daily request quota reached (RESOURCE_EXHAUSTED). Free-tier limit reached. Fail-closed without synthetic degradation.",
+                        provider="gemini",
+                        retry_after_seconds=retry_delay_val,
+                        quota_id=quota_id or "EmbedContentRequestsPerDayPerProjectPerModel-FreeTier"
+                    )
+
                 if e.code in (429, 500, 502, 503, 504) and attempt < max_retries - 1:
-                    sleep_time = base_delay * (2 ** attempt)
+                    sleep_time = max(base_delay * (2 ** attempt), retry_delay_val + 1.0)
+                    if e.code == 429:
+                        sleep_time = max(sleep_time, 15.0)
                     logger.warning("Gemini API HTTP %d (rate limit/server error). Retrying in %.1fs (attempt %d/%d)...",
                                    e.code, sleep_time, attempt + 1, max_retries)
                     time.sleep(sleep_time)
                 else:
                     logger.error("Gemini embedding API request failed permanently: %s", e)
                     raise
+            except AIProviderQuotaExhaustedError:
+                raise
             except Exception as e:
                 if attempt < max_retries - 1:
                     sleep_time = base_delay * (2 ** attempt)
@@ -512,18 +568,49 @@ class GeminiEmbeddingProvider(IEmbeddingProvider):
                             chunk_embs.append(_l2_normalize(vals))
                         break
                 except urllib.error.HTTPError as e:
+                    err_body = {}
+                    try:
+                        err_body = json.loads(e.read().decode("utf-8"))
+                    except Exception:
+                        pass
+                    err_info = err_body.get("error", {})
+                    status_code_str = err_info.get("status", "")
+                    err_msg = err_info.get("message", "")
+                    details = err_info.get("details", [])
+
+                    is_daily = False
+                    qid = ""
+                    rd_sec = 0.0
+                    for d in details:
+                        if d.get("@type", "").endswith("QuotaFailure"):
+                            for v in d.get("violations", []):
+                                q = v.get("quotaId", "")
+                                if "PerDay" in q or "Daily" in q:
+                                    is_daily = True
+                                if q:
+                                    qid = q
+                        elif d.get("@type", "").endswith("RetryInfo"):
+                            rd = d.get("retryDelay", "")
+                            if rd.endswith("s"):
+                                try:
+                                    rd_sec = float(rd[:-1])
+                                except ValueError:
+                                    pass
+
+                    if status_code_str == "RESOURCE_EXHAUSTED" or is_daily or "PerDay" in err_msg or "quota exceeded" in err_msg.lower():
+                        logger.error("Gemini API daily quota exhausted during batch embedding: %s", err_msg)
+                        self.quota_exhausted = True
+                        raise AIProviderQuotaExhaustedError(
+                            message="Gemini API daily request quota reached (RESOURCE_EXHAUSTED). Free-tier limit reached.",
+                            provider="gemini",
+                            retry_after_seconds=rd_sec,
+                            quota_id=qid or "EmbedContentRequestsPerDayPerProjectPerModel-FreeTier"
+                        )
+
                     if e.code in (429, 500, 502, 503, 504) and attempt < max_retries - 1:
-                        sleep_time = base_delay * (2 ** attempt)
-                        try:
-                            err_body = json.loads(e.read().decode("utf-8"))
-                            for d in err_body.get("error", {}).get("details", []):
-                                if "@type" in d and "RetryInfo" in d["@type"]:
-                                    retry_delay = d.get("retryDelay", "")
-                                    if retry_delay.endswith("s"):
-                                        parsed_delay = float(retry_delay[:-1])
-                                        sleep_time = max(sleep_time, parsed_delay + 1.0)
-                        except Exception:
-                            pass
+                        sleep_time = max(base_delay * (2 ** attempt), rd_sec + 1.0)
+                        if e.code == 429:
+                            sleep_time = max(sleep_time, 15.0)
                         logger.warning("Gemini batch embedding API HTTP %d. Retrying in %.1fs (attempt %d/%d)...",
                                        e.code, sleep_time, attempt + 1, max_retries)
                         time.sleep(sleep_time)
@@ -550,13 +637,183 @@ class GeminiEmbeddingProvider(IEmbeddingProvider):
         return all_embeddings
 
 
+class HuggingFaceEmbeddingProvider(IEmbeddingProvider):
+    """
+    Hugging Face Inference API / Serverless Router embedding provider.
+    Defaults to BAAI/bge-large-en-v1.5 with 1,536-dim orthogonal projection.
+    Uses standard library urllib (zero external pip dependencies).
+    """
+
+    def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None):
+        self.api_key = api_key or os.getenv("HUGGINGFACE_API_KEY") or os.getenv("HF_TOKEN") or ""
+        self.model = model or os.getenv("HUGGINGFACE_EMBEDDING_MODEL") or os.getenv("HF_EMBEDDING_MODEL") or "BAAI/bge-large-en-v1.5"
+        self._dim = 1536
+        self._query_cache: Dict[str, List[float]] = {}
+        self.quota_exhausted: bool = False
+        if not self.api_key:
+            logger.warning("HuggingFaceEmbeddingProvider initialized without HUGGINGFACE_API_KEY / HF_TOKEN.")
+
+    @property
+    def dimension(self) -> int:
+        return self._dim
+
+    @property
+    def provider_name(self) -> str:
+        return f"huggingface/{self.model}"
+
+    @property
+    def is_calibrated(self) -> bool:
+        """Indicates whether refusal gate thresholds have been empirically calibrated for this model."""
+        return self.refusal_thresholds.get("calibrated", False)
+
+    @property
+    def refusal_thresholds(self) -> Dict[str, Any]:
+        """
+        Refusal gate thresholds. Automatically checks for empirical calibration file.
+        If calibrated, returns empirical thresholds. Otherwise uncalibrated placeholder.
+        """
+        clean_model = self.model.replace("/", "_")
+        cal = _load_calibration("huggingface", clean_model)
+        if cal:
+            return cal
+        return {
+            "calibrated": False,
+            "min_dense_no_sparse": None,
+            "min_dense_with_sparse": None,
+            "min_sparse_cutoff": None,
+            "rrf_dense_floor": None,
+            "status": "UNVERIFIED_PENDING_CALIBRATION_MILESTONE_A3",
+        }
+
+    def is_refusal(self, max_dense: float, max_sparse: float) -> bool:
+        if not self.is_calibrated:
+            raise RuntimeError(
+                f"Cannot evaluate refusal gate for {self.provider_name}: thresholds are uncalibrated placeholders. "
+                "You must execute 'scripts/calibrate_refusal_gate.py --provider huggingface' against the live API first."
+            )
+        t = self.refusal_thresholds
+        min_no_sparse = t.get("min_dense_no_sparse", 0.50)
+        min_with_sparse = t.get("min_dense_with_sparse", 0.40)
+        sparse_cutoff = t.get("min_sparse_cutoff", 0.20)
+        return (max_dense < min_no_sparse and max_sparse <= 0.0) or (max_dense < min_with_sparse and max_sparse < sparse_cutoff)
+
+    def embed_text(self, text: str) -> List[float]:
+        if not self.api_key:
+            raise ValueError("HUGGINGFACE_API_KEY / HF_TOKEN is not configured for HuggingFaceEmbeddingProvider.")
+
+        cache_key = text.strip()
+        if cache_key in self._query_cache:
+            return self._query_cache[cache_key]
+
+        res = self.embed_batch([text])
+        if res:
+            self._query_cache[cache_key] = res[0]
+            return res[0]
+        return [0.0] * self._dim
+
+    def embed_batch(self, texts: List[str]) -> List[List[float]]:
+        if not self.api_key:
+            raise ValueError("HUGGINGFACE_API_KEY / HF_TOKEN is not configured for HuggingFaceEmbeddingProvider.")
+
+        url = f"https://router.huggingface.co/hf-inference/models/{self.model}"
+        batch_size = 32
+        all_results: List[List[float]] = []
+
+        for i in range(0, len(texts), batch_size):
+            chunk = texts[i : i + batch_size]
+            payload = {"inputs": chunk if len(chunk) > 1 else chunk[0]}
+            data = json.dumps(payload).encode("utf-8")
+            req = urllib.request.Request(
+                url,
+                data=data,
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {self.api_key}"
+                },
+                method="POST"
+            )
+            max_retries = 5
+            base_delay = 2.0
+            for attempt in range(max_retries):
+                try:
+                    with urllib.request.urlopen(req, timeout=60) as resp:
+                        res = json.loads(resp.read().decode("utf-8"))
+                        if isinstance(res, dict) and "error" in res:
+                            err_msg = res.get("error", "")
+                            if "loading" in err_msg.lower():
+                                estimated_time = float(res.get("estimated_time", 15.0))
+                                logger.info("HuggingFace model %s is loading (waiting %.1fs)...", self.model, estimated_time)
+                                time.sleep(min(estimated_time, 20.0))
+                                continue
+                            raise RuntimeError(f"Hugging Face API returned error: {err_msg}")
+
+                        chunk_embs = []
+                        if isinstance(res, list):
+                            if len(res) > 0 and isinstance(res[0], list):
+                                for item in res:
+                                    vals = item
+                                    if len(vals) < self._dim:
+                                        vals = vals + [0.0] * (self._dim - len(vals))
+                                    elif len(vals) > self._dim:
+                                        vals = vals[:self._dim]
+                                    chunk_embs.append(_l2_normalize(vals))
+                            elif len(res) > 0 and isinstance(res[0], (int, float)):
+                                vals = res
+                                if len(vals) < self._dim:
+                                    vals = vals + [0.0] * (self._dim - len(vals))
+                                elif len(vals) > self._dim:
+                                    vals = vals[:self._dim]
+                                chunk_embs.append(_l2_normalize(vals))
+
+                        all_results.extend(chunk_embs)
+                        for t, emb in zip(chunk, chunk_embs):
+                            self._query_cache[t.strip()] = emb
+                        break
+                except urllib.error.HTTPError as e:
+                    err_body = {}
+                    try:
+                        err_body = json.loads(e.read().decode("utf-8"))
+                    except Exception:
+                        pass
+                    err_msg = err_body.get("error", str(e)) if isinstance(err_body, dict) else str(e)
+                    if e.code == 429 or "rate limit" in err_msg.lower() or "quota" in err_msg.lower():
+                        logger.error("Hugging Face API rate limit / quota exhausted: %s", err_msg)
+                        self.quota_exhausted = True
+                        raise AIProviderQuotaExhaustedError(
+                            message=f"Hugging Face API request limit reached: {err_msg}",
+                            provider="huggingface",
+                            retry_after_seconds=3600.0,
+                            quota_id="HuggingFaceInferenceServerlessRateLimit"
+                        )
+                    elif e.code in (500, 502, 503, 504) and attempt < max_retries - 1:
+                        sleep_time = base_delay * (2 ** attempt)
+                        logger.warning("Hugging Face API HTTP %d. Retrying in %.1fs (attempt %d/%d)...",
+                                       e.code, sleep_time, attempt + 1, max_retries)
+                        time.sleep(sleep_time)
+                    else:
+                        logger.error("Hugging Face API request failed permanently: %s", e)
+                        raise
+                except AIProviderQuotaExhaustedError:
+                    raise
+                except Exception as e:
+                    if attempt < max_retries - 1:
+                        sleep_time = base_delay * (2 ** attempt)
+                        logger.warning("Hugging Face network exception: %s. Retrying in %.1fs...", e, sleep_time)
+                        time.sleep(sleep_time)
+                    else:
+                        logger.error("Hugging Face API request failed permanently: %s", e)
+                        raise
+
+        return all_results
+
+
 def get_embedding_provider(provider_type: Optional[str] = None, require_real: bool = False) -> IEmbeddingProvider:
     """
     Factory resolving the active embedding provider.
     Priority:
     1. Explicit provider_type argument
     2. VULCAN_EMBEDDING_PROVIDER environment variable
-    3. Auto-detection: OpenAI if OPENAI_API_KEY set, Gemini if GEMINI_API_KEY set
+    3. Auto-detection: OpenAI if OPENAI_API_KEY, Gemini if GEMINI_API_KEY, HuggingFace if HUGGINGFACE_API_KEY/HF_TOKEN
     4. Fallback: SemanticClusterEmbeddingProvider for deterministic semantic geometry
     """
     choice = (provider_type or os.getenv("VULCAN_EMBEDDING_PROVIDER") or "").strip().lower()
@@ -569,7 +826,7 @@ def get_embedding_provider(provider_type: Optional[str] = None, require_real: bo
                 "Failing closed without fallback (INV-AI-01: Zero silent synthetic degradation)."
             )
         return OpenAIEmbeddingProvider(api_key=api_key)
-    elif choice in ("gemini", "text-embedding-004"):
+    elif choice in ("gemini", "text-embedding-004", "gemini-embedding-001"):
         api_key = os.getenv("GEMINI_API_KEY") or ""
         if require_real and not api_key:
             raise RuntimeError(
@@ -577,6 +834,14 @@ def get_embedding_provider(provider_type: Optional[str] = None, require_real: bo
                 "Failing closed without fallback (INV-AI-01: Zero silent synthetic degradation)."
             )
         return GeminiEmbeddingProvider(api_key=api_key)
+    elif choice in ("huggingface", "hf", "bge-large", "baai/bge-large-en-v1.5"):
+        api_key = os.getenv("HUGGINGFACE_API_KEY") or os.getenv("HF_TOKEN") or ""
+        if require_real and not api_key:
+            raise RuntimeError(
+                f"VULCAN_EMBEDDING_PROVIDER is set to '{choice}', but HUGGINGFACE_API_KEY / HF_TOKEN is missing. "
+                "Failing closed without fallback (INV-AI-01: Zero silent synthetic degradation)."
+            )
+        return HuggingFaceEmbeddingProvider(api_key=api_key)
     elif choice in ("hash", "deterministic_hash"):
         if require_real:
             raise RuntimeError("Synthetic hash provider forbidden when require_real=True.")
@@ -593,6 +858,9 @@ def get_embedding_provider(provider_type: Optional[str] = None, require_real: bo
     elif os.getenv("GEMINI_API_KEY"):
         logger.info("Auto-selected GeminiEmbeddingProvider via GEMINI_API_KEY.")
         return GeminiEmbeddingProvider()
+    elif os.getenv("HUGGINGFACE_API_KEY") or os.getenv("HF_TOKEN"):
+        logger.info("Auto-selected HuggingFaceEmbeddingProvider via HUGGINGFACE_API_KEY / HF_TOKEN.")
+        return HuggingFaceEmbeddingProvider()
 
     if require_real:
         raise RuntimeError("No external AI provider configured and require_real=True.")

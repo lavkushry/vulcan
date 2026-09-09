@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.domain.entities import CatalogItem, CurationStatus, ExecutionEngineType, RiskTier
+from app.domain.exceptions import AIProviderQuotaExhaustedError
 from app.ports.interfaces import IChatModelProvider, IEmbeddingProvider, IServiceNowGateway
 from app.ports.repositories import ICatalogRepository
 from app.adapters.embedding_providers import get_embedding_provider
@@ -73,12 +74,13 @@ class IntentResolver:
     ADVERSARIAL_PATTERNS = [
         # Instruction Overrides & Jailbreaks
         r"(?i)ignore\s+(all\s+)?(previous|prior|above|system)\s+instructions",
+        r"(?i)ignore\s+(all\s+)?([a-z0-9_:-]+\s+)?(rules|safety|guidelines|restrictions|instructions|constraints|governance|policy|corporate\s+policy)",
         r"(?i)disregard\s+(all\s+)?([a-z0-9_-]+\s+)?(rules|safety|guidelines|restrictions|instructions|constraints|governance)",
         r"(?i)forget\s+(all\s+)?(previous|prior)\s+instructions",
-        r"(?i)you\s+are\s+now\s+(in\s+)?(dan|developer|root|admin|god|unrestricted)\s+mode",
+        r"(?i)you\s+are\s+(now\s+)?(in\s+)?(dan\b|developer|root|admin|god|unrestricted)",
         r"(?i)pretend\s+(you\s+are|to\s+be)\s+(an\s+unrestricted|a\s+hacker|root|god|superadmin)",
-        r"(?i)system\s+(override|prompt|reset)",
-        r"(?i)new\s+system\s+directive",
+        r"(?i)(instruction|system|prompt)\s+(override|reset|directive)",
+        r"(?i)reset\s+(safeguards|protections|security|rules)",
         r"(?i)act\s+as\s+(an?\s+)?(unrestricted|linux\s+root|root|bash|terminal)",
         r"(?i)simulate\s+(an?\s+)?(ai|system|agent)\s+without",
         
@@ -92,6 +94,17 @@ class IntentResolver:
         r"(?i)authorize\s+(?:this\s+.*|deploy\s+)?without\s+(?:secondary\s+|peer\s+)",
         r"(?i)disable\s+(?:dual[-_\s]?control|maker[-_\s]?checker|approval|governance|gate)",
         r"(?i)override\s+(?:maker[-_\s]?checker|approval|governance|gate|controls)",
+        r"(?i)(?:approve|authoriz\w*)\s+(?:my\s+own|own\s+change|under\s+single\s+user)",
+        r"(?i)maker[-_\s]?id\s*==\s*approver[-_\s]?id",
+        r"(?i)both\s+requester\s+and\s+approver",
+        r"(?i)self[-_\s]?sign[-_\s]?off",
+        r"(?i)single\s+user\s+authority",
+        r"(?i)second\s+signature",
+        r"(?i)secondary\s+sign[-_\s]?off",
+        r"(?i)separation[-_\s]?of[-_\s]?duties[-_\s]?(waived|bypass|override)",
+        r"(?i)waive\s+approval",
+        r"(?i)assign\s+approver\s+role",
+        r"(?i)force\s+state\s+transition",
         
         # Privilege Escalation
         r"(?i)give\s+(me\s+)?(root|admin|sudo|superuser)",
@@ -104,6 +117,7 @@ class IntentResolver:
         r"(?i)rm\s+-rf\s+[/~]",
         r"(?i)\bmkfs\b",
         r"(?i)dd\s+if=/dev",
+        r"(?i)\bformat\s+(hard\s+drives|drive|disk|partition|all\s+database)",
         r"(?i)\b(eval|compile|os\.system|subprocess)\b",
         r"(?i);\s*(cat\s+/etc/passwd|shutdown|reboot|curl\s+http|wget\s+http)",
         r"(?i)\bcat\s+/etc/(passwd|shadow|hosts|sudoers)",
@@ -112,19 +126,25 @@ class IntentResolver:
         r"(?i)print\s+(the\s+)?(system\s+prompt|hidden\s+instructions|api\s+key|password|secret|creds)",
         r"(?i)reveal\s+.*(instructions|system\s+prompt|secrets|credentials|keys|tokens)",
         r"(?i)dump\s+.*(database|env|environment|pam|credentials|keys|tokens|secret)",
+        r"(?i)(print|reveal|dump|leak|show)\s+.*(?:passwords?|keys?|secrets?|tokens?)",
         r"(?i)echo\s+\$(AWS|VAULT|CYBERARK|SECRET|TOKEN|PASSWORD)",
         r"(?i)disable\s+(audit|logging|merkle|checks)",
         r"(?i)wipe\s+(?:all\s+)?audit",
         r"(?i)(?:exfiltrate|leak|dump)\s+.*(?:password|connection\s+string)",
         
-        # Prompt Delimiter Escapes & Tags
+        # Prompt Delimiter Escapes, Tags & Log4j Injection
         r"(?i)(```\s*system|<\|im_start\|>|<\|im_end\|>|\[INST\]|\[/INST\]|<system>)",
         r"(?i)(<\s*script|javascript:|onerror\s*=)",
+        r"(?i)\$\{jndi:(?:ldap|rmi|dns)",
 
         # Change Ticket Spoofing & Emergency Bypass (CHAT-17)
         r"(?i)(?:CHG|CRQ|INC|RITM)[-_\s]?\d+.*(?:pre[-_\s]?approved|skip\s+approval|emergency\s+bypass).*(?:execute|run|deploy)\s+now",
         r"(?i)(?:pre[-_\s]?approved|emergency\s+override).*(?:execute|run|deploy)\s+now",
+        r"(?i)emergency\s+(override|bypass)",
+        r"(?i)pre[-_\s]?approved",
+        r"(?i)pre[-_\s]?authorized",
         r"(?i)skip\s+(cab|change\s+advisory|governance)",
+        r"(?i)bypass\s+.*(change\s+advisory|cab|governance)",
         r"(?i)override\s+(freeze|change\s+freeze|maintenance\s+window)",
         r"(?i)bypass\s+(window|maintenance\s+window|freeze)",
     ]
@@ -179,7 +199,9 @@ class IntentResolver:
         # Stage 1: Normalize unicode (NFKC), map homoglyphs & strip zero-width characters
         normalized = unicodedata.normalize("NFKC", prompt)
         translated = normalized.translate(self.HOMOGLYPH_MAP)
-        clean_prompt = re.sub(r"[\u200B-\u200D\uFEFF]", "", translated)
+        # Zero-width characters replaced with whitespace to prevent token-concatenation bypasses
+        clean_prompt = re.sub(r"[\u200B-\u200D\uFEFF]", " ", translated)
+        clean_prompt = re.sub(r"\s+", " ", clean_prompt)
 
         # Stage 2: Secret and key leak detection (AKIA, private keys, Vault tokens)
         for sec_pattern in self.SENSITIVE_SECRET_PATTERNS:
@@ -264,6 +286,8 @@ class IntentResolver:
                 if repo_results:
                     return [(item, score) for item, score, _ in repo_results]
                 return []
+            except AIProviderQuotaExhaustedError:
+                raise
             except Exception as e:
                 logger.warning("Catalog repository hybrid search failed (%s); falling back to in-memory search.", e)
 
@@ -336,7 +360,20 @@ class IntentResolver:
                     break
 
         # 2. Hybrid Retrieval over Catalog
-        ranked = self.hybrid_search(prompt)
+        try:
+            ranked = self.hybrid_search(prompt)
+        except AIProviderQuotaExhaustedError as qe:
+            logger.error("AI provider quota exhausted during intent resolution: %s", qe)
+            return IntentResolutionResult(
+                status="SERVICE_UNAVAILABLE",
+                refusal_reason=(
+                    f"AI Provider Quota Exhausted ({qe.quota_id or 'RESOURCE_EXHAUSTED'}): "
+                    "Daily upstream API request limit reached. Fail-closed governance active — "
+                    "use manual playbook selection via Command Palette (Cmd + K)."
+                ),
+                tokens_used=0
+            )
+
         if not ranked and not best_item:
             return IntentResolutionResult(
                 status="REFUSED",

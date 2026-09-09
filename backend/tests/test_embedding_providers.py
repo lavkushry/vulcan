@@ -12,6 +12,7 @@ Verifies:
 4. OpenAI and Gemini mock HTTP protocol contracts.
 5. IntentResolver integration with custom embedding providers and refusal gating.
 """
+import io
 import json
 import math
 import os
@@ -218,12 +219,73 @@ class TestIntentResolverWithEmbeddingProvider(unittest.TestCase):
             openai_p.is_refusal(0.40, 0.0)
         self.assertIn("uncalibrated placeholders", str(ctx.exception))
 
-        gemini_p = GeminiEmbeddingProvider(api_key="gem-test")
-        self.assertFalse(gemini_p.is_calibrated)
-        self.assertFalse(gemini_p.refusal_thresholds["calibrated"])
-        with self.assertRaises(RuntimeError) as ctx:
-            gemini_p.is_refusal(0.40, 0.0)
-        self.assertIn("uncalibrated placeholders", str(ctx.exception))
+        from unittest.mock import patch
+        with patch("app.adapters.embedding_providers._load_calibration", return_value=None):
+            uncal_gemini = GeminiEmbeddingProvider(api_key="gem-test")
+            self.assertFalse(uncal_gemini.is_calibrated)
+            self.assertFalse(uncal_gemini.refusal_thresholds["calibrated"])
+            with self.assertRaises(RuntimeError) as ctx:
+                uncal_gemini.is_refusal(0.40, 0.0)
+            self.assertIn("uncalibrated placeholders", str(ctx.exception))
+
+        # Calibrated Gemini model verifies empirical calibration file loads correctly
+        cal_gemini = GeminiEmbeddingProvider(api_key="gem-test")
+        self.assertTrue(cal_gemini.is_calibrated)
+        self.assertTrue(cal_gemini.refusal_thresholds["calibrated"])
+        self.assertEqual(cal_gemini.refusal_thresholds["status"], "EMPIRICALLY_CALIBRATED")
+
+    def test_huggingface_embedding_provider_initialization(self):
+        from app.adapters.embedding_providers import HuggingFaceEmbeddingProvider, get_embedding_provider
+
+        hf = HuggingFaceEmbeddingProvider(api_key="hf_test_123", model="BAAI/bge-large-en-v1.5")
+        self.assertEqual(hf.dimension, 1536)
+        self.assertEqual(hf.provider_name, "huggingface/BAAI/bge-large-en-v1.5")
+        self.assertFalse(hf.quota_exhausted)
+
+        # Factory resolution
+        with unittest.mock.patch.dict(os.environ, {"HUGGINGFACE_API_KEY": "hf_test_123", "VULCAN_EMBEDDING_PROVIDER": "huggingface"}):
+            provider = get_embedding_provider()
+            self.assertIsInstance(provider, HuggingFaceEmbeddingProvider)
+
+    def test_huggingface_embedding_provider_mocked_embed(self):
+        from app.adapters.embedding_providers import HuggingFaceEmbeddingProvider
+        from unittest.mock import patch, MagicMock
+
+        hf = HuggingFaceEmbeddingProvider(api_key="hf_test_123", model="BAAI/bge-large-en-v1.5")
+        fake_vector = [0.1] * 1024  # bge-large native dimension
+
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = json.dumps([fake_vector]).encode("utf-8")
+        mock_resp.__enter__.return_value = mock_resp
+
+        with patch("urllib.request.urlopen", return_value=mock_resp):
+            emb = hf.embed_text("Test prompt for Hugging Face")
+            self.assertEqual(len(emb), 1536)
+            # Verify cached
+            self.assertIn("Test prompt for Hugging Face", hf._query_cache)
+            # Second call hits cache
+            emb2 = hf.embed_text("Test prompt for Hugging Face")
+            self.assertEqual(emb, emb2)
+
+    def test_huggingface_quota_exhaustion(self):
+        import urllib.error
+        from app.adapters.embedding_providers import HuggingFaceEmbeddingProvider
+        from app.domain.exceptions import AIProviderQuotaExhaustedError
+        from unittest.mock import patch
+
+        hf = HuggingFaceEmbeddingProvider(api_key="hf_test_123")
+        err = urllib.error.HTTPError(
+            url="https://router.huggingface.co",
+            code=429,
+            msg="Too Many Requests",
+            hdrs={},
+            fp=io.BytesIO(json.dumps({"error": "Rate limit exceeded for free tier"}).encode())
+        )
+        with patch("urllib.request.urlopen", side_effect=err):
+            with self.assertRaises(AIProviderQuotaExhaustedError) as ctx:
+                hf.embed_text("Test query")
+            self.assertTrue(hf.quota_exhausted)
+            self.assertEqual(ctx.exception.provider, "huggingface")
 
 
 if __name__ == "__main__":

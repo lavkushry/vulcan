@@ -921,9 +921,9 @@ Our Python 3.14 compatibility strategy:
   *Acceptance Criteria:* Retrieval pipeline enforces hard minimum thresholds (`dense_sim >= 0.35` OR `sparse_bm25 > 0.15`); nonsense queries ('xyzzy 123') return `status = "REFUSED"` with `refusal_reason = "Out-of-catalog intent"`; unit tests verify refusal on 10 out-of-domain queries.  
   *Source:* Andrej Karpathy
 
-* **BKND-27: Real IChatModelProvider Port & DeterministicFakeChatProvider in CI**  
-  *Problem Killed:* Kills Defect 5 (doc-only markdown pseudocode ports). Enables full LLM mocking in test suites.  
-  *Acceptance Criteria:* `IChatModelProvider` abstract port added to `app/ports/interfaces.py`; `DeterministicFakeChatProvider` implemented in `app/adapters/fake_chat_adapter.py` returning deterministic JSON responses; entire CI eval suite runs offline in $<2.0\text{s}$ with zero API keys.  
+* **BKND-27: Real IChatModelProvider & IEmbeddingProvider Multi-Provider Ports with Deterministic Fakes in CI**  
+  *Problem Killed:* Kills Defect 5 (doc-only markdown pseudocode ports). Enables full LLM and embedding mocking in test suites while supporting multi-provider AI backends (Hermetic Fake, Hugging Face Serverless, Gemini, OpenAI).  
+  *Acceptance Criteria:* `IChatModelProvider` and `IEmbeddingProvider` abstract ports added to `app/ports/interfaces.py`; `DeterministicFakeChatProvider` and `HermeticFakeEmbeddingProvider` implemented for offline CI runs in $<2.0\text{s}$ with zero API keys. `HuggingFaceEmbeddingProvider` integrated over Serverless Inference router (`BAAI/bge-large-en-v1.5`) with 1024→1536 projective unit normalization and fail-closed HTTP 429 quota handling (`INV-AI-01`).  
   *Source:* Robert C. Martin ("Uncle Bob") & Andrej Karpathy
 
 * **BKND-28: Real Tiktoken Budgeting & Context Overflow Protection**  

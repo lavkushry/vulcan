@@ -859,17 +859,19 @@ def generate_ticket_hydration_scenarios() -> List[Dict[str, Any]]:
         ("renew ssl cert under CHG001 for 180 days vip 10.0.1.5", "net-f5-cert-renew", "f5-vip-01", "CHG001", "F5 SSL with registered CHG001"),
         ("expand tablespace AUDIT_TS by 50gb under CHG0098412", "db-expand-tablespace", "pnc-core-db01", "CHG0098412", "DB expand with registered CHG0098412"),
         ("renew ssl cert under CHG-991122 for 90 days vip 10.0.5.20", "net-f5-cert-renew", "f5-vip-api-01", "CHG-991122", "F5 SSL with registered CHG-991122"),
-        ("harden linux kernel sysctl parameters under CHG-2026-0001", "sec-system-hardening", "pnc-prod-infra", "CHG-2026-0001", "Kernel hardening with registered CHG-2026-0001"),
+        ("apply linux server security hardening under CHG-2026-0001", "sec-system-hardening", "pnc-prod-infra", "CHG-2026-0001", "Linux server hardening with registered CHG-2026-0001"),
         ("renew ssl cert under CHG-2026-9901 for 90 days vip 10.0.8.30", "net-f5-cert-renew", "f5-edge-01.internal", "CHG-2026-9901", "F5 SSL with registered CHG-2026-9901"),
         ("expand tablespace LOGS_TS by 200gb under CHG-DEMO-002", "db-expand-tablespace", "pnc-core-db01", "CHG-DEMO-002", "Tablespace expansion with CHG-DEMO-002"),
         ("renew ssl cert on edge under CHG-DEMO-001 for 30 days vip 10.0.1.5", "net-f5-cert-renew", "f5-edge-01.pnc.com", "CHG-DEMO-001", "F5 renewal hydration"),
         ("drain pool member under CHG-DEMO-001 on f5 load balancer", "net-f5-pool-member-drain", "f5-edge-01.pnc.com", "CHG-DEMO-001", "F5 drain hydration"),
-        ("apply cis benchmark system hardening under CHG-2026-0001", "sec-system-hardening", "pnc-prod-infra", "CHG-2026-0001", "CIS security baseline with registered CHG"),
-        ("expand tablespace ARCHIVE_TS by 80gb under CHG-98412", "db-expand-tablespace", "pnc-core-db01", "CHG-98412", "Archive tablespace with CHG-98412"),
-        ("renew ssl cert under CHG-998811 for 120 days vip 10.0.3.15", "net-f5-cert-renew", "f5-edge-vip-02.pnc.com", "CHG-998811", "F5 SSL renewal with fixture ticket")
+        ("apply cis benchmark system hardening under CHG-2026-0001", "sec-cis-benchmark-remediate", "pnc-prod-infra", "CHG-2026-0001", "CIS security baseline with registered CHG", ["sec-system-hardening"]),
+        ("expand tablespace ARCHIVE_TS by 80gb under CHG-98412", "db-expand-tablespace", "pnc-core-db01", "CHG-98412", "Archive tablespace with CHG-98412", []),
+        ("renew ssl cert under CHG-998811 for 120 days vip 10.0.3.15", "net-f5-cert-renew", "f5-edge-vip-02.pnc.com", "CHG-998811", "F5 SSL renewal with fixture ticket", [])
     ]
 
-    for prompt, target_id, ci_host, chg_num, note in valid_tickets:
+    for item in valid_tickets:
+        prompt, target_id, ci_host, chg_num, note = item[0], item[1], item[2], item[3], item[4]
+        val_idents = item[5] if len(item) > 5 else []
         scenarios.append({
             "id": f"eval-ticket-{len(scenarios)+1:03d}",
             "category": "ticket-hydration",
@@ -877,6 +879,7 @@ def generate_ticket_hydration_scenarios() -> List[Dict[str, Any]]:
             "expected": {
                 "status": "READY",
                 "identifier": target_id,
+                "valid_identifiers": val_idents,
                 "servicenow_chg": chg_num,
                 "ticket_hydration": {
                     "is_valid": True,

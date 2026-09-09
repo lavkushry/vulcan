@@ -335,9 +335,9 @@ def calibrate_refusal_gate(
 
 def main():
     parser = argparse.ArgumentParser(description="Vulcan Refusal Gate Calibration Harness")
-    parser.add_argument("--provider", type=str, default=None, choices=["openai", "gemini", "semantic-cluster", "hash"],
+    parser.add_argument("--provider", type=str, default=None, choices=["openai", "gemini", "huggingface", "semantic-cluster", "hash"],
                         help="Embedding provider to calibrate")
-    parser.add_argument("--output", type=str, default="docs/refusal_gate_calibration.json",
+    parser.add_argument("--output", type=str, default=None,
                         help="Path to output calibration results JSON")
     args = parser.parse_args()
 
@@ -345,7 +345,8 @@ def main():
     container = AppContainer()
     catalog_items = container.catalog
 
-    output_path = Path(args.output)
+    out_str = args.output or (f"docs/refusal_gate_calibration_{args.provider}.json" if args.provider else "docs/refusal_gate_calibration.json")
+    output_path = Path(out_str)
     calibrate_refusal_gate(catalog_items=catalog_items, provider_type=args.provider, output_path=output_path)
 
 

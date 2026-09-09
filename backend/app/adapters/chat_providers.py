@@ -17,6 +17,7 @@ import urllib.request
 from typing import Any, AsyncIterator, Dict, Optional
 
 from app.adapters.fake_chat_adapter import DeterministicFakeChatProvider
+from app.domain.exceptions import AIProviderQuotaExhaustedError
 from app.ports.interfaces import (
     ChatCompletionRequest,
     ChatCompletionResponse,
@@ -121,6 +122,7 @@ class GeminiChatProvider(IChatModelProvider):
     def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None):
         self.api_key = api_key or os.getenv("GEMINI_API_KEY") or ""
         self.model = model or os.getenv("GEMINI_CHAT_MODEL") or "gemini-flash-latest"
+        self.quota_exhausted: bool = False
         if not self.api_key:
             raise ValueError("GEMINI_API_KEY is not configured for GeminiChatProvider.")
 
@@ -187,14 +189,58 @@ class GeminiChatProvider(IChatModelProvider):
                         model_version=f"gemini/{self.model}",
                     )
             except urllib.error.HTTPError as e:
+                err_body = {}
+                try:
+                    err_body = json.loads(e.read().decode("utf-8"))
+                except Exception:
+                    pass
+
+                err_info = err_body.get("error", {})
+                status_code_str = err_info.get("status", "")
+                err_msg = err_info.get("message", "")
+                details = err_info.get("details", [])
+
+                is_daily = False
+                qid = ""
+                rd_sec = 0.0
+                for d in details:
+                    if d.get("@type", "").endswith("QuotaFailure"):
+                        for v in d.get("violations", []):
+                            q = v.get("quotaId", "")
+                            if "PerDay" in q or "Daily" in q:
+                                is_daily = True
+                            if q:
+                                qid = q
+                    elif d.get("@type", "").endswith("RetryInfo"):
+                        rd = d.get("retryDelay", "")
+                        if rd.endswith("s"):
+                            try:
+                                rd_sec = float(rd[:-1])
+                            except ValueError:
+                                pass
+
+                if status_code_str == "RESOURCE_EXHAUSTED" or is_daily or "PerDay" in err_msg or "quota exceeded" in err_msg.lower():
+                    logger.error("Gemini Chat API daily quota exhausted: %s", err_msg)
+                    self.quota_exhausted = True
+                    raise AIProviderQuotaExhaustedError(
+                        message=f"Gemini Chat API daily request quota reached (RESOURCE_EXHAUSTED). Free-tier limit reached.",
+                        provider="gemini",
+                        retry_after_seconds=rd_sec,
+                        quota_id=qid or "GenerateContentRequestsPerDayPerProjectPerModel-FreeTier"
+                    )
+
                 if e.code in (429, 500, 502, 503, 504) and attempt < max_retries - 1:
-                    sleep_time = base_delay * (2 ** attempt)
+                    sleep_time = max(base_delay * (2 ** attempt), rd_sec + 1.0)
+                    if e.code == 429:
+                        sleep_time = max(sleep_time, 15.0)
                     logger.warning("Gemini Chat API HTTP %d. Retrying in %.1fs (attempt %d/%d)...",
                                    e.code, sleep_time, attempt + 1, max_retries)
                     time.sleep(sleep_time)
                 else:
                     logger.error("Gemini Chat Completion request failed permanently: %s", e)
                     raise
+            except AIProviderQuotaExhaustedError:
+                raise
             except Exception as e:
                 if attempt < max_retries - 1:
                     sleep_time = base_delay * (2 ** attempt)

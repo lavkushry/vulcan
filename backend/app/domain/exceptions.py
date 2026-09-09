@@ -46,3 +46,12 @@ class HealthProbeDegradedError(DomainError):
 class PolicyViolationError(DomainError):
     """Raised when an operation violates banking policy, such as executing uncurated candidate code (INV-1)."""
     pass
+
+class AIProviderQuotaExhaustedError(DomainError):
+    """Raised when upstream AI provider rate limit or daily quota is exhausted (fail-closed, zero silent fallback)."""
+    def __init__(self, message: str, provider: str = "gemini", retry_after_seconds: float = 0.0, quota_id: str = ""):
+        super().__init__(message)
+        self.provider = provider
+        self.retry_after_seconds = retry_after_seconds
+        self.quota_id = quota_id
+

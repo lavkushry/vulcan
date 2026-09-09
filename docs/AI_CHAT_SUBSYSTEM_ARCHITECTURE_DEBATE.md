@@ -884,6 +884,13 @@ For CI test runs, local offline development, and unit testing, we implement the 
 - Evaluates input text against deterministic AST rules matching the 500 Golden Eval scenarios.
 - Guarantees $100\%$ reproducible test runs in CI with zero cost and zero flakiness.
 
+#### Multi-Provider Embedding Abstraction Port (`IEmbeddingProvider`)
+Similarly, the embedding layer conforms to the `IEmbeddingProvider` port in `backend/app/ports/interfaces.py`, supporting multiple backend implementations without leaking vendor SDKs into domain or use cases:
+1. **`HermeticFakeEmbeddingProvider`**: Deterministic synthetic semantic clustering (`semantic-cluster-1536`) with zero network I/O for CI reproducibility.
+2. **`HuggingFaceEmbeddingProvider`**: Serverless Inference API via modern router (`https://router.huggingface.co/hf-inference/models/BAAI/bge-large-en-v1.5`), utilizing `BAAI/bge-large-en-v1.5`. Includes orthogonal zero-padding from 1024 to 1536 dims with L2 unit normalization, query caching, calibrated refusal gate (`docs/refusal_gate_calibration_huggingface.json`), and fail-closed rate limit handling (`INV-AI-01`).
+3. **`GeminiEmbeddingProvider`**: Google Generative Language API (`gemini-embedding-1.0` / `text-embedding-004`) with fail-closed daily quota exhaustion handling.
+4. **`OpenAIEmbeddingProvider`**: OpenAI REST API (`text-embedding-3-small`, 1536 dims).
+
 ---
 
 ## 5. EVALUATION & SAFETY BENCHMARK PLAN
