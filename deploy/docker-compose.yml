@@ -113,6 +113,7 @@ services:
       - ../scripts:/app/scripts:ro
       - ../data/corpus:/app/data/corpus:ro
       - ../docs:/app/docs
+      - ../evals:/app/evals:ro
     depends_on:
       postgres:
         condition: service_healthy
