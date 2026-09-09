@@ -14,7 +14,10 @@ from pathlib import Path
 
 # Add backend to path
 BASE_DIR = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(BASE_DIR / "backend"))
+if (BASE_DIR / "app").exists():
+    sys.path.insert(0, str(BASE_DIR))
+else:
+    sys.path.insert(0, str(BASE_DIR / "backend"))
 
 from app.adapters.embedding_providers import get_embedding_provider
 from app.ports.interfaces import IEmbeddingProvider
