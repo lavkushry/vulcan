@@ -80,6 +80,7 @@ class IntentResolver:
         r"(?i)you\s+are\s+(now\s+)?(in\s+)?(dan\b|developer|root|admin|god|unrestricted)",
         r"(?i)pretend\s+(you\s+are|to\s+be)\s+(an\s+unrestricted|a\s+hacker|root|god|superadmin)",
         r"(?i)(instruction|system|prompt)\s+(override|reset|directive)",
+        r"(?i)override\s+(system\s+)?(prompt|instructions?|rules?|directives?|safeguards?)",
         r"(?i)reset\s+(safeguards|protections|security|rules)",
         r"(?i)act\s+as\s+(an?\s+)?(unrestricted|linux\s+root|root|bash|terminal)",
         r"(?i)simulate\s+(an?\s+)?(ai|system|agent)\s+without",

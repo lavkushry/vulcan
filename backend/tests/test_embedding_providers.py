@@ -287,6 +287,57 @@ class TestIntentResolverWithEmbeddingProvider(unittest.TestCase):
             self.assertTrue(hf.quota_exhausted)
             self.assertEqual(ctx.exception.provider, "huggingface")
 
+    def test_openrouter_embedding_provider_initialization(self):
+        from app.adapters.embedding_providers import OpenRouterEmbeddingProvider
+
+        ore = OpenRouterEmbeddingProvider(api_key="or_test_123", model="openai/text-embedding-3-small")
+        self.assertEqual(ore.dimension, 1536)
+        self.assertEqual(ore.provider_name, "openrouter/openai/text-embedding-3-small")
+        self.assertFalse(ore.quota_exhausted)
+
+        # Factory resolution
+        with unittest.mock.patch.dict(os.environ, {"OPENROUTER_API_KEY": "or_test_123", "VULCAN_EMBEDDING_PROVIDER": "openrouter"}):
+            provider = get_embedding_provider()
+            self.assertIsInstance(provider, OpenRouterEmbeddingProvider)
+
+    def test_openrouter_embedding_provider_mocked_embed(self):
+        from app.adapters.embedding_providers import OpenRouterEmbeddingProvider
+        from unittest.mock import patch, MagicMock
+
+        ore = OpenRouterEmbeddingProvider(api_key="or_test_123", model="openai/text-embedding-3-small")
+        fake_vector = [0.05] * 1536
+
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = json.dumps({"data": [{"embedding": fake_vector, "index": 0}]}).encode("utf-8")
+        mock_resp.__enter__.return_value = mock_resp
+
+        with patch("urllib.request.urlopen", return_value=mock_resp):
+            emb = ore.embed_text("Test prompt for OpenRouter")
+            self.assertEqual(len(emb), 1536)
+            self.assertIn("Test prompt for OpenRouter", ore._query_cache)
+            emb2 = ore.embed_text("Test prompt for OpenRouter")
+            self.assertEqual(emb, emb2)
+
+    def test_openrouter_embedding_quota_exhaustion(self):
+        import urllib.error
+        from app.adapters.embedding_providers import OpenRouterEmbeddingProvider
+        from app.domain.exceptions import AIProviderQuotaExhaustedError
+        from unittest.mock import patch
+
+        ore = OpenRouterEmbeddingProvider(api_key="or_test_123")
+        err = urllib.error.HTTPError(
+            url="https://openrouter.ai",
+            code=429,
+            msg="Too Many Requests",
+            hdrs={},
+            fp=io.BytesIO(json.dumps({"error": {"message": "Rate limit exceeded"}}).encode())
+        )
+        with patch("urllib.request.urlopen", side_effect=err):
+            with self.assertRaises(AIProviderQuotaExhaustedError) as ctx:
+                ore.embed_text("Test query")
+            self.assertTrue(ore.quota_exhausted)
+            self.assertEqual(ctx.exception.provider, "openrouter")
+
 
 if __name__ == "__main__":
     unittest.main()

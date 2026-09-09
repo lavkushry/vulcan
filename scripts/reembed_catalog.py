@@ -139,10 +139,10 @@ def reembed_catalog(
 
 def main():
     parser = argparse.ArgumentParser(description="Vulcan Catalog Re-Embedding Tool")
-    parser.add_argument("--provider", type=str, default=None, choices=["openai", "gemini", "huggingface", "hf", "semantic-cluster", "hash"],
+    parser.add_argument("--provider", type=str, default=None, choices=["openai", "gemini", "huggingface", "hf", "openrouter", "semantic-cluster", "hash"],
                         help="Explicit embedding provider to use")
     parser.add_argument("--require-real", action="store_true",
-                        help="Loudly forbid synthetic/cluster providers (must use live OpenAI, Gemini, or Hugging Face)")
+                        help="Loudly forbid synthetic/cluster providers (must use live OpenAI, Gemini, Hugging Face, or OpenRouter)")
     parser.add_argument("--db-url", type=str, default=None,
                         help="PostgreSQL connection string (or set DATABASE_URL/POSTGRES_URL)")
     parser.add_argument("--batch-size", type=int, default=100,

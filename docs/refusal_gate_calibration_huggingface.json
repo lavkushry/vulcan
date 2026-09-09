@@ -48,9 +48,9 @@
     "total_eval_time_seconds": 0.1
   },
   "calibrated_thresholds": {
-    "min_dense_no_sparse": 0.4,
+    "min_dense_no_sparse": 0.58,
     "min_dense_with_sparse": 0.3,
-    "min_sparse_cutoff": 0.2,
-    "rrf_dense_floor": 0.3
+    "min_sparse_cutoff": 0.1,
+    "rrf_dense_floor": 0.35
   }
 }

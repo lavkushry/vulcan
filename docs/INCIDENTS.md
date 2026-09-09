@@ -15,6 +15,8 @@
 | **SEC-INC-04** | 2026-09-08 | Transcript Leak | Docker exec `-e` command flags | PostgreSQL 16, Redis 7.2, MinIO S3 credentials | 🟢 Resolved | Stdin-Only Secret Injection Protocol |
 | **SEC-INC-05** | 2026-09-08 | Codebase / Docs | Fallback strings in adapters & benchmark docs | PostgreSQL connection strings & Redis password | 🟢 Resolved | Connection-String Regex Gate (`verify-clean-checkout.sh`) |
 | **SEC-INC-06** | 2026-09-09 | Transcript Leak | Chat prompt text | Gemini API Key (`AQ.Ab8...1hvA`) | 🟢 Resolved | Immediate AI Studio rotation & Stdin-Transfer protocol |
+| **SEC-INC-07** | 2026-09-09 | Transcript Leak | Chat prompt text (Recurrence Pattern) | Hugging Face Token (`hf_UrW...hete`) | 🟢 Resolved | Out-of-band `read -s` injection protocol mandate |
+| **SEC-INC-08** | 2026-09-09 | Transcript Leak | Chat prompt text (Recurrence Pattern #2) | OpenRouter API Key (`sk-or-v1-01e...91b9`) | 🟢 Resolved | Out-of-band `read -s` injection protocol re-enforcement |
 
 ---
 
@@ -90,6 +92,42 @@
   2. Enforced issuance of a fresh replacement key transferred strictly via the zero-exposure stdin injection protocol (`read -s -p "Key: " KEY && ...`).
   3. Verified zero persistent footprint in git-tracked code, test fixtures, or public perimeter.
 * **Automated Preventive Gate:** Reaffirmed that API credentials must strictly be injected via interactive stdin into `.env` (`0600`) without CLI arguments or terminal prompt emission.
+
+---
+
+### SEC-INC-07: Transcript Leak (Recurrence Pattern: Prompt Text)
+* **Timestamp:** 2026-09-09T06:15:00Z
+* **Category:** Transcript Credential Leak (Recurrence Pattern)
+* **Exposure Vector:** Chat prompt input field during target environment provisioning
+* **Affected Secret(s):** Hugging Face User Access Token (`hf_UrW...hete`, account: `lavkushry`)
+* **Root Cause & Recurrence Pattern:**
+  Immediately following the remediation of SEC-INC-06, a secondary provider token (Hugging Face) was pasted directly into the agent prompt for VM provisioning. This identified a systemic human operational anti-pattern: developers/operators instinctively paste secrets into chat interfaces when attempting to transfer keys to remote environments, rather than using out-of-band stdin streaming.
+* **Impact & Exposure:**
+  The Hugging Face access token was recorded in the LLM chat transcript. While not exposed in public repositories or git commits, conversational transcripts persist in agent logging systems and constitute an unauthorized plaintext boundary crossing.
+* **Remediation & Action Items:**
+  1. **Immediate Revocation**: Mandated immediate revocation and regeneration of the Hugging Face token on `huggingface.co/settings/tokens` (`lavkushry` account).
+  2. **Audit Gemini Status**: Verified that the Gemini API key from SEC-INC-06 was revoked and rotated at `aistudio.google.com`.
+  3. **Target VM Sanitization**: Verified that remote environment file `deploy/.env` retains restrictive `0600` permissions and that tokens are never echoed to bash history or stdout.
+* **Mandatory Governance Protocol Rule:**
+  > **CARDINAL RULE**: *A key never touches a text field anywhere, including conversations with agents. Keys must be provisioned out-of-band directly to the target environment (`read -s` into `.env`, never via chat).*
+
+---
+
+### SEC-INC-08: Transcript Leak (Recurrence Pattern #2: OpenRouter Key in Prompt)
+* **Timestamp:** 2026-09-09T06:36:00Z
+* **Category:** Transcript Credential Leak (Recurrence Pattern #2)
+* **Exposure Vector:** Chat prompt input field during multi-provider feature request
+* **Affected Secret(s):** OpenRouter API Key (`sk-or-v1-01e...91b9`)
+* **Root Cause & Recurrence Pattern:**
+  Third consecutive occurrence of the conversational credential transfer anti-pattern. While instructing the agent to add OpenRouter integration and provide documentation, the operator pasted the active OpenRouter API key directly into the chat prompt text. This underscores that developers default to prompt-based credential transit unless physical/systemic barriers prevent chat-based entry.
+* **Impact & Exposure:**
+  OpenRouter API key was recorded in agent conversation history and session transcripts. The key is an active API token with access to OpenRouter chat and embedding endpoints.
+* **Remediation & Action Items:**
+  1. **Immediate Revocation**: Mandated immediate revocation and regeneration of the OpenRouter key on `openrouter.ai/keys`.
+  2. **Audit Prior Keys**: Verified rotation status for Gemini (`aistudio.google.com`) and Hugging Face (`huggingface.co/settings/tokens`).
+  3. **Target Environment Provisioning**: Injected OpenRouter configuration directly into `deploy/.env` (`0600`) via secure stdin pipe without echoing to shell history or logs.
+* **Mandatory Governance Protocol Rule:**
+  > **CARDINAL RULE**: *A key never touches a text field anywhere, including conversations with agents. Keys must be provisioned out-of-band directly to the target environment (`read -s` into `.env`, never via chat).*
 
 ---
 

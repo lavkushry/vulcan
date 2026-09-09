@@ -99,12 +99,43 @@ def run_evaluation(
         gemini_key = os.getenv("GEMINI_API_KEY")
         openai_key = os.getenv("OPENAI_API_KEY")
         hf_key = os.getenv("HUGGINGFACE_API_KEY") or os.getenv("HF_TOKEN")
-        if not gemini_key and not openai_key and not hf_key:
-            print("ERROR: Live provider requires GEMINI_API_KEY, OPENAI_API_KEY, or HUGGINGFACE_API_KEY/HF_TOKEN in environment.", file=sys.stderr)
+        openrouter_key = os.getenv("OPENROUTER_API_KEY")
+        if not gemini_key and not openai_key and not hf_key and not openrouter_key:
+            print("ERROR: Live provider requires GEMINI_API_KEY, OPENAI_API_KEY, HUGGINGFACE_API_KEY/HF_TOKEN, or OPENROUTER_API_KEY in environment.", file=sys.stderr)
             print("To run in hermetic offline mode without keys, use: python3 scripts/run_eval.py --provider fake", file=sys.stderr)
             sys.exit(2)
-        os.environ["VULCAN_CHAT_PROVIDER"] = "gemini" if gemini_key else ("openai" if openai_key else "deterministic_fake")
-        os.environ["VULCAN_EMBEDDING_PROVIDER"] = "gemini" if gemini_key else ("openai" if openai_key else "huggingface")
+
+        # Respect explicitly configured VULCAN_EMBEDDING_PROVIDER if set and credentialed
+        env_emb = os.getenv("VULCAN_EMBEDDING_PROVIDER", "").lower()
+        if env_emb in ("huggingface", "hf", "bge-large") and hf_key:
+            os.environ["VULCAN_EMBEDDING_PROVIDER"] = "huggingface"
+        elif env_emb in ("openrouter", "open-router") and openrouter_key:
+            os.environ["VULCAN_EMBEDDING_PROVIDER"] = "openrouter"
+        elif env_emb == "openai" and openai_key:
+            os.environ["VULCAN_EMBEDDING_PROVIDER"] = "openai"
+        elif env_emb == "gemini" and gemini_key:
+            os.environ["VULCAN_EMBEDDING_PROVIDER"] = "gemini"
+        elif hf_key:
+            os.environ["VULCAN_EMBEDDING_PROVIDER"] = "huggingface"
+        elif openrouter_key:
+            os.environ["VULCAN_EMBEDDING_PROVIDER"] = "openrouter"
+        elif gemini_key:
+            os.environ["VULCAN_EMBEDDING_PROVIDER"] = "gemini"
+        elif openai_key:
+            os.environ["VULCAN_EMBEDDING_PROVIDER"] = "openai"
+
+        # Chat provider (slot filling)
+        env_chat = os.getenv("VULCAN_CHAT_PROVIDER", "").lower()
+        if env_chat in ("deterministic_fake", "fake"):
+            os.environ["VULCAN_CHAT_PROVIDER"] = "deterministic_fake"
+        elif env_chat in ("openrouter", "open-router") and openrouter_key:
+            os.environ["VULCAN_CHAT_PROVIDER"] = "openrouter"
+        elif env_chat == "gemini" and gemini_key:
+            os.environ["VULCAN_CHAT_PROVIDER"] = "gemini"
+        elif env_chat == "openai" and openai_key:
+            os.environ["VULCAN_CHAT_PROVIDER"] = "openai"
+        else:
+            os.environ["VULCAN_CHAT_PROVIDER"] = "deterministic_fake"
     elif provider_type in ("huggingface", "hf"):
         hf_key = os.getenv("HUGGINGFACE_API_KEY") or os.getenv("HF_TOKEN")
         if not hf_key:
@@ -112,6 +143,13 @@ def run_evaluation(
             sys.exit(2)
         os.environ["VULCAN_CHAT_PROVIDER"] = "deterministic_fake"
         os.environ["VULCAN_EMBEDDING_PROVIDER"] = "huggingface"
+    elif provider_type in ("openrouter", "open-router"):
+        openrouter_key = os.getenv("OPENROUTER_API_KEY")
+        if not openrouter_key:
+            print("ERROR: OpenRouter provider requires OPENROUTER_API_KEY in environment.", file=sys.stderr)
+            sys.exit(2)
+        os.environ["VULCAN_CHAT_PROVIDER"] = "openrouter"
+        os.environ["VULCAN_EMBEDDING_PROVIDER"] = "openrouter"
     else:
         os.environ["VULCAN_CHAT_PROVIDER"] = "deterministic_fake"
         os.environ["VULCAN_EMBEDDING_PROVIDER"] = "fastembed"
@@ -472,6 +510,9 @@ def run_evaluation(
     results: Dict[str, Any] = {
         "evaluation_timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "provider": provider_type,
+        "embedding_provider": getattr(getattr(container, "embedding_provider", None), "provider_name", "unknown"),
+        "chat_provider": getattr(getattr(container, "chat_provider", None), "provider_name", "deterministic-fake"),
+        "slot_filling_engine": "deterministic_grammar_regex_fsm",
         "scenarios_source": str(scenarios_path),
         "total_scenarios": total_count,
         "metrics": {
@@ -644,18 +685,58 @@ def generate_markdown_report(results: Dict[str, Any]) -> str:
     disambiguated = routing_data.get("disambiguation_surfaced", [])
     silent_misroutes = routing_data.get("silent_misroutes", [])
 
-    lines = [
-        "# Project Vulcan: 500-Scenario Golden Evaluation Baseline (CHAT-20)",
-        "",
+    total_routing = routing_data.get("total", 0)
+    top1_correct = routing_data.get("top_1_correct", 0)
+    top1_pct = (top1_correct / total_routing * 100.0) if total_routing else 0.0
+
+    # Dynamic Choice Card & Operator Experience Derivations
+    choice_with_right_ans = sum(
+        1 for item in disambiguated
+        if item.get("expected") in item.get("top_candidates", [])
+    )
+    choice_with_right_ans_pct = (choice_with_right_ans / total_routing * 100.0) if total_routing else 0.0
+
+    dead_end_choice_cards = len(disambiguated) - choice_with_right_ans
+    dead_end_pct = (dead_end_choice_cards / total_routing * 100.0) if total_routing else 0.0
+
+    silent_wrong = len(silent_misroutes)
+    silent_wrong_pct = (silent_wrong / total_routing * 100.0) if total_routing else 0.0
+
+    operator_reachable = top1_correct + choice_with_right_ans
+    operator_reachable_pct = (operator_reachable / total_routing * 100.0) if total_routing else 0.0
+
+    # Diff vs Fake Baseline (89.33% reachable / 8.00% silent / 2.67% dead-end)
+    diff_reachable = operator_reachable_pct - 89.33
+    diff_silent = silent_wrong_pct - 8.00
+    diff_dead_end = dead_end_pct - 2.67
+
+    is_live = results.get("provider") in ("live", "huggingface", "hf")
+    embedding_prov = results.get("embedding_provider", "hermetic-cluster-1536")
+    chat_prov = results.get("chat_provider", "deterministic-fake")
+    slot_engine = results.get("slot_filling_engine", "deterministic_grammar_regex_fsm")
+
+    notice_block = [
+        "> [!NOTE]",
+        "> **LIVE MODEL EVALUATION REPORT**:",
+        f"> Evaluated against live embedding provider `{embedding_prov}` with `{chat_prov}` ({slot_engine}).",
+        "> This measures real dense vector space routing across the 500-scenario golden benchmark.",
+    ] if is_live else [
         "> [!WARNING]",
         "> **TUNED-ON BASELINE LIMITATION (Flag 3 Audit Notice)**:",
         "> The **82.00% Top-1** and **97.33% Top-3** routing figures represent a *tuned-on baseline* calibrated",
         "> against the hermetic fake provider. This establishes a measured, honest floor for regression testing,",
-        "> but does **NOT** measure real-world generalization against live semantic variation. Real-world generalization",
-        "> remains unmeasured until the live model evaluation on September 22, 2026.",
+        "> but does **NOT** measure real-world generalization against live semantic variation.",
+    ]
+
+    lines = [
+        "# Project Vulcan: 500-Scenario Golden Evaluation Baseline (CHAT-20)",
+        "",
+        *notice_block,
         "",
         f"- **Evaluation Timestamp**: `{results['evaluation_timestamp']}`",
         f"- **Provider Mode**: `{results['provider'].upper()}`",
+        f"- **Embedding Provider**: `{embedding_prov}`",
+        f"- **Chat / Slot Engine**: `{chat_prov}` (`{slot_engine}`)",
         f"- **Dataset Source**: `{results['scenarios_source']}`",
         f"- **Total Scenarios Evaluated**: **{results['total_scenarios']}**",
         "",
@@ -675,35 +756,36 @@ def generate_markdown_report(results: Dict[str, Any]) -> str:
         "## 2. Top-1 Non-Match Classification (Flag 4 Audit)",
         "",
         f"Out of {b['routing']['total']} routing scenarios, **{b['routing']['top_1_correct']}** matched Top-1 exactly ({m['routing_top_1_percent']:.2f}%).",
-        f"The remaining **{routing_data.get('top_1_failures_total', 27)}** non-matches bifurcate into two operationally distinct populations:",
+        f"The remaining **{routing_data.get('top_1_failures_total', len(cat_routing) - top1_correct if 'cat_routing' in locals() else len(disambiguated) + len(silent_misroutes))}** non-matches bifurcate into two operationally distinct populations:",
         "",
         f"- **Disambiguation-Surfaced (Safe Bento Choice Cards)**: **{len(disambiguated)} cases ({len(disambiguated) / b['routing']['total'] * 100.0:.2f}%)**.",
         "  When semantic ambiguity (`delta_sim < 0.05`) occurs, the resolver halts automated execution and presents the operator",
-        "  with candidate choice cards. In 11 of these 15 cases, the expected target is among the presented top-3 candidates.",
+        f"  with candidate choice cards. In {choice_with_right_ans} of these {len(disambiguated)} cases, the expected target is among the presented top candidates.",
         "  No silent misroute or erroneous automated execution occurs.",
         f"- **Silent Misroutes (Quality Gaps)**: **{len(silent_misroutes)} cases ({len(silent_misroutes) / b['routing']['total'] * 100.0:.2f}%)**.",
-        "  The hermetic resolver confidently matched an incorrect playbook (`status: NEEDS_INPUT` or `READY`).",
-        "  These 12 scenarios isolate the exact quality gap that dense vector embeddings must eliminate on September 22.",
+        "  The resolver matched an incorrect playbook (`status: NEEDS_INPUT` or `READY`).",
         "",
         "## 3. Operator Experience Derived Scorecard (The Baseline Triple)",
         "",
         "Combining Top-1 accuracy with disambiguation choice card outcomes reveals what an operator actually experiences at the console:",
         "",
-        "| Operator Outcome | Scenarios | Percentage | Operational Meaning |",
-        "| :--- | :---: | :---: | :--- |",
-        "| **Correct playbook, first try** | **123** | **82.0%** | Immediate intent match without manual disambiguation |",
-        "| **Choice card containing the right answer** | **11** | **7.3%** | Operator selects target playbook from presented Bento card |",
-        "| **Choice card without the right answer (dead end)** | **4** | **2.7%** | Disambiguation triggered or top-3 pool lacks target playbook |",
-        "| **Silently routed to the wrong playbook** | **12** | **8.0%** | Confident incorrect Top-1 match (quality defect) |",
+        "| Operator Outcome | Scenarios | Percentage | Fake Baseline | Diff vs Baseline | Operational Meaning |",
+        "| :--- | :---: | :---: | :---: | :---: | :--- |",
+        f"| **Correct playbook, first try** | **{top1_correct}** | **{top1_pct:.1f}%** | 82.0% | {top1_pct - 82.0:+.1f}% | Immediate intent match without manual disambiguation |",
+        f"| **Choice card containing the right answer** | **{choice_with_right_ans}** | **{choice_with_right_ans_pct:.1f}%** | 7.3% | {choice_with_right_ans_pct - 7.33:+.1f}% | Operator selects target playbook from presented Bento card |",
+        f"| **Choice card without the right answer (dead end)** | **{dead_end_choice_cards}** | **{dead_end_pct:.1f}%** | 2.7% | {diff_dead_end:+.1f}% | Disambiguation triggered but top-3 pool lacks target playbook |",
+        f"| **Silently routed to the wrong playbook** | **{silent_wrong}** | **{silent_wrong_pct:.1f}%** | 8.0% | {diff_silent:+.1f}% | Confident incorrect Top-1 match (quality defect) |",
         "",
         "> [!IMPORTANT]",
-        "> ### The Baseline Triple (Scorecard for Sept 22 Live Provider)",
-        "> - **Operator-Reachable Correct**: **89.3%** (134 / 150)",
-        "> - **Silently Wrong**: **8.0%** (12 / 150)",
-        "> - **Dead-End Choice Cards**: **2.7%** (4 / 150)",
+        "> ### The Operator Experience Scorecard",
+        f"> - **Operator-Reachable Correct**: **{operator_reachable_pct:.1f}%** ({operator_reachable} / {total_routing}) [Baseline: 89.3%, diff: {diff_reachable:+.1f}%]",
+        f"> - **Silently Wrong**: **{silent_wrong_pct:.1f}%** ({silent_wrong} / {total_routing}) [Baseline: 8.0%, diff: {diff_silent:+.1f}%]",
+        f"> - **Dead-End Choice Cards**: **{dead_end_pct:.1f}%** ({dead_end_choice_cards} / {total_routing}) [Baseline: 2.7%, diff: {diff_dead_end:+.1f}%]",
         ">",
-        "> That triple is the honest shape of the fake provider — and it is precisely the scorecard the live model",
-        "> gets graded against on the 22nd: **Does 89.3% reachable go up, and does 8.0% silent go to zero?**",
+        "> **Provider & Engine Attribution**:",
+        f"> - **Embedding Provider**: `{embedding_prov}`",
+        f"> - **Chat Provider**: `{chat_prov}`",
+        f"> - **Slot Filling Engine**: `{slot_engine}` (Deterministic Regex / Pydantic FSM)",
         "",
         "## 4. ITSM Multi-Platform Ticket Governance (Flag 1)",
         "",
@@ -897,8 +979,8 @@ def generate_audit_markdown(results: Dict[str, Any]) -> str:
 
 def main():
     parser = argparse.ArgumentParser(description="Vulcan 500-Scenario Golden Evaluation Runner (CHAT-20)")
-    parser.add_argument("--provider", choices=["fake", "live", "huggingface", "hf"], default="fake",
-                        help="Evaluation provider: 'fake' (hermetic), 'live' (Gemini/OpenAI/HF), or 'huggingface'")
+    parser.add_argument("--provider", choices=["fake", "live", "huggingface", "hf", "openrouter"], default="fake",
+                        help="Evaluation provider: 'fake' (hermetic), 'live' (Gemini/OpenAI/HF/OpenRouter), 'huggingface', or 'openrouter'")
     parser.add_argument("--scenarios", type=str, default="evals/golden/scenarios.v2.jsonl",
                         help="Path to scenarios JSONL dataset")
     parser.add_argument("--output-json", type=str, default="docs/eval_results.json",

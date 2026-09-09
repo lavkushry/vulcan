@@ -427,7 +427,7 @@ def main():
     parser.add_argument("--iterations", type=int, default=2, help="Number of query iterations")
     parser.add_argument("--recall-samples", type=int, default=10, help="Number of queries for HNSW recall measurement")
     parser.add_argument("--scale-all", action="store_true", help="Scale and benchmark across 110, 1k, 5k, 10k tiers")
-    parser.add_argument("--embedding-provider", type=str, default="semantic", help="Embedding provider: semantic, hash, openai, gemini")
+    parser.add_argument("--embedding-provider", type=str, default=None, help="Embedding provider: huggingface, openrouter, gemini, openai, semantic, hash")
     parser.add_argument("--reembed", action="store_true", help="Re-embed all items in PostgreSQL with active provider")
     parser.add_argument("--output-doc", type=str, default="docs/BENCHMARK_CATALOG_SEARCH.md", help="Markdown output path")
     args = parser.parse_args()

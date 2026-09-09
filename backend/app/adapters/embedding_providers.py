@@ -258,7 +258,7 @@ class OpenAIEmbeddingProvider(IEmbeddingProvider):
     """
 
     def __init__(self, api_key: Optional[str] = None, model: str = "text-embedding-3-small"):
-        self.api_key = api_key or os.getenv("OPENAI_API_KEY") or ""
+        self.api_key = api_key if api_key is not None else (os.getenv("OPENAI_API_KEY") or "")
         self.model = model
         self._dim = 1536
         if not self.api_key:
@@ -366,7 +366,7 @@ class GeminiEmbeddingProvider(IEmbeddingProvider):
     """
 
     def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None):
-        self.api_key = api_key or os.getenv("GEMINI_API_KEY") or ""
+        self.api_key = api_key if api_key is not None else (os.getenv("GEMINI_API_KEY") or "")
         self.model = model or os.getenv("GEMINI_EMBEDDING_MODEL") or "gemini-embedding-001"
         self._dim = 1536
         self._query_cache: Dict[str, List[float]] = {}
@@ -645,7 +645,7 @@ class HuggingFaceEmbeddingProvider(IEmbeddingProvider):
     """
 
     def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None):
-        self.api_key = api_key or os.getenv("HUGGINGFACE_API_KEY") or os.getenv("HF_TOKEN") or ""
+        self.api_key = api_key if api_key is not None else (os.getenv("HUGGINGFACE_API_KEY") or os.getenv("HF_TOKEN") or "")
         self.model = model or os.getenv("HUGGINGFACE_EMBEDDING_MODEL") or os.getenv("HF_EMBEDDING_MODEL") or "BAAI/bge-large-en-v1.5"
         self._dim = 1536
         self._query_cache: Dict[str, List[float]] = {}
@@ -807,13 +807,145 @@ class HuggingFaceEmbeddingProvider(IEmbeddingProvider):
         return all_results
 
 
+class OpenRouterEmbeddingProvider(IEmbeddingProvider):
+    """
+    OpenRouter text embedding provider (defaulting to openai/text-embedding-3-small).
+    Outputs 1,536-dimensional L2-normalized vector embeddings matching PostgreSQL pgvector.
+    Uses standard library urllib (zero external dependencies).
+    """
+
+    def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None, dim: int = 1536):
+        self.api_key = api_key if api_key is not None else (os.getenv("OPENROUTER_API_KEY") or "")
+        self.model = model or os.getenv("OPENROUTER_EMBEDDING_MODEL") or "openai/text-embedding-3-small"
+        self._dim = dim
+        self._query_cache: Dict[str, List[float]] = {}
+        self.quota_exhausted: bool = False
+        if not self.api_key:
+            raise ValueError("OPENROUTER_API_KEY is not configured for OpenRouterEmbeddingProvider.")
+
+    @property
+    def dimension(self) -> int:
+        return self._dim
+
+    @property
+    def provider_name(self) -> str:
+        return f"openrouter/{self.model}"
+
+    @property
+    def refusal_thresholds(self) -> Dict[str, float]:
+        # OpenRouter openai/text-embedding-3-small calibrated thresholds
+        return {
+            "min_dense_no_sparse": 0.35,
+            "min_dense_with_sparse": 0.25,
+            "min_sparse_cutoff": 0.20,
+            "rrf_dense_floor": 0.25,
+        }
+
+    def embed_text(self, text: str) -> List[float]:
+        cleaned = text.strip()
+        if not cleaned:
+            return [0.0] * self._dim
+        if cleaned in self._query_cache:
+            return self._query_cache[cleaned]
+
+        results = self.embed_batch([cleaned])
+        if results:
+            self._query_cache[cleaned] = results[0]
+            return results[0]
+        return [0.0] * self._dim
+
+    def embed_batch(self, texts: List[str], batch_size: int = 100) -> List[List[float]]:
+        if not texts:
+            return []
+
+        url = "https://openrouter.ai/api/v1/embeddings"
+        all_results: List[List[float]] = []
+        max_retries = 3
+        base_delay = 2.0
+
+        for i in range(0, len(texts), batch_size):
+            chunk = texts[i:i + batch_size]
+            payload = {
+                "model": self.model,
+                "input": chunk,
+            }
+            data = json.dumps(payload).encode("utf-8")
+            req = urllib.request.Request(
+                url,
+                data=data,
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {self.api_key}",
+                    "HTTP-Referer": "https://github.com/project-vulcan/vulcan-control-plane",
+                    "X-Title": "Project Vulcan Control Plane",
+                },
+                method="POST",
+            )
+
+            for attempt in range(max_retries):
+                try:
+                    with urllib.request.urlopen(req, timeout=45) as resp:
+                        raw = json.loads(resp.read().decode("utf-8"))
+                        data_arr = raw.get("data", [])
+                        data_arr.sort(key=lambda x: x.get("index", 0))
+                        chunk_embs = []
+                        for item in data_arr:
+                            emb = item.get("embedding", [])
+                            if len(emb) < self._dim:
+                                emb = emb + [0.0] * (self._dim - len(emb))
+                            elif len(emb) > self._dim:
+                                emb = emb[:self._dim]
+                            chunk_embs.append(_l2_normalize(emb))
+
+                        all_results.extend(chunk_embs)
+                        for t, emb in zip(chunk, chunk_embs):
+                            self._query_cache[t.strip()] = emb
+                        break
+                except urllib.error.HTTPError as e:
+                    err_body = {}
+                    try:
+                        err_body = json.loads(e.read().decode("utf-8"))
+                    except Exception:
+                        pass
+                    err_msg = err_body.get("error", str(e)) if isinstance(err_body, dict) else str(e)
+                    if e.code == 429 or "rate limit" in str(err_msg).lower() or "quota" in str(err_msg).lower():
+                        logger.error("OpenRouter Embedding API rate limit / quota exhausted: %s", err_msg)
+                        self.quota_exhausted = True
+                        raise AIProviderQuotaExhaustedError(
+                            message=f"OpenRouter Embedding API request limit reached: {err_msg}",
+                            provider="openrouter",
+                            retry_after_seconds=3600.0,
+                            quota_id="OpenRouterEmbeddingRateLimit"
+                        )
+                    elif e.code in (500, 502, 503, 504) and attempt < max_retries - 1:
+                        sleep_time = base_delay * (2 ** attempt)
+                        logger.warning("OpenRouter Embedding API HTTP %d. Retrying in %.1fs (attempt %d/%d)...",
+                                       e.code, sleep_time, attempt + 1, max_retries)
+                        time.sleep(sleep_time)
+                    else:
+                        logger.error("OpenRouter Embedding API request failed permanently: %s", e)
+                        raise
+                except AIProviderQuotaExhaustedError:
+                    raise
+                except Exception as e:
+                    if attempt < max_retries - 1:
+                        sleep_time = base_delay * (2 ** attempt)
+                        logger.warning("OpenRouter Embedding network exception: %s. Retrying in %.1fs...", e, sleep_time)
+                        time.sleep(sleep_time)
+                    else:
+                        logger.error("OpenRouter Embedding API request failed permanently: %s", e)
+                        raise
+
+        return all_results
+
+
 def get_embedding_provider(provider_type: Optional[str] = None, require_real: bool = False) -> IEmbeddingProvider:
     """
     Factory resolving the active embedding provider.
     Priority:
     1. Explicit provider_type argument
     2. VULCAN_EMBEDDING_PROVIDER environment variable
-    3. Auto-detection: OpenAI if OPENAI_API_KEY, Gemini if GEMINI_API_KEY, HuggingFace if HUGGINGFACE_API_KEY/HF_TOKEN
+    3. Auto-detection: OpenAI if OPENAI_API_KEY, Gemini if GEMINI_API_KEY, HuggingFace if HUGGINGFACE_API_KEY/HF_TOKEN, OpenRouter if OPENROUTER_API_KEY
     4. Fallback: SemanticClusterEmbeddingProvider for deterministic semantic geometry
     """
     choice = (provider_type or os.getenv("VULCAN_EMBEDDING_PROVIDER") or "").strip().lower()
@@ -842,6 +974,14 @@ def get_embedding_provider(provider_type: Optional[str] = None, require_real: bo
                 "Failing closed without fallback (INV-AI-01: Zero silent synthetic degradation)."
             )
         return HuggingFaceEmbeddingProvider(api_key=api_key)
+    elif choice in ("openrouter", "open-router"):
+        api_key = os.getenv("OPENROUTER_API_KEY") or ""
+        if require_real and not api_key:
+            raise RuntimeError(
+                f"VULCAN_EMBEDDING_PROVIDER is set to '{choice}', but OPENROUTER_API_KEY is missing. "
+                "Failing closed without fallback (INV-AI-01: Zero silent synthetic degradation)."
+            )
+        return OpenRouterEmbeddingProvider(api_key=api_key)
     elif choice in ("hash", "deterministic_hash"):
         if require_real:
             raise RuntimeError("Synthetic hash provider forbidden when require_real=True.")
@@ -861,6 +1001,9 @@ def get_embedding_provider(provider_type: Optional[str] = None, require_real: bo
     elif os.getenv("HUGGINGFACE_API_KEY") or os.getenv("HF_TOKEN"):
         logger.info("Auto-selected HuggingFaceEmbeddingProvider via HUGGINGFACE_API_KEY / HF_TOKEN.")
         return HuggingFaceEmbeddingProvider()
+    elif os.getenv("OPENROUTER_API_KEY"):
+        logger.info("Auto-selected OpenRouterEmbeddingProvider via OPENROUTER_API_KEY.")
+        return OpenRouterEmbeddingProvider()
 
     if require_real:
         raise RuntimeError("No external AI provider configured and require_real=True.")
@@ -868,3 +1011,4 @@ def get_embedding_provider(provider_type: Optional[str] = None, require_real: bo
     # Default to SemanticClusterEmbeddingProvider for offline/CI environments
     logger.info("Defaulted to SemanticClusterEmbeddingProvider (1,536 dimensions).")
     return SemanticClusterEmbeddingProvider()
+

@@ -258,6 +258,136 @@ class GeminiChatProvider(IChatModelProvider):
             yield token + " "
 
 
+class OpenRouterChatProvider(IChatModelProvider):
+    """
+    OpenRouter Chat Completion provider with structured decoding.
+    Routes to multi-model catalog via https://openrouter.ai/api/v1/chat/completions.
+    Uses standard library urllib (zero external pip dependencies).
+    """
+
+    def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None):
+        self.api_key = api_key or os.getenv("OPENROUTER_API_KEY") or ""
+        self.model = model or os.getenv("OPENROUTER_CHAT_MODEL") or "liquid/lfm-2.5-2.6b:free"
+        self.quota_exhausted: bool = False
+        if not self.api_key:
+            raise ValueError("OPENROUTER_API_KEY is not configured for OpenRouterChatProvider.")
+
+    def complete_structured(self, request: ChatCompletionRequest) -> ChatCompletionResponse:
+        t0 = time.perf_counter()
+        url = "https://openrouter.ai/api/v1/chat/completions"
+
+        messages = [{"role": "system", "content": request.system_prompt}]
+        for hist in request.conversation_history:
+            messages.append(hist)
+        messages.append({"role": "user", "content": request.user_prompt})
+
+        payload: Dict[str, Any] = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": request.temperature,
+            "max_tokens": request.max_tokens,
+        }
+
+        # Grammar-constrained decoding: JSON schema or JSON object
+        if request.grammar_json_schema:
+            payload["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "vulcan_parameter_extraction",
+                    "strict": True,
+                    "schema": request.grammar_json_schema,
+                },
+            }
+        else:
+            payload["response_format"] = {"type": "json_object"}
+
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            url,
+            data=data,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self.api_key}",
+                "HTTP-Referer": "https://github.com/project-vulcan/vulcan-control-plane",
+                "X-Title": "Project Vulcan Control Plane",
+            },
+            method="POST",
+        )
+
+        max_retries = 3
+        base_delay = 2.0
+        for attempt in range(max_retries):
+            try:
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    raw_resp = json.loads(resp.read().decode("utf-8"))
+                    choices = raw_resp.get("choices", [])
+                    content = "{}"
+                    if choices:
+                        choice = choices[0].get("message", {})
+                        content = choice.get("content", "{}")
+
+                    usage = raw_resp.get("usage", {})
+                    parsed: Optional[Dict[str, Any]] = None
+                    try:
+                        parsed = json.loads(content)
+                    except Exception as pe:
+                        logger.warning("Failed to parse JSON from OpenRouter response: %s", pe)
+
+                    elapsed_ms = (time.perf_counter() - t0) * 1000.0
+                    return ChatCompletionResponse(
+                        content=content,
+                        parsed_json=parsed,
+                        prompt_tokens=usage.get("prompt_tokens", 0),
+                        completion_tokens=usage.get("completion_tokens", 0),
+                        latency_ms=round(elapsed_ms, 2),
+                        model_version=f"openrouter/{self.model}",
+                    )
+            except urllib.error.HTTPError as e:
+                err_body = {}
+                try:
+                    err_body = json.loads(e.read().decode("utf-8"))
+                except Exception:
+                    pass
+
+                err_info = err_body.get("error", {})
+                err_msg = err_info.get("message", str(e)) if isinstance(err_info, dict) else str(e)
+
+                if e.code == 429 or "rate limit" in err_msg.lower() or "quota" in err_msg.lower():
+                    logger.error("OpenRouter Chat API rate limit / quota exhausted: %s", err_msg)
+                    self.quota_exhausted = True
+                    raise AIProviderQuotaExhaustedError(
+                        message=f"OpenRouter Chat API rate limit / quota exhausted: {err_msg}",
+                        provider="openrouter",
+                        retry_after_seconds=3600.0,
+                        quota_id="OpenRouterRateLimit"
+                    )
+
+                if e.code in (500, 502, 503, 504) and attempt < max_retries - 1:
+                    sleep_time = base_delay * (2 ** attempt)
+                    logger.warning("OpenRouter Chat API HTTP %d. Retrying in %.1fs (attempt %d/%d)...",
+                                   e.code, sleep_time, attempt + 1, max_retries)
+                    time.sleep(sleep_time)
+                else:
+                    logger.error("OpenRouter Chat Completion request failed permanently: %s", e)
+                    raise
+            except AIProviderQuotaExhaustedError:
+                raise
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    sleep_time = base_delay * (2 ** attempt)
+                    logger.warning("OpenRouter Chat API network error: %s. Retrying in %.1fs...", e, sleep_time)
+                    time.sleep(sleep_time)
+                else:
+                    logger.error("OpenRouter Chat Completion request failed permanently: %s", e)
+                    raise
+
+    async def stream_structured(self, request: ChatCompletionRequest) -> AsyncIterator[str]:
+        response = self.complete_structured(request)
+        tokens = response.content.split(" ")
+        for token in tokens:
+            yield token + " "
+
+
 def get_chat_provider(provider_type: Optional[str] = None) -> IChatModelProvider:
     """
     Factory resolving active chat model provider.
@@ -285,6 +415,16 @@ def get_chat_provider(provider_type: Optional[str] = None) -> IChatModelProvider
         model = os.getenv("GEMINI_CHAT_MODEL", "gemini-flash-latest")
         return GeminiChatProvider(api_key=api_key, model=model)
 
+    elif choice in ("openrouter", "open-router"):
+        api_key = os.getenv("OPENROUTER_API_KEY")
+        if not api_key:
+            raise RuntimeError(
+                f"VULCAN_CHAT_PROVIDER is set to '{choice}', but OPENROUTER_API_KEY is missing or empty. "
+                "Failing closed without fallback (INV-AI-01: Zero silent synthetic degradation)."
+            )
+        model = os.getenv("OPENROUTER_CHAT_MODEL")
+        return OpenRouterChatProvider(api_key=api_key, model=model)
+
     elif choice in ("fake", "deterministic", "ci"):
         return DeterministicFakeChatProvider()
 
@@ -297,7 +437,12 @@ def get_chat_provider(provider_type: Optional[str] = None) -> IChatModelProvider
         logger.info("Auto-selected GeminiChatProvider via GEMINI_API_KEY.")
         model = os.getenv("GEMINI_CHAT_MODEL", "gemini-flash-latest")
         return GeminiChatProvider(api_key=os.getenv("GEMINI_API_KEY"), model=model)
+    elif os.getenv("OPENROUTER_API_KEY"):
+        logger.info("Auto-selected OpenRouterChatProvider via OPENROUTER_API_KEY.")
+        model = os.getenv("OPENROUTER_CHAT_MODEL")
+        return OpenRouterChatProvider(api_key=os.getenv("OPENROUTER_API_KEY"), model=model)
 
     # Default to hermetic fake for CI / offline development
     logger.info("Defaulted to DeterministicFakeChatProvider (Hermetic CI double).")
     return DeterministicFakeChatProvider()
+
