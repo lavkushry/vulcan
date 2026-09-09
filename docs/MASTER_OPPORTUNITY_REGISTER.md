@@ -20,11 +20,11 @@ The Master Opportunity Register unifies **127 architectural opportunities** mine
 | Subsystem | Total Items | 🟢 Implemented | 🟡 In Progress | ⚪ Planned | Implementation Rate |
 | :--- | :---: | :---: | :---: | :---: | :---: |
 | **Frontend Console (`UI-XX`)** | 28 | 15 | 7 | 6 | **53.6%** |
-| **AI Chat Subsystem (`CHAT-XX`)** | 26 | 15 | 7 | 4 | **57.7%** |
+| **AI Chat Subsystem (`CHAT-XX`)** | 26 | 16 | 6 | 4 | **61.5%** |
 | **Backend Control Plane (`BKND-XX`)** | 35 | 24 | 7 | 4 | **68.6%** |
 | **Platform & Infra (`INFRA-XX`)** | 30 | 20 | 6 | 4 | **66.7%** |
 | **Registry & Curation (`REG-XX`)** | 8 | 7 | 1 | 0 | **87.5%** |
-| **Total Across Architecture** | **127** | **81** | **28** | **18** | **63.8%** |
+| **Total Across Architecture** | **127** | **82** | **27** | **18** | **64.6%** |
 
 > [!NOTE]
 > **Milestone A Deferral & Protocol:** Milestone A (Live Embedding API Procurement & Empirical Gate Calibration) is formally deferred pending API key procurement — owner: user, review date: 2026-09-22. Deterministic semantic cluster vectors (`semantic-cluster-1536`) remain the active baseline until credentials are provided. If no key is provided by 2026-09-22, routing precision (≥99.2%) and search quality claims will formally downgrade to deferred indefinitely in the PRD, solidifying the pilot posture as *governance-proven, AI-staged*.
@@ -90,7 +90,7 @@ The Master Opportunity Register unifies **127 architectural opportunities** mine
 | **CHAT-17** | Multi-Stage Injection Refusal | Prompt jailbreaks and instruction override | Karpathy | P0 | Phase 3 | 🟡 In Progress (Stage 1 of 4: Regex active; classifier pending) | `backend/tests/test_ai_prompt_injection_golden.py` |
 | **CHAT-18** | OpenTelemetry Dynamic HUD | Static hardcoded metrics in frontend | Alex Xu | P1 | Phase 5 | 🟢 Implemented | `frontend/components/TokenomicsHUD.tsx` |
 | **CHAT-19** | Conversational Merkle Binding | Inability to audit conversational intent later | Uncle Bob | P0 | Phase 4 | 🟢 Implemented | `backend/app/adapters/crypto_audit_adapter.py` |
-| **CHAT-20** | 500-Scenario Golden Eval Gate | Silent regressions in intent routing & safety | Karpathy | P0 | Phase 3 | 🟡 In Progress (~200/500 scenarios implemented in dataset) | `backend/tests/test_ai_reasoning_evals.py` |
+| **CHAT-20** | 500-Scenario Golden Eval Gate | Silent regressions in intent routing & safety | Karpathy | P0 | Phase 3 | 🟢 Operational | `evals/golden/scenarios.v2.jsonl`, `scripts/run_eval.py` |
 
 | **CHAT-21** | Zero-CLS Bento Streaming Render | UI freezing during conversational resolution | Jordan Walke | P1 | Phase 5 | 🟡 In Progress | `frontend/components/ChatAssistant.tsx` |
 | **CHAT-22** | SSE Transport over HTTP/2 | WebSocket drops across corporate proxies | Alex Xu | P1 | Phase 4 | ⚪ Planned | `backend/app/api/routes.py` |
@@ -259,7 +259,7 @@ In accordance with banking governance rules, 10 registered items were subjected 
          - *Container Deploy Surface Scan:* Scanned `deploy-backend` (Debian 13.6 base, 174 OS pkgs; with `--ignore-unfixed`: 0 OS CVEs, 2 HIGH in Python tools `jaraco.context`/`wheel`, 0 CRITICAL) and `deploy-frontend` (Alpine 3.23.4 base, 18 OS pkgs, 4 HIGH `libcrypto3`/`libssl3`, 1 CRITICAL `tar@6.2.1` in global node tools, 21 HIGH).
          - *Strict CI Failure Policy:* Enforced `--exit-code 1 --severity CRITICAL --ignore-unfixed` across both repository packages and container image builds (`vulcan-backend:ci`). Exploitable CRITICAL CVEs with available upstream patches break CI immediately. HIGH/MEDIUM CVEs are recorded in SARIF (`trivy-results.sarif`). Synthetic test fixture keys in `backend/ansible/keys` and `deploy/sandbox/keys` are whitelisted from false-positive secret gates. Status upgraded to 🟢 Operational.
 19. **`CHAT-20` (500-Scenario Golden Eval Gate):**
-    - *Audit Finding & Correction:* Test dataset in `backend/tests/test_ai_reasoning_evals.py` currently tests ~200 scenarios across routing, slot-filling, and injection refusal, not the 500 scenarios declared in the item name. Status corrected to 🟡 In Progress.
+    - *Operationalization & Verification:* Replaced ~200-scenario stub with 500-scenario frozen golden benchmark (`evals/golden/scenarios.v2.jsonl`) spanning 6 orthogonal dimensions (Routing: 150, Slot-filling: 150, Adversarial: 100, Multi-turn: 50, Ticket-hydration: 25, Out-of-scope refusal: 25). Built dual-provider runner `scripts/run_eval.py` (`--provider fake` and `--provider live`). Empirically established fake-mode CI baseline (`docs/EVAL_BASELINE_FAKE.md`, `docs/eval_results.json`): 100% Slot F1, 100% Adversarial Refusal (0 bypasses), 100% Garbage Recall, 0% False Refusals, 100% Multi-Turn Accumulation, 100% Ticket Hydration, 28.67% Top-1 / 38.67% Top-3 hermetic keyword routing, 3.8% Disambiguation Halt, p50 0.46ms latency, 389.3 mean token budget. Wired as fail-closed regression gate in CI Stage 1 (`python3 scripts/run_eval.py --gate`). Live evaluation runbook and comparison diff template created in `docs/EVAL_LIVE_TEMPLATE.md` ahead of 2026-09-22 key decision. Status upgraded to 🟢 Operational.
 20. **`BKND-18` (Decoupled 75-Runner Fleet):**
     - *Audit Finding & Correction:* The load test verified 75 concurrent operators interacting with the API control plane, but automation playbook runners remain in-process asyncio/threads within Uvicorn rather than a decoupled worker pool. Status corrected to 🟡 In Progress.
 21. **`BKND-19` (CyberArk PAM RAM-Only Secrets):**

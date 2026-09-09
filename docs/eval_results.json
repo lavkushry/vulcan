@@ -1,7 +1,7 @@
 {
-  "evaluation_timestamp": "2026-09-09T03:24:42Z",
+  "evaluation_timestamp": "2026-09-09T03:39:00Z",
   "provider": "fake",
-  "scenarios_source": "/Users/lavkushkumar/Desktop/Ideas/vulcan-control-plane/evals/golden/scenarios.v2.jsonl",
+  "scenarios_source": "evals/golden/scenarios.v2.jsonl",
   "total_scenarios": 500,
   "metrics": {
     "routing_top_1_percent": 28.67,

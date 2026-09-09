@@ -70,6 +70,7 @@ Project Vulcan is an enterprise automation control plane designed for banking-gr
 | Mutation testing: 46/46 governance mutants killed; tautology found & fixed | [`scripts/run_domain_mutation_tests.py`](../scripts/run_domain_mutation_tests.py), [`docs/MUTATION_TESTING_REPORT.md`](MUTATION_TESTING_REPORT.md) | Hand-rolled AST/token replacement engine executed as CI Stage 1 gate (25.2s) | 2026-09-08 | 46 targeted banking governance mutants; assesses domain invariants, not full codebase mutation coverage |
 | Browser E2E: 13/13 (incl. governed happy path, WS reconnect, refusal, a11y) | [`tests/e2e/`](../tests/e2e/), [CI Run 34255896192](https://github.com/lavkushry/vulcan/actions/runs/34255896192) | Playwright Chromium headless in CI & live loopback tunnel; video/trace artifacts captured | 2026-09-08 | Found 5 real defects (auth timing, selector collisions, UI SoD bypass); tests mock external auth via Bearer injection |
 | Two-layer chaos suite (unit 0.53s CI / live 10.65s) | [`scripts/run_chaos_drills.py`](../scripts/run_chaos_drills.py), [`backend/tests/test_chaos_invariants.py`](../backend/tests/test_chaos_invariants.py) | Layer 1 in-memory mocks in CI; Layer 2 live Docker integration suite on VM | 2026-09-08 | Layer 1 proves math invariants in RAM; Layer 2 requires live container network |
+| 500-scenario golden eval gate (CHAT-20): routing, slot F1, 100% adversarial refusal | [`evals/golden/scenarios.v2.jsonl`](../evals/golden/scenarios.v2.jsonl), [`scripts/run_eval.py`](../scripts/run_eval.py), [`docs/EVAL_BASELINE_FAKE.md`](EVAL_BASELINE_FAKE.md) | Dual-provider evaluation harness executed as CI Stage 1 regression gate (<1s) | 2026-09-09 | Gated against measured fake baseline (100% slot F1, 100% refusal, 28.67% top-1 / 38.67% top-3 routing); live LLM evaluation deferred to §9 |
 | Clean-checkout gates: tests, migrations, port-contract, connection-string secrets, SBOM, gitleaks | [`scripts/verify-clean-checkout.sh`](../scripts/verify-clean-checkout.sh), [CI Run 34255896192](https://github.com/lavkushry/vulcan/actions/runs/34255896192) | Five-stage fail-closed shell contract executed locally and in CI Stage 3 | 2026-09-08 | Requires bash, python3, and npm in runner environment |
 
 ---
@@ -107,13 +108,13 @@ Project Vulcan is an enterprise automation control plane designed for banking-gr
 ---
 
 ## 8. Deferred, simulated, and out of scope — read this before trusting §3–§7
-1. **AI search quality is NOT measured.** Active provider: `semantic-cluster-1536` (deterministic synthetic clustering). The ≥99.2% routing precision PRD claim is a *target*, not a result. Real embeddings, calibration thresholds, and golden evals await API credentials (§9).
+1. **AI search quality on live models is NOT measured.** Active provider: deterministic keyword + synthetic clustering (`semantic-cluster-1536`). The ≥99.2% routing precision PRD claim is a *target*, not a result. The 500-scenario golden evaluation benchmark harness (`CHAT-20`, `evals/golden/scenarios.v2.jsonl`, `scripts/run_eval.py`) is fully built and enforced as a fail-closed CI Stage 1 regression gate against measured fake-mode baselines (100% slot F1, 100% adversarial refusal, 28.67% top-1 / 38.67% top-3 keyword routing). Live dense model evaluation and calibration thresholds await API credentials (§9).
 2. **Execution is simulation-first.** Real Ansible runs only against `vulcan-sandbox` (2 playbooks, real OS changes verified). Load-test executions were simulated. No production infrastructure is touched.
 3. **Single-host assumptions:** Redis is single-node (Redlock semantics are real but not multi-datacenter); orphan reaper uses PID liveness (one PID namespace); runners are in-process threads.
 4. **Floating-branch execution:** playbooks run from the deployed working tree, not a SHA-pinned checkout — a documented pilot exception.
 5. **Missing operational capabilities:** Prometheus metrics endpoint `/metrics` exists live on `:8000/metrics` (INFRA-22, empirically verified HTTP 200 OK, wired to `PostgresJobRepository`, returning both inventory gauges and RED rate/duration counters) but has no external scraping Prometheus daemon/alertmanager cluster deployed; structured JSON logging with correlation IDs is active (INFRA-24); automated dual SBOM generation and Trivy CVE scanning enforced in CI across repo and container images (INFRA-30); backup freshness is enforced in `/ready` (<26h).
 6. **Enterprise connectors are fail-closed mocks:** ServiceNow Gateway (unknown tickets rejected fail-closed, valid tickets simulated), CyberArk PAM (RAM-only mock lease provider).
-7. **Register truth:** 81/127 implemented (63.8%) — see [`docs/MASTER_OPPORTUNITY_REGISTER.md`](MASTER_OPPORTUNITY_REGISTER.md); all 21 spot-audited rows verified.
+7. **Register truth:** 82/127 implemented (64.6%) — see [`docs/MASTER_OPPORTUNITY_REGISTER.md`](MASTER_OPPORTUNITY_REGISTER.md); all 21 spot-audited rows verified.
 
 ---
 
@@ -157,6 +158,9 @@ bash scripts/schedule_backup.sh
 
 # 7. Run 75-concurrency load benchmark harness
 python3 scripts/run_load_test.py --mode unit
+
+# 8. Run 500-scenario golden evaluation benchmark gate (CHAT-20)
+python3 scripts/run_eval.py --gate
 ```
 
 ---
