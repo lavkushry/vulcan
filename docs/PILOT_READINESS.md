@@ -134,7 +134,7 @@ Project Vulcan is an enterprise automation control plane designed for banking-gr
 ---
 
 ## 10. Incident history
-See [`docs/INCIDENTS.md`](INCIDENTS.md) (`SEC-INC-01` through `SEC-INC-05`) — five credential-exposure events, each with forensic root cause, immediate remediation, and an automated preventive CI gate added. The recurrence pattern and its structural fixes are part of the permanent audit record.
+See [`docs/INCIDENTS.md`](INCIDENTS.md) (`SEC-INC-01` through `SEC-INC-06`) — six credential-exposure events, each with forensic root cause, immediate remediation, and an automated preventive CI gate added. The recurrence pattern and its structural fixes are part of the permanent audit record.
 
 ---
 

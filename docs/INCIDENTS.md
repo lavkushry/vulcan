@@ -14,6 +14,7 @@
 | **SEC-INC-03** | 2026-09-06 | Infrastructure | Git-tracked `docker-compose.yml` (Defect D5) | Postgres & MinIO default passwords | 🟢 Resolved | Parameterized `.env` (`0600`) & Gitignore gate |
 | **SEC-INC-04** | 2026-09-08 | Transcript Leak | Docker exec `-e` command flags | PostgreSQL 16, Redis 7.2, MinIO S3 credentials | 🟢 Resolved | Stdin-Only Secret Injection Protocol |
 | **SEC-INC-05** | 2026-09-08 | Codebase / Docs | Fallback strings in adapters & benchmark docs | PostgreSQL connection strings & Redis password | 🟢 Resolved | Connection-String Regex Gate (`verify-clean-checkout.sh`) |
+| **SEC-INC-06** | 2026-09-09 | Transcript Leak | Chat prompt text | Gemini API Key (`AQ.Ab8...1hvA`) | 🟢 Resolved | Immediate AI Studio rotation & Stdin-Transfer protocol |
 
 ---
 
@@ -79,6 +80,16 @@
   FOUND_CREDS=$(git grep -I -nE '(redis|postgres(ql)?|mysql|amqp)://[^ ]*:[^ @]+@' docs/ scripts/ backend/ 2>/dev/null | grep -v ':\*\*\*@' | grep -v ':\${' || true)
   ```
   Integrated into CI Stage 3 (Hermetic Clean Checkout Gate), guaranteeing that any future unmasked connection string immediately fails the build.
+
+### SEC-INC-06: Gemini API Token Emitted in Chat Transcript Prompt
+* **Timestamp:** 2026-09-09T04:55:00Z
+* **Description:** During the transition to the live model decision protocol, an unredacted Google AI Studio Gemini API key (`AQ.Ab8...1hvA`) was pasted into the conversational transcript prompt.
+* **Impact & Exposure:** Free-tier Gemini API key was recorded in conversation history. Key was not exposed to public repositories, logs, or deployed to production containers.
+* **Remediation:**
+  1. Mandated immediate revocation and deletion of the exposed key on `aistudio.google.com`.
+  2. Enforced issuance of a fresh replacement key transferred strictly via the zero-exposure stdin injection protocol (`read -s -p "Key: " KEY && ...`).
+  3. Verified zero persistent footprint in git-tracked code, test fixtures, or public perimeter.
+* **Automated Preventive Gate:** Reaffirmed that API credentials must strictly be injected via interactive stdin into `.env` (`0600`) without CLI arguments or terminal prompt emission.
 
 ---
 
