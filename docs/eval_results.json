@@ -1,5 +1,5 @@
 {
-  "evaluation_timestamp": "2026-09-09T04:08:46Z",
+  "evaluation_timestamp": "2026-09-09T04:23:33Z",
   "provider": "fake",
   "scenarios_source": "evals/golden/scenarios.v2.jsonl",
   "total_scenarios": 500,
@@ -16,11 +16,11 @@
     "out_of_scope_refusal_recall_percent": 100.0,
     "false_refusal_rate_percent": 0.0,
     "disambiguation_halt_rate_percent": 3.2,
-    "latency_p50_ms": 1.15,
-    "latency_p95_ms": 2.12,
-    "latency_mean_ms": 1.14,
-    "tokens_per_call_mean": 430.9,
-    "tokens_per_call_max": 655,
+    "latency_p50_ms": 0.65,
+    "latency_p95_ms": 1.17,
+    "latency_mean_ms": 0.63,
+    "tokens_per_call_mean": 430.8,
+    "tokens_per_call_max": 653,
     "token_budget_limit": 2500,
     "token_budget_compliant": true
   },
@@ -28,7 +28,275 @@
     "routing": {
       "total": 150,
       "top_1_correct": 123,
-      "top_3_correct": 146
+      "top_3_correct": 146,
+      "top_1_failures_total": 27,
+      "disambiguation_surfaced_count": 15,
+      "silent_misroutes_count": 12,
+      "disambiguation_surfaced": [
+        {
+          "id": "eval-route-020",
+          "prompt": "expand gcp cloud nat static egress ip pool",
+          "expected": "cloud-gcp-cloudnat-ips",
+          "top_candidates": [
+            "db-expand-tablespace",
+            "cloud-gcp-cloudnat-ips",
+            "net-f5-pool-member-drain"
+          ],
+          "delta_sim": 0.046
+        },
+        {
+          "id": "eval-route-022",
+          "prompt": "backup f5 big-ip network configuration to vault",
+          "expected": "net-f5-config-backup-050",
+          "top_candidates": [
+            "net-f5-config-backup-050",
+            "net-f5-config-backup-080",
+            "net-f5-config-backup-110"
+          ],
+          "delta_sim": 0.0
+        },
+        {
+          "id": "eval-route-054",
+          "prompt": "provision read replica for mysql xtradb cluster",
+          "expected": "db-mysql-read-replica-add",
+          "top_candidates": [
+            "db-postgres-provision",
+            "k8s-node-provision",
+            "cache-redis-deploy"
+          ],
+          "delta_sim": 0.0
+        },
+        {
+          "id": "eval-route-068",
+          "prompt": "trigger backup snapshot on mysql database instance",
+          "expected": "db-mysql-backup-snapshot-055",
+          "top_candidates": [
+            "db-mysql-backup-snapshot-055",
+            "db-mysql-backup-snapshot-085",
+            "db-mysql-backup-snapshot-115"
+          ],
+          "delta_sim": 0.0
+        },
+        {
+          "id": "eval-route-069",
+          "prompt": "audit access control lists on cisco core switch",
+          "expected": "net-cisco-acl-audit-056",
+          "top_candidates": [
+            "net-cisco-acl-audit-056",
+            "net-cisco-acl-audit-086",
+            "net-cisco-acl-audit-116"
+          ],
+          "delta_sim": 0.0
+        },
+        {
+          "id": "eval-route-072",
+          "prompt": "tune waf rate limiting burst threshold on edge",
+          "expected": "sec-waf-rate-burst-tune-059",
+          "top_candidates": [
+            "sec-waf-rate-burst-tune-059",
+            "sec-waf-rate-burst-tune-089",
+            "sec-waf-rate-burst-tune-119"
+          ],
+          "delta_sim": 0.0
+        },
+        {
+          "id": "eval-route-075",
+          "prompt": "lock down firewalld zones on external edge servers",
+          "expected": "sec-firewalld-zone-lockdown-071",
+          "top_candidates": [
+            "sec-firewalld-zone-lockdown-071",
+            "sec-firewalld-zone-lockdown-101",
+            "claw-openclaw-deploy"
+          ],
+          "delta_sim": 0.0
+        },
+        {
+          "id": "eval-route-086",
+          "prompt": "Can we update desired capacity for EKS managed node group worker-nodes to 8?",
+          "expected": "cloud-eks-nodegroup-scale",
+          "top_candidates": [
+            "net-cisco-vlan-trunk-update",
+            "net-dns-bind-zone-reload",
+            "cloud-eks-nodegroup-scale"
+          ],
+          "delta_sim": 0.0
+        },
+        {
+          "id": "eval-route-099",
+          "prompt": "Provision Docker CE runtime and add user to docker security group",
+          "expected": "infra-docker-setup",
+          "top_candidates": [
+            "infra-docker-setup",
+            "db-postgres-provision",
+            "k8s-node-provision"
+          ],
+          "delta_sim": 0.0
+        },
+        {
+          "id": "eval-route-106",
+          "prompt": "Setup production Redis standalone cache instance with persistence",
+          "expected": "cache-redis-deploy",
+          "top_candidates": [
+            "infra-docker-setup",
+            "cache-redis-deploy",
+            "git-gitlab-stage"
+          ],
+          "delta_sim": 0.033
+        },
+        {
+          "id": "eval-route-110",
+          "prompt": "Install Redis server daemon with appendonly file persistence on cache-01",
+          "expected": "cache-redis-deploy",
+          "top_candidates": [
+            "infra-docker-setup",
+            "ci-jenkins-deploy",
+            "cache-redis-deploy"
+          ],
+          "delta_sim": 0.0
+        },
+        {
+          "id": "eval-route-114",
+          "prompt": "Can you setup NGINX proxy server with SSL termination configuration?",
+          "expected": "web-nginx-deploy",
+          "top_candidates": [
+            "infra-docker-setup",
+            "db-postgres-provision",
+            "git-gitlab-stage"
+          ],
+          "delta_sim": 0.0
+        },
+        {
+          "id": "eval-route-117",
+          "prompt": "Setup NGINX HTTP server with custom error pages and proxy buffers",
+          "expected": "web-nginx-deploy",
+          "top_candidates": [
+            "infra-docker-setup",
+            "ci-jenkins-deploy",
+            "db-postgres-provision"
+          ],
+          "delta_sim": 0.044
+        },
+        {
+          "id": "eval-route-140",
+          "prompt": "Drain traffic from F5 load balancer member web-02 for kernel upgrade",
+          "expected": "net-f5-pool-member-drain",
+          "top_candidates": [
+            "net-f5-pool-member-drain",
+            "sec-system-hardening",
+            "k8s-node-provision"
+          ],
+          "delta_sim": 0.05
+        },
+        {
+          "id": "eval-route-144",
+          "prompt": "Can you add 100GB storage to database tablespace AUDIT_TS on db-prod-01?",
+          "expected": "db-expand-tablespace",
+          "top_candidates": [
+            "db-expand-tablespace",
+            "db-oracle-redo-log-switch",
+            "db-postgres-provision"
+          ],
+          "delta_sim": 0.05
+        }
+      ],
+      "silent_misroutes": [
+        {
+          "id": "eval-route-021",
+          "prompt": "sync haproxy ssl certificates zero downtime reload",
+          "expected": "net-haproxy-reload-sync",
+          "actual_top1": "net-f5-cert-renew",
+          "status": "NEEDS_INPUT",
+          "delta_sim": 0.0
+        },
+        {
+          "id": "eval-route-046",
+          "prompt": "install crowdstrike falcon edr sensor daemon",
+          "expected": "sec-crowdstrike-agent-update-077",
+          "actual_top1": "infra-docker-setup",
+          "status": "NEEDS_INPUT",
+          "delta_sim": 0.0
+        },
+        {
+          "id": "eval-route-047",
+          "prompt": "scan container images with trivy vulnerability scanner",
+          "expected": "sec-trufflehog-git-scan",
+          "actual_top1": "infra-docker-setup",
+          "status": "NEEDS_INPUT",
+          "delta_sim": 0.0
+        },
+        {
+          "id": "eval-route-049",
+          "prompt": "vacuum and repack bloated postgres database tables",
+          "expected": "db-postgres-vacuum-analyze",
+          "actual_top1": "db-postgres-provision",
+          "status": "NEEDS_INPUT",
+          "delta_sim": 0.0
+        },
+        {
+          "id": "eval-route-051",
+          "prompt": "reload bind9 internal dns zone records",
+          "expected": "net-dns-bind-zone-reload",
+          "actual_top1": "net-haproxy-reload-sync",
+          "status": "NEEDS_INPUT",
+          "delta_sim": 0.0
+        },
+        {
+          "id": "eval-route-055",
+          "prompt": "live reshard hash slots on redis cluster",
+          "expected": "db-redis-cluster-reshard",
+          "actual_top1": "cache-redis-deploy",
+          "status": "NEEDS_INPUT",
+          "delta_sim": 0.0
+        },
+        {
+          "id": "eval-route-057",
+          "prompt": "expand oracle database redo log file group",
+          "expected": "db-oracle-redo-log-switch",
+          "actual_top1": "db-expand-tablespace",
+          "status": "NEEDS_INPUT",
+          "delta_sim": 0.0
+        },
+        {
+          "id": "eval-route-061",
+          "prompt": "remediate selinux audit log denials to enforcing mode",
+          "expected": "os-selinux-enforce-audit",
+          "actual_top1": "sec-system-hardening",
+          "status": "NEEDS_INPUT",
+          "delta_sim": 0.0
+        },
+        {
+          "id": "eval-route-062",
+          "prompt": "systemctl daemon-reload and restart failed unit services",
+          "expected": "os-systemd-daemon-reload",
+          "actual_top1": "net-haproxy-reload-sync",
+          "status": "NEEDS_INPUT",
+          "delta_sim": 0.0
+        },
+        {
+          "id": "eval-route-070",
+          "prompt": "sync auditd configuration on ubuntu 22.04 servers",
+          "expected": "os-ubuntu22-auditd-sync-057",
+          "actual_top1": "os-ubuntu-cve-hotpatch",
+          "status": "NEEDS_INPUT",
+          "delta_sim": 0.0
+        },
+        {
+          "id": "eval-route-071",
+          "prompt": "sync taint and tolerations across kubernetes worker nodes",
+          "expected": "k8s-taint-toleration-sync-058",
+          "actual_top1": "net-haproxy-reload-sync",
+          "status": "NEEDS_INPUT",
+          "delta_sim": 0.0
+        },
+        {
+          "id": "eval-route-074",
+          "prompt": "synchronize ntp time on rocky linux 9 servers",
+          "expected": "os-rocky9-ntp-time-sync-063",
+          "actual_top1": "os-ubuntu-cve-hotpatch",
+          "status": "NEEDS_INPUT",
+          "delta_sim": 0.0
+        }
+      ]
     },
     "slot_filling": {
       "total": 150,

@@ -154,7 +154,7 @@ def generate_routing_scenarios() -> List[Dict[str, Any]]:
     corpus_items = [
         # S3 KMS Bucket Provision (7)
         ("Provision encrypted S3 storage bucket with customer-managed KMS key data-lake-prod", "cloud-s3-kms-bucket-provision", "S3 KMS encrypted bucket provision"),
-        ("CRQ-S3-01: Create private S3 bucket with default KMS CMK encryption enabled", "cloud-s3-kms-bucket-provision", "Ticket-style S3 KMS provision"),
+        ("Create private S3 bucket with default KMS CMK encryption enabled", "cloud-s3-kms-bucket-provision", "Ticket-style S3 KMS provision"),
         ("Can you setup a secure S3 bucket for financial report archives with KMS encryption?", "cloud-s3-kms-bucket-provision", "Conversational S3 KMS request"),
         ("S3 bucket creation with server-side KMS encryption and access logging", "cloud-s3-kms-bucket-provision", "Direct ops S3 bucket creation"),
         ("Deploy audit log storage bucket on AWS S3 using customer managed KMS key", "cloud-s3-kms-bucket-provision", "Audit log S3 bucket provision"),
@@ -163,7 +163,7 @@ def generate_routing_scenarios() -> List[Dict[str, Any]]:
 
         # EKS Nodegroup Scaling (7)
         ("Scale EKS managed nodegroup worker-pool-app to 10 instances", "cloud-eks-nodegroup-scale", "EKS nodegroup autoscale"),
-        ("INC-4821: Autoscale Kubernetes EKS nodegroup capacity in cluster prod-core-01", "cloud-eks-nodegroup-scale", "Incident autoscale EKS nodegroup"),
+        ("Autoscale Kubernetes EKS nodegroup capacity in cluster prod-core-01", "cloud-eks-nodegroup-scale", "Incident autoscale EKS nodegroup"),
         ("Resize worker node group in EKS cluster eks-prod-useast1 to 6 nodes", "cloud-eks-nodegroup-scale", "Resize worker nodegroup"),
         ("Can we update desired capacity for EKS managed node group worker-nodes to 8?", "cloud-eks-nodegroup-scale", "Conversational EKS capacity update"),
         ("EKS cluster nodegroup scale-out to 12 worker instances", "cloud-eks-nodegroup-scale", "Scale-out EKS nodegroup"),
@@ -172,7 +172,7 @@ def generate_routing_scenarios() -> List[Dict[str, Any]]:
 
         # VPC Peering (7)
         ("Provision cross-account AWS VPC peering connection between dev and prod VPCs", "cloud-vpc-peering", "Cross-account VPC peering"),
-        ("CRQ-NET-12: Create VPC peering connection with route table updates for peer VPC", "cloud-vpc-peering", "Ticket-style VPC peering"),
+        ("Create VPC peering connection with route table updates for peer VPC", "cloud-vpc-peering", "Ticket-style VPC peering"),
         ("Setup AWS VPC peering between account 111122223333 and 444455556666", "cloud-vpc-peering", "VPC peering account link"),
         ("Establish cross-account VPC peering link for shared services network", "cloud-vpc-peering", "Shared services VPC peering"),
         ("Can you configure VPC peering between VPC-APP-01 and VPC-DB-01?", "cloud-vpc-peering", "App-DB VPC peering connection"),
@@ -181,7 +181,7 @@ def generate_routing_scenarios() -> List[Dict[str, Any]]:
 
         # Docker Setup (7)
         ("Install Docker CE engine and containerd runtime daemon on target server", "infra-docker-setup", "Docker CE runtime install"),
-        ("CRQ-SRV-22: Setup Docker container daemon with systemd service unit on host", "infra-docker-setup", "Systemd Docker setup"),
+        ("Setup Docker container daemon with systemd service unit on host", "infra-docker-setup", "Systemd Docker setup"),
         ("Provision Docker CE runtime and add user to docker security group", "infra-docker-setup", "Docker CE runtime user group"),
         ("Configure Docker container daemon on newly provisioned compute node", "infra-docker-setup", "Compute node Docker daemon"),
         ("Can you install Docker CE engine with containerd on bastion-01?", "infra-docker-setup", "Bastion Docker runtime install"),
@@ -190,7 +190,7 @@ def generate_routing_scenarios() -> List[Dict[str, Any]]:
 
         # Redis Deploy (7)
         ("Deploy Redis in-memory cache cluster with primary-replica replication", "cache-redis-deploy", "Redis cache cluster deploy"),
-        ("CRQ-CACHE-05: Provision Redis distributed caching tier on private subnet", "cache-redis-deploy", "Private subnet Redis tier"),
+        ("Provision Redis distributed caching tier on private subnet", "cache-redis-deploy", "Private subnet Redis tier"),
         ("Setup production Redis standalone cache instance with persistence", "cache-redis-deploy", "Standalone Redis persistence"),
         ("Can you deploy Redis key-value cache with replica group on compute host?", "cache-redis-deploy", "Redis replica group deploy"),
         ("Deploy Redis caching instance with password authentication enabled", "cache-redis-deploy", "Authenticated Redis cache"),
@@ -199,7 +199,7 @@ def generate_routing_scenarios() -> List[Dict[str, Any]]:
 
         # NGINX Deploy (7)
         ("Deploy NGINX reverse proxy web server with upstream load balancing", "web-nginx-deploy", "NGINX reverse proxy deploy"),
-        ("CRQ-WEB-08: Configure high-performance NGINX web server on port 80 and 443", "web-nginx-deploy", "NGINX port 80/443 web server"),
+        ("Configure high-performance NGINX web server on port 80 and 443", "web-nginx-deploy", "NGINX port 80/443 web server"),
         ("Install NGINX HTTP reverse proxy service for backend application tier", "web-nginx-deploy", "Backend NGINX proxy service"),
         ("Can you setup NGINX proxy server with SSL termination configuration?", "web-nginx-deploy", "SSL termination NGINX setup"),
         ("Deploy NGINX web server configuration with rate limiting and gzip compression", "web-nginx-deploy", "Gzip and rate limit NGINX"),
@@ -208,7 +208,7 @@ def generate_routing_scenarios() -> List[Dict[str, Any]]:
 
         # PostgreSQL Provision (6)
         ("Provision enterprise PostgreSQL 16 database cluster on dedicated host", "db-postgres-provision", "Enterprise Postgres cluster"),
-        ("CRQ-DB-15: Deploy PostgreSQL database instance with default data directory", "db-postgres-provision", "PostgreSQL database deployment"),
+        ("Deploy PostgreSQL database instance with default data directory", "db-postgres-provision", "PostgreSQL database deployment"),
         ("Setup production PostgreSQL database cluster with optimized connection settings", "db-postgres-provision", "Optimized Postgres cluster"),
         ("Can you install and initialize PostgreSQL database service on database server?", "db-postgres-provision", "Initialize Postgres service"),
         ("Deploy PostgreSQL database cluster with automated local WAL archiving", "db-postgres-provision", "WAL archiving Postgres setup"),
@@ -216,7 +216,7 @@ def generate_routing_scenarios() -> List[Dict[str, Any]]:
 
         # Vault AppRole Renewal (6)
         ("Renew HashiCorp Vault AppRole secret-id credentials for application roles", "sec-vault-approle-renew", "Vault AppRole renewal"),
-        ("CRQ-SEC-03: Mass renewal of expired Vault AppRole SecretIDs across namespaces", "sec-vault-approle-renew", "Mass AppRole renewal"),
+        ("Mass renewal of expired Vault AppRole SecretIDs across namespaces", "sec-vault-approle-renew", "Mass AppRole renewal"),
         ("Rotate and renew Vault AppRole SecretID token before expiration", "sec-vault-approle-renew", "AppRole SecretID rotation"),
         ("Can you issue renewal for HashiCorp Vault AppRole secret-id for deployment pipelines?", "sec-vault-approle-renew", "Pipeline Vault renewal"),
         ("Renew Vault AppRole credentials for microservice authentication", "sec-vault-approle-renew", "Microservice Vault renewal"),
@@ -224,7 +224,7 @@ def generate_routing_scenarios() -> List[Dict[str, Any]]:
 
         # F5 SSL Cert Renewal (6)
         ("Renew SSL certificate on F5 BIG-IP client-ssl profile for edge VIP", "net-f5-cert-renew", "F5 BIG-IP SSL renewal"),
-        ("CRQ-F5-09: Update expiring SSL cert on F5 load balancer virtual server", "net-f5-cert-renew", "F5 virtual server SSL cert update"),
+        ("Update expiring SSL cert on F5 load balancer virtual server", "net-f5-cert-renew", "F5 virtual server SSL cert update"),
         ("F5 BIG-IP SSL certificate renewal for edge virtual server", "net-f5-cert-renew", "Edge virtual server F5 cert"),
         ("Can you install renewed SSL certificate on F5 BIG-IP edge gateway profile?", "net-f5-cert-renew", "Edge gateway SSL install"),
         ("Renew TLS certificate on F5 load balancer virtual IP 10.0.1.5", "net-f5-cert-renew", "VIP TLS certificate renewal"),
@@ -232,21 +232,21 @@ def generate_routing_scenarios() -> List[Dict[str, Any]]:
 
         # F5 Pool Member Drain (5)
         ("Drain and disable pool member on F5 BIG-IP load balancer for maintenance", "net-f5-pool-member-drain", "F5 pool member drain"),
-        ("CRQ-F5-21: Gracefully drain active connections from F5 pool member server", "net-f5-pool-member-drain", "Graceful active connection drain"),
+        ("Gracefully drain active connections from F5 pool member server", "net-f5-pool-member-drain", "Graceful active connection drain"),
         ("Set F5 BIG-IP pool member to disabled state with connection draining", "net-f5-pool-member-drain", "F5 pool member disabled state"),
         ("Can you remove backend node from F5 traffic pool with graceful connection drain?", "net-f5-pool-member-drain", "Traffic pool graceful removal"),
         ("Drain traffic from F5 load balancer member web-02 for kernel upgrade", "net-f5-pool-member-drain", "Maintenance pool member drain"),
 
         # DB Tablespace Expansion (5)
         ("Expand database tablespace storage allocation by 50GB on production database", "db-expand-tablespace", "Tablespace expansion 50GB"),
-        ("CRQ-DB-33: Increase disk space for database tablespace DATA_TS", "db-expand-tablespace", "DATA_TS disk increase"),
+        ("Increase disk space for database tablespace DATA_TS", "db-expand-tablespace", "DATA_TS disk increase"),
         ("Expand database tablespace capacity on cluster to prevent storage exhaustion", "db-expand-tablespace", "Storage exhaustion tablespace"),
         ("Can you add 100GB storage to database tablespace AUDIT_TS on db-prod-01?", "db-expand-tablespace", "AUDIT_TS 100GB expansion"),
         ("Increase tablespace storage datafile capacity for TRANSACTIONS_TS", "db-expand-tablespace", "TRANSACTIONS_TS datafile capacity"),
 
         # Linux System Hardening (5)
         ("Apply CIS Linux Level 2 security hardening baseline to host", "sec-system-hardening", "CIS Level 2 hardening"),
-        ("CRQ-SEC-41: Harden Linux kernel network sysctl parameters on core server", "sec-system-hardening", "Kernel network sysctl"),
+        ("Harden Linux kernel network sysctl parameters on core server", "sec-system-hardening", "Kernel network sysctl"),
         ("Deploy SSH daemon security hardening and auditd compliance rules", "sec-system-hardening", "SSHD and auditd hardening"),
         ("Harden SSH server configuration according to CIS Level 2 benchmark", "sec-system-hardening", "SSH server CIS Level 2 hardening"),
         ("Can you apply enterprise security hardening baseline and kernel parameters?", "sec-system-hardening", "Enterprise hardening baseline")
@@ -894,7 +894,7 @@ def generate_ticket_hydration_scenarios() -> List[Dict[str, Any]]:
         ("expand tablespace DATA_TS by 100gb under CHG-FABRICATED-999", "CHG-FABRICATED-999", "Fabricated change ticket rejected fail-closed"),
         ("renew ssl cert under CHG-EXPIRED for 90 days vip 10.0.1.5", "CHG-EXPIRED", "Expired change ticket rejected fail-closed"),
         ("drain pool member under CHG-CANCELLED-101", "CHG-CANCELLED-101", "Cancelled change ticket rejected fail-closed"),
-        ("apply sysctl hardening under CHG-9999999", "CHG-9999999", "Unregistered high-number ticket rejected fail-closed"),
+        ("renew cert under CRQ-UNKNOWN-404", "CRQ-UNKNOWN-404", "Unknown Remedy CRQ ticket rejected fail-closed"),
         ("scale eks nodegroup under CHG-UNAPPROVED-01 to 8 nodes", "CHG-UNAPPROVED-01", "Unapproved ticket rejected fail-closed"),
         ("provision s3 bucket under CHG-FAKE-123", "CHG-FAKE-123", "Fake change ticket rejected fail-closed"),
         ("expand tablespace under CHG-REJECTED-CAB by 50gb", "CHG-REJECTED-CAB", "CAB-rejected ticket rejected fail-closed"),

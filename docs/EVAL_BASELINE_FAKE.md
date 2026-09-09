@@ -1,6 +1,13 @@
 # Project Vulcan: 500-Scenario Golden Evaluation Baseline (CHAT-20)
 
-- **Evaluation Timestamp**: `2026-09-09T03:57:58Z`
+> [!WARNING]
+> **TUNED-ON BASELINE LIMITATION (Flag 3 Audit Notice)**:
+> The **82.00% Top-1** and **97.33% Top-3** routing figures represent a *tuned-on baseline* calibrated
+> against the hermetic fake provider. This establishes a measured, honest floor for regression testing,
+> but does **NOT** measure real-world generalization against live semantic variation. Real-world generalization
+> remains unmeasured until the live model evaluation on September 22, 2026.
+
+- **Evaluation Timestamp**: `2026-09-09T04:22:45Z`
 - **Provider Mode**: `FAKE`
 - **Dataset Source**: `evals/golden/scenarios.v2.jsonl`
 - **Total Scenarios Evaluated**: **500**
@@ -18,18 +25,41 @@
 | **Out-of-Scope Refusal** | 15 | Non-Automation Recall | **100.00%** | 100.0% Gate (Zero-Tolerance) |
 | **False-Refusal Validation** | 10 | False Refusal on Risky Words | **0.00%** | 0.0% Gate (Zero-Tolerance) |
 
-## 2. Telemetry, Tokenomics & Operational Metrics
+## 2. Top-1 Non-Match Classification (Flag 4 Audit)
+
+Out of 150 routing scenarios, **123** matched Top-1 exactly (82.00%).
+The remaining **27** non-matches bifurcate into two operationally distinct populations:
+
+- **Disambiguation-Surfaced (Safe Bento Choice Cards)**: **15 cases (10.00%)**.
+  When semantic ambiguity (`delta_sim < 0.05`) occurs, the resolver halts automated execution and presents the operator
+  with candidate choice cards. In 11 of these 15 cases, the expected target is among the presented top-3 candidates.
+  No silent misroute or erroneous automated execution occurs.
+- **Silent Misroutes (Quality Gaps)**: **12 cases (8.00%)**.
+  The hermetic resolver confidently matched an incorrect playbook (`status: NEEDS_INPUT` or `READY`).
+  These 12 scenarios isolate the exact quality gap that dense vector embeddings must eliminate on September 22.
+
+## 3. ITSM Multi-Platform Ticket Governance (Flag 1)
+
+- Broadened ticket pattern detection across ServiceNow (`CHG`, `INC`, `RITM`) and Remedy (`CRQ`).
+- All routing prompts decouple ticket trigger tokens, preventing artificial gate tripping.
+- Fail-closed verification: any unknown or unapproved ticket (`CRQ-UNKNOWN-404`, `CHG-FABRICATED-999`) halts with `REFUSED`.
+
+## 4. Telemetry, Tokenomics & Operational Metrics
 
 | Metric | Measured Value | Standard / Limit | Status |
 | :--- | :---: | :---: | :---: |
-| **Latency p50** | `0.64 ms` | `< 50.0 ms` | PASS |
-| **Latency p95** | `1.18 ms` | `< 100.0 ms` | PASS |
-| **Latency Mean** | `0.63 ms` | `< 50.0 ms` | PASS |
-| **Mean Tokens / Call** | `430.6` | Working memory budget | PASS |
-| **Max Tokens / Call** | `655` | `< 2,500` max limit | PASS |
+| **Latency p50** | `0.65 ms` | `< 50.0 ms` | PASS |
+| **Latency p95** | `1.19 ms` | `< 100.0 ms` | PASS |
+| **Latency Mean** | `0.64 ms` | `< 50.0 ms` | PASS |
+| **Mean Tokens / Call** | `430.8` | Working memory budget | PASS |
+| **Max Tokens / Call** | `653` | `< 2,500` max limit | PASS |
 | **Disambiguation Rate** | `3.20%` | Semantic ambivalence gate | INFORMATIONAL |
 
-## 3. CI Regression Gate Verification
+## 5. CI Regression Gate & Ratchet Rule Verification (Flag 2)
+
+> [!NOTE]
+> **THE RATCHET RULE**: Gate thresholds may strictly ratchet UP, never silently down.
+> Programmatic floors (`RATCHET_FLOORS`) enforce that no regression threshold can be lowered.
 
 | Metric Checked | Measured | Threshold | Gate Status |
 | :--- | :---: | :---: | :---: |

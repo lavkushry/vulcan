@@ -121,8 +121,8 @@ class IntentResolver:
         r"(?i)(```\s*system|<\|im_start\|>|<\|im_end\|>|\[INST\]|\[/INST\]|<system>)",
         r"(?i)(<\s*script|javascript:|onerror\s*=)",
 
-        # CHG Spoofing & Emergency Bypass (CHAT-17)
-        r"(?i)CHG[-_\s]?\d+.*(?:pre[-_\s]?approved|skip\s+approval|emergency\s+bypass).*(?:execute|run|deploy)\s+now",
+        # Change Ticket Spoofing & Emergency Bypass (CHAT-17)
+        r"(?i)(?:CHG|CRQ|INC|RITM)[-_\s]?\d+.*(?:pre[-_\s]?approved|skip\s+approval|emergency\s+bypass).*(?:execute|run|deploy)\s+now",
         r"(?i)(?:pre[-_\s]?approved|emergency\s+override).*(?:execute|run|deploy)\s+now",
         r"(?i)skip\s+(cab|change\s+advisory|governance)",
         r"(?i)override\s+(freeze|change\s+freeze|maintenance\s+window)",
@@ -353,8 +353,9 @@ class IntentResolver:
         extracted: Dict[str, Any] = dict(ambient_params or {})
         ticket_hydration_data: Optional[Dict[str, Any]] = None
 
-        # ServiceNow Change Ticket Extraction & Provenance Validation (CHAT-16)
-        chg_match = re.search(r"\b(CHG(?:-[A-Za-z0-9_-]+|\d{3,10}))\b", prompt, re.I)
+        # Multi-Platform Change Ticket Extraction & Provenance Validation (CHAT-16)
+        # Supports ServiceNow (CHG, INC, RITM) and BMC Remedy (CRQ) formats
+        chg_match = re.search(r"\b((?:CHG|CRQ|INC|RITM)(?:-[A-Za-z0-9_-]+|\d{3,10}))\b", prompt, re.I)
         if chg_match:
             chg_num = chg_match.group(1).upper()
             extracted["servicenow_chg"] = chg_num
@@ -367,7 +368,7 @@ class IntentResolver:
                     return IntentResolutionResult(
                         status="REFUSED",
                         catalog_item=best_item or (ranked[0][0] if ranked else None),
-                        refusal_reason=f"ServiceNow change ticket '{chg_num}' is invalid, unapproved, outside maintenance window, or unknown. Governance check failed.",
+                        refusal_reason=f"Change ticket '{chg_num}' is invalid, unapproved, outside maintenance window, or unknown. Governance check failed.",
                         tokens_used=65,
                         top_candidates=top_candidates
                     )

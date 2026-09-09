@@ -121,7 +121,7 @@ class ServiceNowGateway(IServiceNowGateway):
                     "ci_item": None,
                     "approved_by": None,
                     "is_valid": False,
-                    "error": f"Change Request [{chg_number}] not found in ServiceNow CMDB."
+                    "error": f"Change Request [{chg_number}] not found in ITSM CMDB."
                 }
             return {"chg_number": chg_number, "is_valid": True, **ticket}
 
