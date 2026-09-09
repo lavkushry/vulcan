@@ -250,6 +250,17 @@ class SQLiteJobRepository(IJobRepository):
         locked = self.list_jobs(status=JobStatus.LOCKED, limit=500)
         return running + locked
 
+    def get_status_counts(self) -> Dict[str, int]:
+        """Fast SQLite aggregation: returns job counts grouped by status in 1 query."""
+        with self._lock:
+            cursor = self._conn.execute("SELECT status, COUNT(*) as cnt FROM execution_jobs GROUP BY status;")
+            rows = cursor.fetchall()
+            counts: Dict[str, int] = {}
+            for row in rows:
+                counts[row["status"]] = int(row["cnt"])
+            counts["ALL"] = sum(counts.values())
+            return counts
+
 
 # ===========================================================================
 # AUDIT LEDGER REPOSITORY

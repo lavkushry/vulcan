@@ -69,6 +69,10 @@ jobs:
         run: |
           python ../scripts/run_domain_mutation_tests.py
 
+      - name: Run 500-Scenario Golden Evaluation CI Regression Gate (CHAT-20)
+        run: |
+          python ../scripts/run_eval.py --provider fake --gate
+
   # ─── Stage 2: Frontend Type Safety & Production Standalone Build ───────────
   frontend-gate:
     name: Next.js 15 Console Typecheck & Build
@@ -304,7 +308,7 @@ jobs:
       - name: Scan Infrastructure Baseline Images (INFRA-30 Inventory)
         run: |
           echo "─── Scanning Infrastructure Baseline Images (Inventory Tracking) ───"
-          for img in redis:7.2-alpine pgvector/pgvector:pg16 minio/minio:latest; do
+          for img in redis:7.2-alpine pgvector/pgvector:pg16 minio/minio:RELEASE.2025-09-07T16-13-09Z; do
             echo "Scanning $img..."
             trivy image --severity HIGH,CRITICAL --ignore-unfixed --format table $img || true
           done

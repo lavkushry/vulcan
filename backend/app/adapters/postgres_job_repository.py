@@ -316,3 +316,17 @@ class PostgresJobRepository(IJobRepository):
                     cur.execute("SELECT COUNT(*) as cnt FROM execution_jobs;")
                 row = cur.fetchone()
                 return int(row["cnt"]) if row else 0
+
+    def get_status_counts(self) -> Dict[str, int]:
+        """Fast SQL aggregation: returns job counts grouped by status in 1 query."""
+        with self._get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT status, COUNT(*) as cnt FROM execution_jobs GROUP BY status;")
+                rows = cur.fetchall()
+                counts: Dict[str, int] = {}
+                for row in rows:
+                    st = row.get("status") if isinstance(row, dict) else row[0]
+                    cnt = row.get("cnt") if isinstance(row, dict) else row[1]
+                    counts[st] = int(cnt)
+                counts["ALL"] = sum(counts.values())
+                return counts

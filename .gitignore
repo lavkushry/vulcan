@@ -116,6 +116,7 @@ backend/data/*
 backend/data/corpus/*
 !backend/data/corpus/candidates_500.json
 *.jsonl
+!evals/**/*.jsonl
 
 # Playwright E2E test runs & traces (ignore heavy videos and zip traces, keep png/json/html evidence)
 docs/e2e/evidence/**/*.webm

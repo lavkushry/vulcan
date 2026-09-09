@@ -7,6 +7,7 @@ import asyncio
 import collections
 import logging
 import os
+import re
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -96,15 +97,28 @@ def create_app() -> FastAPI:
     # INFRA-24: Structured Request Logging Middleware
     @app.middleware("http")
     async def request_logging_middleware(request: Request, call_next):
-        start = time.time()
+        start = time.perf_counter()
         response = await call_next(request)
-        duration_ms = round((time.time() - start) * 1000, 2)
+        duration_sec = time.perf_counter() - start
+        duration_ms = round(duration_sec * 1000, 2)
         corr_id = getattr(request.state, "correlation_id", "-")
-        # INFRA-22: Record RED metrics (Rate, Errors, Duration)
+
+        # Label cardinality protection: use route template instead of raw path (e.g. /jobs/{id})
         path = request.url.path
-        endpoint_group = path if (path.startswith("/api/") or path in ("/healthz", "/health", "/ready", "/metrics")) else "other"
+        route = request.scope.get("route")
+        if route and hasattr(route, "path"):
+            endpoint_template = route.path
+        else:
+            # Fallback regex template normalization for dynamic parameters
+            endpoint_template = re.sub(r'/(EXEC-[A-Za-z0-9_-]+|[0-9a-fA-F-]{36}|\d+)', '/{id}', path)
+
+        if not (endpoint_template.startswith("/api/") or endpoint_template in ("/healthz", "/health", "/ready", "/metrics")):
+            endpoint_group = "other"
+        else:
+            endpoint_group = endpoint_template
+
         _REQUEST_COUNTS[(request.method, str(response.status_code), endpoint_group)] += 1
-        _REQUEST_DURATION_SUM[(request.method, endpoint_group)] += (time.time() - start)
+        _REQUEST_DURATION_SUM[(request.method, endpoint_group)] += duration_sec
 
         # Skip noisy health/ready probes at INFO level; log at DEBUG
         log_fn = logger.debug if path in ("/healthz", "/health", "/ready") else logger.info
@@ -204,16 +218,24 @@ def create_app() -> FastAPI:
     @app.get("/metrics", response_class=PlainTextResponse, tags=["Observability"])
     def prometheus_metrics():
         """Prometheus metrics endpoint scrapable by Prometheus / OpenTelemetry."""
-        uptime = time.time() - SERVER_START_TIME
         catalog_size = len(container.catalog)
         if hasattr(container, "job_repo") and container.job_repo:
-            jobs = container.job_repo.list_jobs(limit=5000)
-            jobs_count = len(jobs)
-            running_jobs = sum(1 for j in jobs if j.status.value == "RUNNING")
-            queued_jobs = sum(1 for j in jobs if j.status.value == "QUEUED")
-            pending_jobs = sum(1 for j in jobs if j.status.value == "PENDING_APPROVAL")
-            success_jobs = sum(1 for j in jobs if j.status.value == "SUCCESS")
-            failed_jobs = sum(1 for j in jobs if j.status.value == "FAILED")
+            if hasattr(container.job_repo, "get_status_counts"):
+                counts = container.job_repo.get_status_counts()
+                running_jobs = counts.get("RUNNING", 0)
+                queued_jobs = counts.get("QUEUED", 0)
+                pending_jobs = counts.get("PENDING_APPROVAL", 0)
+                success_jobs = counts.get("SUCCESS", 0)
+                failed_jobs = counts.get("FAILED", 0)
+                jobs_count = counts.get("ALL", sum(v for k, v in counts.items() if k != "ALL"))
+            else:
+                jobs = container.job_repo.list_jobs(limit=5000)
+                jobs_count = len(jobs)
+                running_jobs = sum(1 for j in jobs if j.status.value == "RUNNING")
+                queued_jobs = sum(1 for j in jobs if j.status.value == "QUEUED")
+                pending_jobs = sum(1 for j in jobs if j.status.value == "PENDING_APPROVAL")
+                success_jobs = sum(1 for j in jobs if j.status.value == "SUCCESS")
+                failed_jobs = sum(1 for j in jobs if j.status.value == "FAILED")
         else:
             jobs_count = len(container.jobs)
             running_jobs = sum(1 for j in container.jobs.values() if j.status.value == "RUNNING")
@@ -222,6 +244,7 @@ def create_app() -> FastAPI:
             success_jobs = sum(1 for j in container.jobs.values() if j.status.value == "SUCCESS")
             failed_jobs = sum(1 for j in container.jobs.values() if j.status.value == "FAILED")
 
+        uptime = time.time() - SERVER_START_TIME
         lines = [
             "# HELP vulcan_uptime_seconds System process uptime in seconds.",
             "# TYPE vulcan_uptime_seconds gauge",

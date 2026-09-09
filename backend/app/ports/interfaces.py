@@ -234,6 +234,6 @@ class IEmbeddingProvider(abc.ABC):
         min_no_sparse = t.get("min_dense_no_sparse", 0.45)
         min_with_sparse = t.get("min_dense_with_sparse", 0.35)
         sparse_cutoff = t.get("min_sparse_cutoff", 0.20)
-        return (max_dense < min_no_sparse and max_sparse <= 0.0) or (max_dense < min_with_sparse and max_sparse < sparse_cutoff)
+        return (max_dense < min_no_sparse and max_sparse <= 0.0) or (max_dense < min_with_sparse and max_sparse <= sparse_cutoff)
 
 

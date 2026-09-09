@@ -252,7 +252,7 @@ RAW_CATALOG_DEFINITIONS: List[Dict[str, Any]] = [
         "requires_chg": True,
         "category": "security",
         "description": "Enforces SSH access restrictions (MaxAuthTries, X11Forwarding), installs unattended-upgrades and fail2ban, and sets legal pre-login banner (adithyakhamithkar/ansible-playbooks).",
-        "tags": ["hardening", "security", "ssh", "fail2ban", "audit", "compliance"],
+        "tags": ["hardening", "security", "ssh", "fail2ban", "audit", "compliance", "sysctl", "kernel", "linux"],
         "input_schema": {
             "type": "object",
             "required": ["port", "auto_updates"],

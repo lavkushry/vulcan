@@ -37,7 +37,7 @@ services:
 
   # MinIO S3 Object Storage for decoupled 10GB binary payloads
   minio:
-    image: minio/minio:latest
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
     container_name: vulcan-minio
     restart: unless-stopped
     environment:
@@ -52,7 +52,7 @@ services:
 
   # Ephemeral MinIO Bucket Bootstrap Provisioner (INFRA-07)
   minio-init:
-    image: minio/mc:latest
+    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
     container_name: vulcan-minio-init
     depends_on:
       - minio

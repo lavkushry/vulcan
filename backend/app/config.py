@@ -151,6 +151,7 @@ class AppContainer:
             chat_model_provider=self.chat_provider,
             catalog_repo=active_catalog_repo,
             embedding_provider=self.embedding_provider,
+            servicenow_gateway=self.snow_gateway,
         )
         self.diagnostic_engine = FailureDiagnosticEngine()
 

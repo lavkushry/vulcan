@@ -1,38 +1,119 @@
 {
-  "embedding_provider": "semantic-cluster-1536",
-  "chat_provider": "DeterministicFakeChatProvider",
-  "evaluation_timestamp": "2026-09-07T18:17:57Z",
-  "total_scenarios": 200,
+  "evaluation_timestamp": "2026-09-09T03:24:42Z",
+  "provider": "fake",
+  "scenarios_source": "/Users/lavkushkumar/Desktop/Ideas/vulcan-control-plane/evals/golden/scenarios.v2.jsonl",
+  "total_scenarios": 500,
   "metrics": {
-    "routing_precision_percent": 72.0,
-    "slot_filling_precision_percent": 98.65,
-    "slot_filling_recall_percent": 98.65,
-    "slot_filling_f1_percent": 98.65,
-    "adversarial_injection_refusal_percent": 92.0,
-    "out_of_catalog_refusal_percent": 100.0,
-    "latency_p50_ms": 0.45,
-    "latency_p95_ms": 0.57,
-    "latency_mean_ms": 0.49,
-    "average_tokens_per_call": 508.8,
+    "routing_top_1_percent": 28.67,
+    "routing_top_3_percent": 38.67,
+    "slot_filling_precision_percent": 100.0,
+    "slot_filling_recall_percent": 100.0,
+    "slot_filling_f1_percent": 100.0,
+    "slot_filling_status_accuracy_percent": 100.0,
+    "adversarial_refusal_percent": 100.0,
+    "multi_turn_accuracy_percent": 100.0,
+    "ticket_hydration_accuracy_percent": 100.0,
+    "out_of_scope_refusal_recall_percent": 100.0,
+    "false_refusal_rate_percent": 0.0,
+    "disambiguation_halt_rate_percent": 3.8,
+    "latency_p50_ms": 0.46,
+    "latency_p95_ms": 0.82,
+    "latency_mean_ms": 0.45,
+    "tokens_per_call_mean": 389.3,
+    "tokens_per_call_max": 659,
     "token_budget_limit": 2500,
     "token_budget_compliant": true
   },
   "breakdown": {
     "routing": {
-      "total": 50,
-      "passed": 36
+      "total": 150,
+      "top_1_correct": 43,
+      "top_3_correct": 58
     },
     "slot_filling": {
-      "total_expected": 148,
-      "true_positives": 146
+      "total": 150,
+      "true_positives": 292,
+      "extracted_total": 292,
+      "expected_total": 292,
+      "status_matches": 150
     },
-    "injection_defense": {
-      "total": 50,
-      "refused": 46
+    "adversarial": {
+      "total": 100,
+      "refused": 100
     },
-    "out_of_catalog": {
+    "multi_turn": {
       "total": 50,
-      "refused": 50
+      "passed": 50
+    },
+    "ticket_hydration": {
+      "total": 25,
+      "passed": 25
+    },
+    "out_of_scope_refusal": {
+      "garbage_total": 15,
+      "garbage_refused": 15,
+      "false_refusal_validation_total": 10,
+      "false_refusals": 0
     }
+  },
+  "gate": {
+    "enforced": true,
+    "all_passed": true,
+    "checks": [
+      {
+        "metric": "adversarial_refusal_percent",
+        "measured": 100.0,
+        "threshold": "== 100.0",
+        "passed": true
+      },
+      {
+        "metric": "out_of_scope_refusal_recall_percent",
+        "measured": 100.0,
+        "threshold": "== 100.0",
+        "passed": true
+      },
+      {
+        "metric": "false_refusal_rate_percent",
+        "measured": 0.0,
+        "threshold": "== 0.0",
+        "passed": true
+      },
+      {
+        "metric": "token_budget_compliant",
+        "measured": true,
+        "threshold": "== True",
+        "passed": true
+      },
+      {
+        "metric": "routing_top_1_percent",
+        "measured": 28.67,
+        "threshold": ">= 26.0",
+        "passed": true
+      },
+      {
+        "metric": "routing_top_3_percent",
+        "measured": 38.67,
+        "threshold": ">= 36.0",
+        "passed": true
+      },
+      {
+        "metric": "slot_filling_f1_percent",
+        "measured": 100.0,
+        "threshold": ">= 95.0",
+        "passed": true
+      },
+      {
+        "metric": "multi_turn_accuracy_percent",
+        "measured": 100.0,
+        "threshold": ">= 95.0",
+        "passed": true
+      },
+      {
+        "metric": "ticket_hydration_accuracy_percent",
+        "measured": 100.0,
+        "threshold": ">= 95.0",
+        "passed": true
+      }
+    ]
   }
 }

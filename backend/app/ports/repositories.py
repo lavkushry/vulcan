@@ -42,6 +42,16 @@ class IJobRepository(abc.ABC):
         """Retrieves all jobs currently in RUNNING or LOCKED status (for orphan reaper)."""
         pass
 
+    def get_status_counts(self) -> Dict[str, int]:
+        """Returns job counts grouped by status."""
+        jobs = self.list_jobs(limit=10000)
+        counts: Dict[str, int] = {}
+        for j in jobs:
+            st = j.status.value
+            counts[st] = counts.get(st, 0) + 1
+        counts["ALL"] = len(jobs)
+        return counts
+
 
 class IAuditLedgerRepository(abc.ABC):
     """Abstract persistence port for cryptographic Merkle audit records."""
