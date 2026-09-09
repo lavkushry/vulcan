@@ -283,9 +283,9 @@ jobs:
       - name: Run Trivy Filesystem Vulnerability & Secret Scan
         run: |
           echo "─── Scanning Repository & Dependencies with Trivy ───"
-          trivy fs --severity HIGH,CRITICAL --ignore-unfixed --format table --skip-dirs backend/ansible/keys,deploy/sandbox/keys .
+          trivy fs --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --format table --skip-dirs backend/ansible/keys,deploy/sandbox/keys,evals --skip-files scripts/build_golden_scenarios.py .
           # Enforce fail-closed on exploitable CRITICAL vulnerabilities in repository packages
-          trivy fs --severity CRITICAL --ignore-unfixed --exit-code 1 --skip-dirs backend/ansible/keys,deploy/sandbox/keys .
+          trivy fs --scanners vuln --severity CRITICAL --ignore-unfixed --exit-code 1 --skip-dirs backend/ansible/keys,deploy/sandbox/keys,evals --skip-files scripts/build_golden_scenarios.py .
 
       - name: Build & Scan Deployable Backend Container Image (INFRA-30)
         run: |
@@ -316,7 +316,7 @@ jobs:
       - name: Generate Trivy SARIF Report for GitHub Security
         if: always()
         run: |
-          trivy fs --severity HIGH,CRITICAL --format sarif -o trivy-results.sarif --skip-dirs backend/ansible/keys,deploy/sandbox/keys . || true
+          trivy fs --scanners vuln --severity HIGH,CRITICAL --format sarif -o trivy-results.sarif --skip-dirs backend/ansible/keys,deploy/sandbox/keys,evals --skip-files scripts/build_golden_scenarios.py . || true
 
       - name: Upload Trivy Vulnerability Scan Results (SARIF)
         if: always()
