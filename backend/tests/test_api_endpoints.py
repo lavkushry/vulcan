@@ -192,7 +192,11 @@ class TestAPIEndpoints(unittest.TestCase):
         payload = {
             "catalog_identifier": "cloud-s3-kms-bucket-provision",
             "target_resource_id": "analytics-bucket-test",
-            "parameters": {"bucket_name": "analytics-bucket-test", "retention_days": 90},
+            "parameters": {
+                "bucket_name": "analytics-bucket-test",
+                "kms_key_arn": "arn:aws:kms:us-east-1:123456789012:key/analytics-key",
+                "retention_days": 90
+            },
             "environment": "UAT"
         }
         disp_res = self.client.post(

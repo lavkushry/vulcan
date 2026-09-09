@@ -1,6 +1,6 @@
 # Project Vulcan: Domain Governance Mutation Testing Report (Milestone C.2)
 
-**Generated**: 2026-09-08 06:32:27 UTC  
+**Generated**: 2026-09-09 04:01:24 UTC  
 **Target Domain Subsystems**: `backend/app/domain/entities.py` & `backend/app/domain/roles_and_policies.py`  
 **Total Governance Mutants**: 46  
 **Killed Mutants**: 46  
@@ -34,52 +34,52 @@ Milestone C.2 introduces an automated, hand-rolled domain mutation engine target
 
 | ID | Category | Status | Duration | Targeted Test Suite | Mutation Description |
 |---|---|---|---|---|---|
-| `MUT-MC-01` | **MAKER_CHECKER** | ✅ KILLED | 0.65s | `backend/tests/test_state_machine_mutations.py` | Bypass self-approval block in apply_approval_decision (always allow requester to approve) |
-| `MUT-MC-02` | **MAKER_CHECKER** | ✅ KILLED | 1.08s | `backend/tests/test_state_machine_mutations.py` | Invert Maker-Checker inequality in apply_approval_decision (!= instead of ==) |
-| `MUT-MC-03` | **MAKER_CHECKER** | ✅ KILLED | 1.21s | `backend/tests/test_state_machine_mutations.py` | Bypass self-approval check in enforce_maker_checker |
-| `MUT-MC-04` | **MAKER_CHECKER** | ✅ KILLED | 1.24s | `backend/tests/test_state_machine_mutations.py` | Invert Maker-Checker in enforce_maker_checker (!= instead of ==) |
-| `MUT-MC-05` | **MAKER_CHECKER** | ✅ KILLED | 1.87s | `backend/tests/test_policy_engine.py` | Bypass POL-001 Maker-Checker invariant in PolicyEngine.evaluate |
-| `MUT-MC-06` | **MAKER_CHECKER** | ✅ KILLED | 1.61s | `backend/tests/test_policy_engine.py` | Bypass POL-001 Approving Lead requirement for PROD High-Risk jobs without approver |
-| `MUT-TO-01` | **APPROVAL_TIMEOUT** | ✅ KILLED | 1.06s | `backend/tests/test_state_machine_mutations.py` | Disable 15-minute approval timeout check in apply_approval_decision |
-| `MUT-TO-02` | **APPROVAL_TIMEOUT** | ✅ KILLED | 1.38s | `backend/tests/test_state_machine_mutations.py` | Invert timeout check in apply_approval_decision (elapsed < timeout_seconds) |
-| `MUT-TO-03` | **APPROVAL_TIMEOUT** | ✅ KILLED | 1.41s | `backend/tests/test_state_machine_mutations.py` | Omit transition to TIMEOUT_DENIED on expired approval in apply_approval_decision |
-| `MUT-TO-04` | **APPROVAL_TIMEOUT** | ✅ KILLED | 1.33s | `backend/tests/test_state_machine_mutations.py` | Disable 15-minute timeout check in enforce_maker_checker |
-| `MUT-TO-05` | **APPROVAL_TIMEOUT** | ✅ KILLED | 1.47s | `backend/tests/test_state_machine_mutations.py` | Omit raising ApprovalTimeoutError in enforce_maker_checker |
-| `MUT-FSM-01` | **STATE_MACHINE** | ✅ KILLED | 1.28s | `backend/tests/test_state_machine_mutations.py` | Allow illegal SUBMITTED -> RUNNING skip transition |
-| `MUT-FSM-02` | **STATE_MACHINE** | ✅ KILLED | 1.59s | `backend/tests/test_state_machine_mutations.py` | Allow illegal PARSED -> RUNNING skip transition |
-| `MUT-FSM-03` | **STATE_MACHINE** | ✅ KILLED | 1.35s | `backend/tests/test_state_machine_mutations.py` | Allow illegal PENDING_APPROVAL -> RUNNING skip transition |
-| `MUT-FSM-04` | **STATE_MACHINE** | ✅ KILLED | 1.31s | `backend/tests/test_state_machine_mutations.py` | Allow terminal SUCCESS state resurrection to RUNNING |
-| `MUT-FSM-05` | **STATE_MACHINE** | ✅ KILLED | 1.26s | `backend/tests/test_state_machine_mutations.py` | Allow terminal FAILED state resurrection to RUNNING |
-| `MUT-FSM-06` | **STATE_MACHINE** | ✅ KILLED | 1.3s | `backend/tests/test_state_machine_mutations.py` | Allow terminal TIMEOUT_DENIED resurrection to QUEUED |
-| `MUT-FSM-07` | **STATE_MACHINE** | ✅ KILLED | 1.23s | `backend/tests/test_state_machine_mutations.py` | Allow terminal REJECTED resurrection to QUEUED |
-| `MUT-FSM-08` | **STATE_MACHINE** | ✅ KILLED | 1.5s | `backend/tests/test_state_machine_mutations.py` | Allow terminal REVERTED resurrection to RUNNING |
-| `MUT-FSM-09` | **STATE_MACHINE** | ✅ KILLED | 1.23s | `backend/tests/test_state_machine_mutations.py` | Disable state transition guard in transition_to (open transition matrix) |
-| `MUT-FSM-10` | **STATE_MACHINE** | ✅ KILLED | 1.37s | `backend/tests/test_state_machine_mutations.py` | Omit state precondition check in apply_approval_decision |
-| `MUT-FSM-11` | **STATE_MACHINE** | ✅ KILLED | 1.12s | `backend/tests/test_state_machine_mutations.py` | Omit state precondition check in enforce_maker_checker |
-| `MUT-SC-01` | **STEEL_CAGE** | ✅ KILLED | 1.33s | `backend/tests/test_state_machine_mutations.py` | Disable 40-character SHA-1 verification for CURATED CatalogItem |
-| `MUT-SC-02` | **STEEL_CAGE** | ✅ KILLED | 1.91s | `backend/tests/test_state_machine_mutations.py` | Allow CANDIDATE CatalogItem to have non-null Git commit SHA |
-| `MUT-SC-03` | **STEEL_CAGE** | ✅ KILLED | 1.31s | `backend/tests/test_state_machine_mutations.py` | Allow CANDIDATE CatalogItem to execute (can_execute returns True always) |
-| `MUT-SC-04` | **STEEL_CAGE** | ✅ KILLED | 1.17s | `backend/tests/test_state_machine_mutations.py` | Invert can_execute logic (CURATED cannot execute, CANDIDATE can) |
-| `MUT-PV-01` | **PARAMETER_VALIDATION** | ✅ KILLED | 0.81s | `backend/tests/test_state_machine_mutations.py` | Disable required parameter presence verification |
-| `MUT-PV-02` | **PARAMETER_VALIDATION** | ✅ KILLED | 0.85s | `backend/tests/test_state_machine_mutations.py` | Disable string type validation on parameters |
-| `MUT-PV-03` | **PARAMETER_VALIDATION** | ✅ KILLED | 1.12s | `backend/tests/test_state_machine_mutations.py` | Disable numeric type validation (allow string or bool for numbers) |
-| `MUT-PV-04` | **PARAMETER_VALIDATION** | ✅ KILLED | 0.85s | `backend/tests/test_state_machine_mutations.py` | Disable regex pattern matching on string parameters |
-| `MUT-PV-05` | **PARAMETER_VALIDATION** | ✅ KILLED | 0.84s | `backend/tests/test_state_machine_mutations.py` | Disable minimum bound validation on numeric parameters |
-| `MUT-PV-06` | **PARAMETER_VALIDATION** | ✅ KILLED | 1.0s | `backend/tests/test_state_machine_mutations.py` | Disable maximum bound validation on numeric parameters |
-| `MUT-PV-07` | **PARAMETER_VALIDATION** | ✅ KILLED | 0.99s | `backend/tests/test_state_machine_mutations.py` | Disable ServiceNow Change Request (CHG ticket) requirement on CatalogItem |
-| `MUT-PV-08` | **PARAMETER_VALIDATION** | ✅ KILLED | 1.09s | `backend/tests/test_state_machine_mutations.py` | Disable TruffleHog pre-flight secret linting invocation |
-| `MUT-PV-09` | **PARAMETER_VALIDATION** | ✅ KILLED | 1.17s | `backend/tests/test_state_machine_mutations.py` | Remove RSA/EC Private Key detection regex from _lint_secret |
-| `MUT-PV-10` | **PARAMETER_VALIDATION** | ✅ KILLED | 1.32s | `backend/tests/test_state_machine_mutations.py` | Remove AWS AKIA access key detection regex from _lint_secret |
-| `MUT-PV-11` | **PARAMETER_VALIDATION** | ✅ KILLED | 1.34s | `backend/tests/test_state_machine_mutations.py` | Remove high-entropy password/token assignment regex from _lint_secret |
-| `MUT-RBAC-01` | **RBAC_AND_POLICY** | ✅ KILLED | 2.63s | `backend/tests/test_policy_engine.py` | Illegally grant Permission.JOB_APPROVE to UserRole.OPERATOR |
-| `MUT-RBAC-02` | **RBAC_AND_POLICY** | ✅ KILLED | 2.23s | `backend/tests/test_policy_engine.py` | Strip Permission.JOB_APPROVE from UserRole.APPROVING_LEAD |
-| `MUT-RBAC-03` | **RBAC_AND_POLICY** | ✅ KILLED | 2.47s | `backend/tests/test_policy_engine.py` | Disable UserRole JOB_REQUEST permission check in PolicyEngine.evaluate |
-| `MUT-RBAC-04` | **RBAC_AND_POLICY** | ✅ KILLED | 1.62s | `backend/tests/test_policy_engine.py` | Bypass POL-002 ServiceNow CHG ticket check for PROD HIGH/MEDIUM jobs |
-| `MUT-RBAC-05` | **RBAC_AND_POLICY** | ✅ KILLED | 1.42s | `backend/tests/test_policy_engine.py` | Bypass POL-003 Secret Linting check in PolicyEngine.evaluate |
-| `MUT-RBAC-06` | **RBAC_AND_POLICY** | ✅ KILLED | 1.08s | `backend/tests/test_policy_engine.py` | Bypass POL-005 Operational Freeze Window enforcement |
-| `MUT-MK-01` | **MERKLE_CHAIN** | ✅ KILLED | 0.62s | `backend/tests/test_state_machine_mutations.py` | Omit prev_hash from AuditRecord.compute_hash (breaks Merkle chaining) |
-| `MUT-MK-02` | **MERKLE_CHAIN** | ✅ KILLED | 0.71s | `backend/tests/test_state_machine_mutations.py` | Substitute static constant hash instead of SHA-256 computation |
-| `MUT-MK-03` | **MERKLE_CHAIN** | ✅ KILLED | 1.11s | `backend/tests/test_state_machine_mutations.py` | Omit action from AuditRecord cryptographic payload |
+| `MUT-MC-01` | **MAKER_CHECKER** | ✅ KILLED | 0.38s | `backend/tests/test_state_machine_mutations.py` | Bypass self-approval block in apply_approval_decision (always allow requester to approve) |
+| `MUT-MC-02` | **MAKER_CHECKER** | ✅ KILLED | 0.32s | `backend/tests/test_state_machine_mutations.py` | Invert Maker-Checker inequality in apply_approval_decision (!= instead of ==) |
+| `MUT-MC-03` | **MAKER_CHECKER** | ✅ KILLED | 0.34s | `backend/tests/test_state_machine_mutations.py` | Bypass self-approval check in enforce_maker_checker |
+| `MUT-MC-04` | **MAKER_CHECKER** | ✅ KILLED | 0.37s | `backend/tests/test_state_machine_mutations.py` | Invert Maker-Checker in enforce_maker_checker (!= instead of ==) |
+| `MUT-MC-05` | **MAKER_CHECKER** | ✅ KILLED | 0.77s | `backend/tests/test_policy_engine.py` | Bypass POL-001 Maker-Checker invariant in PolicyEngine.evaluate |
+| `MUT-MC-06` | **MAKER_CHECKER** | ✅ KILLED | 0.64s | `backend/tests/test_policy_engine.py` | Bypass POL-001 Approving Lead requirement for PROD High-Risk jobs without approver |
+| `MUT-TO-01` | **APPROVAL_TIMEOUT** | ✅ KILLED | 0.49s | `backend/tests/test_state_machine_mutations.py` | Disable 15-minute approval timeout check in apply_approval_decision |
+| `MUT-TO-02` | **APPROVAL_TIMEOUT** | ✅ KILLED | 0.54s | `backend/tests/test_state_machine_mutations.py` | Invert timeout check in apply_approval_decision (elapsed < timeout_seconds) |
+| `MUT-TO-03` | **APPROVAL_TIMEOUT** | ✅ KILLED | 0.48s | `backend/tests/test_state_machine_mutations.py` | Omit transition to TIMEOUT_DENIED on expired approval in apply_approval_decision |
+| `MUT-TO-04` | **APPROVAL_TIMEOUT** | ✅ KILLED | 0.48s | `backend/tests/test_state_machine_mutations.py` | Disable 15-minute timeout check in enforce_maker_checker |
+| `MUT-TO-05` | **APPROVAL_TIMEOUT** | ✅ KILLED | 0.48s | `backend/tests/test_state_machine_mutations.py` | Omit raising ApprovalTimeoutError in enforce_maker_checker |
+| `MUT-FSM-01` | **STATE_MACHINE** | ✅ KILLED | 0.48s | `backend/tests/test_state_machine_mutations.py` | Allow illegal SUBMITTED -> RUNNING skip transition |
+| `MUT-FSM-02` | **STATE_MACHINE** | ✅ KILLED | 0.48s | `backend/tests/test_state_machine_mutations.py` | Allow illegal PARSED -> RUNNING skip transition |
+| `MUT-FSM-03` | **STATE_MACHINE** | ✅ KILLED | 0.48s | `backend/tests/test_state_machine_mutations.py` | Allow illegal PENDING_APPROVAL -> RUNNING skip transition |
+| `MUT-FSM-04` | **STATE_MACHINE** | ✅ KILLED | 0.47s | `backend/tests/test_state_machine_mutations.py` | Allow terminal SUCCESS state resurrection to RUNNING |
+| `MUT-FSM-05` | **STATE_MACHINE** | ✅ KILLED | 0.45s | `backend/tests/test_state_machine_mutations.py` | Allow terminal FAILED state resurrection to RUNNING |
+| `MUT-FSM-06` | **STATE_MACHINE** | ✅ KILLED | 0.45s | `backend/tests/test_state_machine_mutations.py` | Allow terminal TIMEOUT_DENIED resurrection to QUEUED |
+| `MUT-FSM-07` | **STATE_MACHINE** | ✅ KILLED | 0.5s | `backend/tests/test_state_machine_mutations.py` | Allow terminal REJECTED resurrection to QUEUED |
+| `MUT-FSM-08` | **STATE_MACHINE** | ✅ KILLED | 0.49s | `backend/tests/test_state_machine_mutations.py` | Allow terminal REVERTED resurrection to RUNNING |
+| `MUT-FSM-09` | **STATE_MACHINE** | ✅ KILLED | 0.57s | `backend/tests/test_state_machine_mutations.py` | Disable state transition guard in transition_to (open transition matrix) |
+| `MUT-FSM-10` | **STATE_MACHINE** | ✅ KILLED | 0.61s | `backend/tests/test_state_machine_mutations.py` | Omit state precondition check in apply_approval_decision |
+| `MUT-FSM-11` | **STATE_MACHINE** | ✅ KILLED | 0.59s | `backend/tests/test_state_machine_mutations.py` | Omit state precondition check in enforce_maker_checker |
+| `MUT-SC-01` | **STEEL_CAGE** | ✅ KILLED | 0.65s | `backend/tests/test_state_machine_mutations.py` | Disable 40-character SHA-1 verification for CURATED CatalogItem |
+| `MUT-SC-02` | **STEEL_CAGE** | ✅ KILLED | 0.67s | `backend/tests/test_state_machine_mutations.py` | Allow CANDIDATE CatalogItem to have non-null Git commit SHA |
+| `MUT-SC-03` | **STEEL_CAGE** | ✅ KILLED | 0.87s | `backend/tests/test_state_machine_mutations.py` | Allow CANDIDATE CatalogItem to execute (can_execute returns True always) |
+| `MUT-SC-04` | **STEEL_CAGE** | ✅ KILLED | 0.6s | `backend/tests/test_state_machine_mutations.py` | Invert can_execute logic (CURATED cannot execute, CANDIDATE can) |
+| `MUT-PV-01` | **PARAMETER_VALIDATION** | ✅ KILLED | 0.5s | `backend/tests/test_state_machine_mutations.py` | Disable required parameter presence verification |
+| `MUT-PV-02` | **PARAMETER_VALIDATION** | ✅ KILLED | 0.71s | `backend/tests/test_state_machine_mutations.py` | Disable string type validation on parameters |
+| `MUT-PV-03` | **PARAMETER_VALIDATION** | ✅ KILLED | 0.62s | `backend/tests/test_state_machine_mutations.py` | Disable numeric type validation (allow string or bool for numbers) |
+| `MUT-PV-04` | **PARAMETER_VALIDATION** | ✅ KILLED | 0.49s | `backend/tests/test_state_machine_mutations.py` | Disable regex pattern matching on string parameters |
+| `MUT-PV-05` | **PARAMETER_VALIDATION** | ✅ KILLED | 0.48s | `backend/tests/test_state_machine_mutations.py` | Disable minimum bound validation on numeric parameters |
+| `MUT-PV-06` | **PARAMETER_VALIDATION** | ✅ KILLED | 0.5s | `backend/tests/test_state_machine_mutations.py` | Disable maximum bound validation on numeric parameters |
+| `MUT-PV-07` | **PARAMETER_VALIDATION** | ✅ KILLED | 0.91s | `backend/tests/test_state_machine_mutations.py` | Disable ServiceNow Change Request (CHG ticket) requirement on CatalogItem |
+| `MUT-PV-08` | **PARAMETER_VALIDATION** | ✅ KILLED | 0.62s | `backend/tests/test_state_machine_mutations.py` | Disable TruffleHog pre-flight secret linting invocation |
+| `MUT-PV-09` | **PARAMETER_VALIDATION** | ✅ KILLED | 0.48s | `backend/tests/test_state_machine_mutations.py` | Remove RSA/EC Private Key detection regex from _lint_secret |
+| `MUT-PV-10` | **PARAMETER_VALIDATION** | ✅ KILLED | 0.64s | `backend/tests/test_state_machine_mutations.py` | Remove AWS AKIA access key detection regex from _lint_secret |
+| `MUT-PV-11` | **PARAMETER_VALIDATION** | ✅ KILLED | 0.67s | `backend/tests/test_state_machine_mutations.py` | Remove high-entropy password/token assignment regex from _lint_secret |
+| `MUT-RBAC-01` | **RBAC_AND_POLICY** | ✅ KILLED | 0.88s | `backend/tests/test_policy_engine.py` | Illegally grant Permission.JOB_APPROVE to UserRole.OPERATOR |
+| `MUT-RBAC-02` | **RBAC_AND_POLICY** | ✅ KILLED | 0.77s | `backend/tests/test_policy_engine.py` | Strip Permission.JOB_APPROVE from UserRole.APPROVING_LEAD |
+| `MUT-RBAC-03` | **RBAC_AND_POLICY** | ✅ KILLED | 0.77s | `backend/tests/test_policy_engine.py` | Disable UserRole JOB_REQUEST permission check in PolicyEngine.evaluate |
+| `MUT-RBAC-04` | **RBAC_AND_POLICY** | ✅ KILLED | 0.49s | `backend/tests/test_policy_engine.py` | Bypass POL-002 ServiceNow CHG ticket check for PROD HIGH/MEDIUM jobs |
+| `MUT-RBAC-05` | **RBAC_AND_POLICY** | ✅ KILLED | 0.73s | `backend/tests/test_policy_engine.py` | Bypass POL-003 Secret Linting check in PolicyEngine.evaluate |
+| `MUT-RBAC-06` | **RBAC_AND_POLICY** | ✅ KILLED | 0.72s | `backend/tests/test_policy_engine.py` | Bypass POL-005 Operational Freeze Window enforcement |
+| `MUT-MK-01` | **MERKLE_CHAIN** | ✅ KILLED | 0.44s | `backend/tests/test_state_machine_mutations.py` | Omit prev_hash from AuditRecord.compute_hash (breaks Merkle chaining) |
+| `MUT-MK-02` | **MERKLE_CHAIN** | ✅ KILLED | 0.46s | `backend/tests/test_state_machine_mutations.py` | Substitute static constant hash instead of SHA-256 computation |
+| `MUT-MK-03` | **MERKLE_CHAIN** | ✅ KILLED | 0.63s | `backend/tests/test_state_machine_mutations.py` | Omit action from AuditRecord cryptographic payload |
 
 ---
 

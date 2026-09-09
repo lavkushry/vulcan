@@ -168,6 +168,10 @@ class SQLiteJobRepository(IJobRepository):
             return None
 
         params = json.loads(row["parameters"]) if row["parameters"] else {}
+        if cat_item and cat_item.input_schema:
+            for req in cat_item.input_schema.get("required", []):
+                if req not in params and "default" in cat_item.input_schema.get("properties", {}).get(req, {}):
+                    params[req] = cat_item.input_schema["properties"][req]["default"]
         job = ExecutionJob(
             job_id=row["id"],
             correlation_id=row["correlation_id"],

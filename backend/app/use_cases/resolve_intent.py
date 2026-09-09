@@ -83,13 +83,15 @@ class IntentResolver:
         r"(?i)simulate\s+(an?\s+)?(ai|system|agent)\s+without",
         
         # Governance & Approval Bypasses
-        r"(?i)bypass\s+(maker[-_\s]?checker|approval|security|governance|rbac|controls|second[-_\s]?pair[-_\s]?of[-_\s]?eyes)",
+        r"(?i)(?:bypass|skip|override|disable)\s+.*(?:maker[-_\s]?checker|approv\w*|dual[-_\s]?control|peer\s+review|two[-_\s]?man|second[-_\s]?pair)",
         r"(?i)self[-_\s]?approv(e|al)",
-        r"(?i)skip\s+(maker[-_\s]?checker|approval|change\s+ticket|governance|checks)",
+        r"(?i)skip\s+(maker[-_\s]?checker|approval|approver|change\s+ticket|governance|checks)",
         r"(?i)force\s+execut(e|ion)\s+without\s+(approval|review|ticket)",
         r"(?i)(?:without|skip)\s+(?:secondary\s+)?(?:maker[-_\s]?checker|checker\s+sign[-_\s]?off|peer\s+review)",
         r"(?i)second[-_\s]?pair[-_\s]?of[-_\s]?eyes",
         r"(?i)authorize\s+(?:this\s+.*|deploy\s+)?without\s+(?:secondary\s+|peer\s+)",
+        r"(?i)disable\s+(?:dual[-_\s]?control|maker[-_\s]?checker|approval|governance|gate)",
+        r"(?i)override\s+(?:maker[-_\s]?checker|approval|governance|gate|controls)",
         
         # Privilege Escalation
         r"(?i)give\s+(me\s+)?(root|admin|sudo|superuser)",
@@ -102,6 +104,7 @@ class IntentResolver:
         r"(?i)rm\s+-rf\s+[/~]",
         r"(?i)\bmkfs\b",
         r"(?i)dd\s+if=/dev",
+        r"(?i)\b(eval|compile|os\.system|subprocess)\b",
         r"(?i);\s*(cat\s+/etc/passwd|shutdown|reboot|curl\s+http|wget\s+http)",
         r"(?i)\bcat\s+/etc/(passwd|shadow|hosts|sudoers)",
         
@@ -164,7 +167,7 @@ class IntentResolver:
         for item in self.catalog:
             full_text = f"{item.identifier} {item.name} {item.playbook_or_module_path} {' '.join(getattr(item, 'tags', []))} {getattr(item, 'description', '')}".lower()
             self._item_tokens[item.id] = set(re.findall(r"\w+", full_text))
-            self._item_texts[item.id] = f"{item.identifier} {item.name} {getattr(item, 'description', '')}".lower()
+            self._item_texts[item.id] = full_text
 
     def _check_adversarial(self, prompt: str) -> Optional[str]:
         """
@@ -225,7 +228,8 @@ class IntentResolver:
         # Exact action alignment
         actions = [
             "renew", "expand", "scale", "patch", "rotate", "backup", "drain", "peer", "deploy",
-            "inspect", "provision", "install", "setup", "ping", "check", "create", "stage", "harden"
+            "inspect", "provision", "install", "setup", "ping", "check", "create", "stage", "harden",
+            "lockdown", "reload", "sync", "update", "audit", "restore", "tune", "reboot", "upgrade"
         ]
         matched_actions = [a for a in actions if a in query_lower and a in item_text]
         if matched_actions:
@@ -235,7 +239,11 @@ class IntentResolver:
         domains = [
             "ssl", "cert", "tls", "tablespace", "database", "postgres", "eks", "kernel", "vpc", "ssh",
             "f5", "vip", "openclaw", "clawdbot", "bot", "agent", "docker", "container", "jenkins",
-            "gitlab", "nginx", "redis", "ping", "sandbox", "hardening", "tailscale", "user"
+            "gitlab", "nginx", "redis", "ping", "sandbox", "hardening", "tailscale", "user",
+            "s3", "bucket", "kms", "vault", "approle", "firewall", "firewalld", "crowdstrike", "falcon",
+            "edr", "sensor", "storage", "peering", "transit", "gateway", "nodegroup", "namespace",
+            "quota", "sidecar", "mesh", "istio", "wireguard", "bgp", "cisco", "arista", "haproxy",
+            "waf", "ingress"
         ]
         matched_domains = [d for d in domains if d in query_lower and d in item_text]
         if matched_domains:
@@ -418,7 +426,8 @@ class IntentResolver:
         required = schema.get("required", [])
 
         # Extract IPs (e.g. 10.200.1.50, valid octets 0-255)
-        ip_match = re.search(r"\b(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\b", prompt)
+        # Use negative lookbehind and lookahead to avoid matching sub-slices of invalid IPs (e.g. 10.0.0.0.1)
+        ip_match = re.search(r"(?<![\d.])(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?![\d.])", prompt)
         if ip_match and "vip_ip" in properties and "vip_ip" not in extracted:
             octets = [int(g) for g in ip_match.groups()]
             if all(0 <= o <= 255 for o in octets):
@@ -452,9 +461,11 @@ class IntentResolver:
             extracted["expand_gb"] = int(gb_match.group(1))
 
         # Extract tablespace name
-        ts_match = re.search(r"tablespace\s+([A-Z0-9_]+)", prompt, re.I)
+        ts_match = re.search(r"tablespace\s+(?:storage\s+for\s+|for\s+)?([^\s,]+(?:\s+[^\s,]+)*?)(?:\s+by\s+|\s+on\s+|$)", prompt, re.I)
         if ts_match and "tablespace_name" in properties:
-            extracted["tablespace_name"] = ts_match.group(1).upper()
+            raw_ts = ts_match.group(1).strip()
+            if re.match(r"^[A-Z0-9_]{2,64}$", raw_ts, re.I):
+                extracted["tablespace_name"] = raw_ts.upper()
 
         # Extract VPC ID
         vpc_match = re.search(r"(vpc-[0-9a-fA-F]+)", prompt)
@@ -485,6 +496,18 @@ class IntentResolver:
         nodes_match = re.search(r"(\d+)\s*(?:nodes?|instances?|workers?)", prompt, re.I)
         if nodes_match and "desired_capacity" in properties:
             extracted["desired_capacity"] = int(nodes_match.group(1))
+
+        # Extract KMS key ARN or alias (for cloud-s3-kms-bucket-provision)
+        kms_match = re.search(r"(?:kms\s+key|customer\s+key|cmk)\s+([a-z0-9_-]+)", prompt, re.I)
+        if kms_match and "kms_key_arn" in properties and "kms_key_arn" not in extracted:
+            extracted["kms_key_arn"] = kms_match.group(1)
+
+        # Extract bucket name (for cloud-s3-kms-bucket-provision)
+        bucket_match = re.search(r"(?:bucket|s3\s+bucket)\s+([a-z0-9.-]+)", prompt, re.I)
+        if bucket_match and "bucket_name" in properties and "bucket_name" not in extracted:
+            bname = bucket_match.group(1)
+            if bname.lower() not in ("with", "for", "provision", "secure", "private", "encrypted"):
+                extracted["bucket_name"] = bname
 
         # 4. Strict Slot Boundary & Constraint Validation (INV-AI-02)
         # Type check, integer range limits (min/max), regex patterns, and enums

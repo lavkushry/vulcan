@@ -228,7 +228,7 @@ RAW_CATALOG_DEFINITIONS: List[Dict[str, Any]] = [
         "requires_chg": False,
         "category": "database",
         "description": "Deploys and tunes Redis in-memory cache with custom memory limits, bind interfaces, and LRU eviction policies (lework/Ansible-roles).",
-        "tags": ["redis", "cache", "nosql", "in-memory", "lework", "key-value"],
+        "tags": ["redis", "cache", "nosql", "in-memory", "lework", "key-value", "provision", "cluster"],
         "input_schema": {
             "type": "object",
             "required": ["port", "maxmemory_mb"],
@@ -509,7 +509,7 @@ RAW_CATALOG_DEFINITIONS: List[Dict[str, Any]] = [
             "required": ["tablespace_name", "expand_gb"],
             "properties": {
                 "target_host": {"type": "string", "default": "prod-pg-01.internal"},
-                "tablespace_name": {"type": "string", "default": "TS_TRANSACTIONS"},
+                "tablespace_name": {"type": "string", "default": "TS_TRANSACTIONS", "pattern": "^[A-Z0-9_]{2,64}$"},
                 "expand_gb": {"type": "integer", "default": 50, "minimum": 10, "maximum": 1000}
             }
         }
@@ -701,9 +701,10 @@ RAW_CATALOG_DEFINITIONS: List[Dict[str, Any]] = [
         "tags": ["aws", "s3", "kms", "encryption", "storage", "terraform"],
         "input_schema": {
             "type": "object",
-            "required": ["bucket_name", "retention_days"],
+            "required": ["bucket_name", "kms_key_arn"],
             "properties": {
                 "bucket_name": {"type": "string", "default": "corp-analytics-archive-2026"},
+                "kms_key_arn": {"type": "string", "default": "arn:aws:kms:us-east-1:123456789012:key/data-lake-prod"},
                 "retention_days": {"type": "integer", "default": 365}
             }
         }
@@ -768,8 +769,8 @@ RAW_CATALOG_DEFINITIONS: List[Dict[str, Any]] = [
         "requires_maker_checker": False,
         "requires_chg": False,
         "category": "cloud",
-        "description": "Attaches rate-limiting WebACL rules (e.g., 2,000 req/5min) to Application Load Balancer.",
-        "tags": ["aws", "waf", "security", "alb", "ratelimit", "terraform"],
+        "description": "Updates and attaches rate-limiting WebACL rules (e.g., 2,000 req/5min) to Application Load Balancer.",
+        "tags": ["aws", "waf", "security", "alb", "ratelimit", "terraform", "update", "rule"],
         "input_schema": {
             "type": "object",
             "required": ["web_acl_name", "rate_limit"],
@@ -1731,7 +1732,7 @@ def get_sample_tasks() -> List[Dict[str, Any]]:
             "approver_id": None,
             "duration_sec": 55,
             "created_at": "2026-09-06T06:15:30Z",
-            "parameters": {"bucket_name": "corp-analytics-archive-2026", "retention_days": 365}
+            "parameters": {"bucket_name": "corp-analytics-archive-2026", "kms_key_arn": "arn:aws:kms:us-east-1:123456789012:key/data-lake-prod", "retention_days": 365}
         },
         {
             "id": "task-1009",
