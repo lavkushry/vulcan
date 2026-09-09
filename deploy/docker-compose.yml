@@ -112,6 +112,7 @@ services:
       - backend_data:/app/data
       - ../scripts:/app/scripts:ro
       - ../data/corpus:/app/data/corpus:ro
+      - ../docs:/app/docs
     depends_on:
       postgres:
         condition: service_healthy
