@@ -509,7 +509,7 @@ RAW_CATALOG_DEFINITIONS: List[Dict[str, Any]] = [
             "required": ["tablespace_name", "expand_gb"],
             "properties": {
                 "target_host": {"type": "string", "default": "prod-pg-01.internal"},
-                "tablespace_name": {"type": "string", "default": "TS_TRANSACTIONS", "pattern": "^[A-Z0-9_]{2,64}$"},
+                "tablespace_name": {"type": "string", "default": "TS_TRANSACTIONS", "pattern": "^[A-Za-z0-9_-]{2,64}$"},
                 "expand_gb": {"type": "integer", "default": 50, "minimum": 10, "maximum": 1000}
             }
         }

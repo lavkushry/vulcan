@@ -464,7 +464,7 @@ class IntentResolver:
         ts_match = re.search(r"tablespace\s+(?:storage\s+for\s+|for\s+)?([^\s,]+(?:\s+[^\s,]+)*?)(?:\s+by\s+|\s+on\s+|$)", prompt, re.I)
         if ts_match and "tablespace_name" in properties:
             raw_ts = ts_match.group(1).strip()
-            if re.match(r"^[A-Z0-9_]{2,64}$", raw_ts, re.I):
+            if re.match(r"^[A-Z0-9_-]{2,64}$", raw_ts, re.I):
                 extracted["tablespace_name"] = raw_ts.upper()
 
         # Extract VPC ID
