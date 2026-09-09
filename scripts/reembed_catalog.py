@@ -119,6 +119,7 @@ def reembed_catalog(
             logger.info("DB Verification: Total=%d | With Embedding=%d", v_row["total"], v_row["with_emb"])
 
         # Post-reembed index maintenance (prevents index bloat & optimizes HNSW search)
+        conn.commit()
         logger.info("Running post-reembedding maintenance: VACUUM ANALYZE catalog_items...")
         conn.autocommit = True
         with conn.cursor() as m_cur:
