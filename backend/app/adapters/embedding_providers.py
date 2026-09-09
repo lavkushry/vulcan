@@ -21,6 +21,7 @@ import re
 import time
 import urllib.request
 import urllib.error
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from app.ports.interfaces import IEmbeddingProvider
@@ -216,6 +217,39 @@ class SemanticClusterEmbeddingProvider(IEmbeddingProvider):
         return [self.embed_text(t) for t in texts]
 
 
+def _load_calibration(provider_prefix: str, model_name: str) -> Optional[Dict[str, Any]]:
+    """Loads empirically calibrated refusal thresholds from JSON report if present."""
+    base_dir = Path(__file__).resolve().parents[3]
+    candidates = [
+        Path(f"docs/refusal_gate_calibration_{model_name}.json"),
+        Path(f"docs/refusal_gate_calibration_{provider_prefix}.json"),
+        base_dir / "docs" / f"refusal_gate_calibration_{model_name}.json",
+        base_dir / "docs" / f"refusal_gate_calibration_{provider_prefix}.json",
+        Path(f"/app/docs/refusal_gate_calibration_{provider_prefix}.json"),
+    ]
+    env_path = os.getenv("VULCAN_REFUSAL_CALIBRATION_PATH")
+    if env_path:
+        candidates.insert(0, Path(env_path))
+
+    for p in candidates:
+        if p.exists():
+            try:
+                with open(p, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    thresholds = data.get("calibrated_thresholds", {})
+                    if thresholds:
+                        return {
+                            "calibrated": True,
+                            **thresholds,
+                            "status": "EMPIRICALLY_CALIBRATED",
+                            "calibrated_at": data.get("calibrated_at"),
+                            "source_file": str(p),
+                        }
+            except Exception as e:
+                logger.warning("Failed to load calibration from %s: %s", p, e)
+    return None
+
+
 class OpenAIEmbeddingProvider(IEmbeddingProvider):
     """
     OpenAI text-embedding-3-small provider (native 1,536 dimensions).
@@ -240,16 +274,17 @@ class OpenAIEmbeddingProvider(IEmbeddingProvider):
     @property
     def is_calibrated(self) -> bool:
         """Indicates whether refusal gate thresholds have been empirically calibrated for this model."""
-        return False
+        return self.refusal_thresholds.get("calibrated", False)
 
     @property
     def refusal_thresholds(self) -> Dict[str, Any]:
         """
-        Uncalibrated placeholder refusal gate thresholds.
-        UNVERIFIED: Not empirically calibrated against live OpenAI API.
-        Must execute 'scripts/calibrate_refusal_gate.py --provider openai' (Milestone A3)
-        to measure true vector geometry and establish real cutoffs.
+        Refusal gate thresholds. Automatically checks for empirical calibration file.
+        If calibrated, returns empirical thresholds. Otherwise uncalibrated placeholder.
         """
+        cal = _load_calibration("openai", self.model)
+        if cal:
+            return cal
         return {
             "calibrated": False,
             "min_dense_no_sparse": None,
@@ -347,16 +382,17 @@ class GeminiEmbeddingProvider(IEmbeddingProvider):
     @property
     def is_calibrated(self) -> bool:
         """Indicates whether refusal gate thresholds have been empirically calibrated for this model."""
-        return False
+        return self.refusal_thresholds.get("calibrated", False)
 
     @property
     def refusal_thresholds(self) -> Dict[str, Any]:
         """
-        Uncalibrated placeholder refusal gate thresholds.
-        UNVERIFIED: Not empirically calibrated against live Gemini API.
-        Must execute 'scripts/calibrate_refusal_gate.py --provider gemini' (Milestone A3)
-        to measure true vector geometry and establish real cutoffs.
+        Refusal gate thresholds. Automatically checks for empirical calibration file.
+        If calibrated, returns empirical thresholds. Otherwise uncalibrated placeholder.
         """
+        cal = _load_calibration("gemini", self.model)
+        if cal:
+            return cal
         return {
             "calibrated": False,
             "min_dense_no_sparse": None,
@@ -430,7 +466,88 @@ class GeminiEmbeddingProvider(IEmbeddingProvider):
                     raise
 
     def embed_batch(self, texts: List[str]) -> List[List[float]]:
-        return [self.embed_text(t) for t in texts]
+        if not texts:
+            return []
+        if not self.api_key:
+            raise ValueError("GEMINI_API_KEY is not configured for GeminiEmbeddingProvider.")
+
+        # Batch in sub-chunks of 20 items to respect RPM quotas and reduce network calls
+        chunk_size = 20
+        all_embeddings: List[List[float]] = []
+        for c_idx in range(0, len(texts), chunk_size):
+            chunk = texts[c_idx:c_idx + chunk_size]
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:batchEmbedContents?key={self.api_key}"
+            payload = {
+                "requests": [
+                    {
+                        "model": f"models/{self.model}",
+                        "content": {"parts": [{"text": t}]},
+                        "outputDimensionality": self._dim,
+                    }
+                    for t in chunk
+                ]
+            }
+            data = json.dumps(payload).encode("utf-8")
+            req = urllib.request.Request(
+                url,
+                data=data,
+                headers={"Content-Type": "application/json"},
+                method="POST"
+            )
+            max_retries = 6
+            base_delay = 3.0
+            chunk_embs = None
+            for attempt in range(max_retries):
+                try:
+                    with urllib.request.urlopen(req, timeout=60) as resp:
+                        res = json.loads(resp.read().decode("utf-8"))
+                        raw_embs = res.get("embeddings", [])
+                        chunk_embs = []
+                        for item in raw_embs:
+                            vals = item.get("values", [])
+                            if len(vals) < self._dim:
+                                vals = vals + [0.0] * (self._dim - len(vals))
+                            elif len(vals) > self._dim:
+                                vals = vals[:self._dim]
+                            chunk_embs.append(_l2_normalize(vals))
+                        break
+                except urllib.error.HTTPError as e:
+                    if e.code in (429, 500, 502, 503, 504) and attempt < max_retries - 1:
+                        sleep_time = base_delay * (2 ** attempt)
+                        try:
+                            err_body = json.loads(e.read().decode("utf-8"))
+                            for d in err_body.get("error", {}).get("details", []):
+                                if "@type" in d and "RetryInfo" in d["@type"]:
+                                    retry_delay = d.get("retryDelay", "")
+                                    if retry_delay.endswith("s"):
+                                        parsed_delay = float(retry_delay[:-1])
+                                        sleep_time = max(sleep_time, parsed_delay + 1.0)
+                        except Exception:
+                            pass
+                        logger.warning("Gemini batch embedding API HTTP %d. Retrying in %.1fs (attempt %d/%d)...",
+                                       e.code, sleep_time, attempt + 1, max_retries)
+                        time.sleep(sleep_time)
+                    else:
+                        logger.warning("Gemini batch embedding failed (%s); falling back to individual embed_text.", e)
+                        chunk_embs = [self.embed_text(t) for t in chunk]
+                        break
+                except Exception as e:
+                    if attempt < max_retries - 1:
+                        sleep_time = base_delay * (2 ** attempt)
+                        logger.warning("Gemini batch embedding network error: %s. Retrying in %.1fs (attempt %d/%d)...",
+                                       e, sleep_time, attempt + 1, max_retries)
+                        time.sleep(sleep_time)
+                    else:
+                        logger.warning("Gemini batch embedding failed (%s); falling back to individual embed_text.", e)
+                        chunk_embs = [self.embed_text(t) for t in chunk]
+                        break
+
+            if chunk_embs is not None:
+                all_embeddings.extend(chunk_embs)
+            else:
+                all_embeddings.extend([self.embed_text(t) for t in chunk])
+
+        return all_embeddings
 
 
 def get_embedding_provider(provider_type: Optional[str] = None, require_real: bool = False) -> IEmbeddingProvider:

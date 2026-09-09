@@ -157,35 +157,53 @@ class GeminiChatProvider(IChatModelProvider):
             method="POST",
         )
 
-        try:
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                raw_resp = json.loads(resp.read().decode("utf-8"))
-                candidates = raw_resp.get("candidates", [])
-                content_text = "{}"
-                if candidates:
-                    parts = candidates[0].get("content", {}).get("parts", [])
-                    if parts:
-                        content_text = parts[0].get("text", "{}")
+        max_retries = 5
+        base_delay = 2.0
+        for attempt in range(max_retries):
+            try:
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    raw_resp = json.loads(resp.read().decode("utf-8"))
+                    candidates = raw_resp.get("candidates", [])
+                    content_text = "{}"
+                    if candidates:
+                        parts = candidates[0].get("content", {}).get("parts", [])
+                        if parts:
+                            content_text = parts[0].get("text", "{}")
 
-                usage = raw_resp.get("usageMetadata", {})
-                parsed: Optional[Dict[str, Any]] = None
-                try:
-                    parsed = json.loads(content_text)
-                except Exception as pe:
-                    logger.warning("Failed to parse JSON from Gemini response: %s", pe)
+                    usage = raw_resp.get("usageMetadata", {})
+                    parsed: Optional[Dict[str, Any]] = None
+                    try:
+                        parsed = json.loads(content_text)
+                    except Exception as pe:
+                        logger.warning("Failed to parse JSON from Gemini response: %s", pe)
 
-                elapsed_ms = (time.perf_counter() - t0) * 1000.0
-                return ChatCompletionResponse(
-                    content=content_text,
-                    parsed_json=parsed,
-                    prompt_tokens=usage.get("promptTokenCount", 0),
-                    completion_tokens=usage.get("candidatesTokenCount", 0),
-                    latency_ms=round(elapsed_ms, 2),
-                    model_version=f"gemini/{self.model}",
-                )
-        except Exception as e:
-            logger.error("Gemini Chat Completion request failed: %s", e)
-            raise
+                    elapsed_ms = (time.perf_counter() - t0) * 1000.0
+                    return ChatCompletionResponse(
+                        content=content_text,
+                        parsed_json=parsed,
+                        prompt_tokens=usage.get("promptTokenCount", 0),
+                        completion_tokens=usage.get("candidatesTokenCount", 0),
+                        latency_ms=round(elapsed_ms, 2),
+                        model_version=f"gemini/{self.model}",
+                    )
+            except urllib.error.HTTPError as e:
+                if e.code in (429, 500, 502, 503, 504) and attempt < max_retries - 1:
+                    sleep_time = base_delay * (2 ** attempt)
+                    logger.warning("Gemini Chat API HTTP %d. Retrying in %.1fs (attempt %d/%d)...",
+                                   e.code, sleep_time, attempt + 1, max_retries)
+                    time.sleep(sleep_time)
+                else:
+                    logger.error("Gemini Chat Completion request failed permanently: %s", e)
+                    raise
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    sleep_time = base_delay * (2 ** attempt)
+                    logger.warning("Gemini Chat API network error: %s. Retrying in %.1fs (attempt %d/%d)...",
+                                   e, sleep_time, attempt + 1, max_retries)
+                    time.sleep(sleep_time)
+                else:
+                    logger.error("Gemini Chat Completion request failed permanently: %s", e)
+                    raise
 
     async def stream_structured(self, request: ChatCompletionRequest) -> AsyncIterator[str]:
         response = self.complete_structured(request)
@@ -211,14 +229,14 @@ def get_chat_provider(provider_type: Optional[str] = None) -> IChatModelProvider
         model = os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini")
         return OpenAIChatProvider(api_key=api_key, model=model)
 
-    elif choice in ("gemini", "gemini-1.5-flash", "gemini-2.0-flash"):
+    elif choice in ("gemini", "gemini-1.5-flash", "gemini-2.0-flash", "gemini-flash-latest"):
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
             raise RuntimeError(
                 f"VULCAN_CHAT_PROVIDER is set to '{choice}', but GEMINI_API_KEY is missing or empty. "
                 "Failing closed without fallback (INV-AI-01: Zero silent synthetic degradation)."
             )
-        model = os.getenv("GEMINI_CHAT_MODEL", "gemini-1.5-flash")
+        model = os.getenv("GEMINI_CHAT_MODEL", "gemini-flash-latest")
         return GeminiChatProvider(api_key=api_key, model=model)
 
     elif choice in ("fake", "deterministic", "ci"):
@@ -231,7 +249,7 @@ def get_chat_provider(provider_type: Optional[str] = None) -> IChatModelProvider
         return OpenAIChatProvider(api_key=os.getenv("OPENAI_API_KEY"), model=model)
     elif os.getenv("GEMINI_API_KEY"):
         logger.info("Auto-selected GeminiChatProvider via GEMINI_API_KEY.")
-        model = os.getenv("GEMINI_CHAT_MODEL", "gemini-1.5-flash")
+        model = os.getenv("GEMINI_CHAT_MODEL", "gemini-flash-latest")
         return GeminiChatProvider(api_key=os.getenv("GEMINI_API_KEY"), model=model)
 
     # Default to hermetic fake for CI / offline development
