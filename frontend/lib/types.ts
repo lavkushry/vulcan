@@ -472,5 +472,91 @@ export interface ExternalResourceHealthRecord {
   recorded_at: string;
 }
 
+// ----------------------------------------------------------------------------
+// AgentOS Ultra Types (AGENT-01 - AGENT-13)
+// ----------------------------------------------------------------------------
+
+export interface AgentWorkflowContext {
+  workflow_id: string;
+  correlation_id: string;
+  parent_workflow_id?: string | null;
+  requester_id: string;
+  requester_role: string;
+  original_request: string;
+  environment: string;
+  current_state: string;
+  previous_state?: string | null;
+  state_history: any[];
+  normalized_intent: Record<string, any>;
+  assumptions: string[];
+  unresolved_questions: string[];
+  discovered_assets: any[];
+  automation_plan: Record<string, any>;
+  required_resources: any[];
+  resolved_resources: Record<string, any>;
+  secret_references: string[];
+  generated_artifacts: any[];
+  validation_results: any[];
+  security_findings: any[];
+  critic_findings: any[];
+  policy_decisions: any[];
+  approval_records: any[];
+  execution_capability_token?: Record<string, any> | null;
+  execution_result: Record<string, any>;
+  postcondition_verification: Record<string, any>;
+  rollback_plan?: Record<string, any> | null;
+  rollback_result?: Record<string, any> | null;
+  curation_state: Record<string, any>;
+  eval_result: Record<string, any>;
+  evidence_records: any[];
+  trust_scores: Record<string, any>;
+  version: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AgentWorkflowEvent {
+  event_id: string;
+  workflow_id: string;
+  correlation_id: string;
+  from_state: string;
+  to_state: string;
+  actor: string;
+  agent_name?: string | null;
+  agent_version?: string | null;
+  reason: string;
+  event_hash: string;
+  prev_hash: string;
+  timestamp: string;
+}
+
+export interface AgentVersionInfo {
+  role: string;
+  version: string;
+  release_stage: string;
+  model_provider: string;
+  model_name: string;
+  system_instructions: string;
+  eval_benchmark_score: number;
+  total_invocations: number;
+  success_rate: number;
+  avg_latency_ms: number;
+}
+
+export interface EvalRunRecord {
+  eval_id?: string;
+  tier: number;
+  suite_name: string;
+  total_scenarios: number;
+  passed_scenarios: number;
+  failed_scenarios: number;
+  pass_rate_pct: number;
+  bootstrap_ci_95: [number, number];
+  risk_weighted_score: number;
+  domain_breakdown: Record<string, any>;
+  duration_ms: number;
+  created_at?: string;
+}
+
 
 

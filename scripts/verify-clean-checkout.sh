@@ -6,6 +6,7 @@
 #          undocumented manual steps or tribal knowledge.
 # ==============================================================================
 set -euo pipefail
+export GIT_CONFIG_GLOBAL=/dev/null
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${REPO_ROOT}"
@@ -41,8 +42,9 @@ test -f backend/migrations/008_chat_sessions_and_turns.sql
 test -f backend/migrations/009_chat_turns_unique_constraint.sql
 test -f backend/migrations/010_chat_intent_feedback.sql
 test -f backend/migrations/011_external_resources.sql
+test -f backend/migrations/012_agentos_ultra.sql
 test -f scripts/run_migrations.py
-echo "✓ Schema migrations 003 through 011 and migration runner verified."
+echo "✓ Schema migrations 003 through 012 and migration runner verified."
 echo ""
 
 # 3. Frontend Typecheck & Build

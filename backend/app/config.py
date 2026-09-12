@@ -193,6 +193,17 @@ class AppContainer:
             seed_defaults=True
         )
 
+        # 8b. AgentOS Ultra Kernel & Repository
+        from app.agentos.repository import PostgresAgentWorkflowRepository
+        from app.agentos.kernel import AgentOSKernel
+        self.agentos_repo = PostgresAgentWorkflowRepository(
+            db_url=self.database_url if self.persistence_backend == "postgres" else None
+        )
+        self.agentos_kernel = AgentOSKernel(
+            repository=self.agentos_repo,
+            external_resource_repo=self.external_resource_repo
+        )
+
 
         # 9. Decoupled Job Queue & Worker Fleet (BKND-18)
         from app.adapters.redis_queue_adapter import RedisJobQueue, InMemoryJobQueue
