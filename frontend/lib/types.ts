@@ -168,3 +168,26 @@ export interface ApproveCandidateResult {
     risk_tier: string;
   };
 }
+
+export interface MerkleAuditRecord {
+  id: number;
+  correlation_id: string;
+  timestamp: string;
+  actor: string;
+  action: string;
+  payload: Record<string, unknown>;
+  prev_hash: string;
+  current_hash: string;
+}
+
+export interface JobAuditVerification {
+  correlation_id: string;
+  job_id: string;
+  job_name: string;
+  job_status: string;
+  chain_valid: boolean;
+  verified_at: string;
+  records_count: number;
+  tip_hash: string;
+  records: MerkleAuditRecord[];
+}

@@ -1057,6 +1057,83 @@ class TestVulcanCleanArchitectureSuite(unittest.TestCase):
         self.assertEqual(d["syntax_type"], "yaml")
         self.assertTrue(len(d["rollback_dag"]) == 3)
 
+    def test_merkle_audit_chain_and_worm_receipt(self):
+        """UI-15: Merkle Audit Chain Verification & WORM Receipt Generation."""
+        from app.adapters.crypto_audit_adapter import MerkleAuditLogger
+        from app.domain.entities import ExecutionJob, JobStatus, RiskTier
+        from app.api.routes import get_job_audit_chain, export_worm_receipt
+        from app.config import container
+
+        # Create isolated logger
+        logger = MerkleAuditLogger()
+        job = ExecutionJob(
+            job_id="job-worm-test-1",
+            correlation_id="EXEC-WORM-TEST",
+            catalog_item=self.catalog_item,
+            requester_id="eng.alice",
+            target_resource_id="prod-app-server-01",
+            parameters=self.valid_params,
+            servicenow_chg="CHG001"
+        )
+
+        # 1. Record pre-execution, approval, and execution audit blocks
+        rec1 = logger.record(job, "JOB_SUBMITTED", {"requester": "eng.alice"})
+        self.assertEqual(rec1.prev_hash, MerkleAuditLogger.GENESIS_HASH)
+        self.assertTrue(logger.verify_chain())
+
+        rec2 = logger.record(job, "APPROVAL_GRANTED", {"approver": "lead.bob"})
+        self.assertEqual(rec2.prev_hash, rec1.current_hash)
+        self.assertTrue(logger.verify_chain())
+
+        rec3 = logger.record(job, "EXEC_COMPLETED", {"status": "SUCCESS", "exit_code": 0})
+        self.assertEqual(rec3.prev_hash, rec2.current_hash)
+        self.assertTrue(logger.verify_chain())
+
+        # 2. Test get_chain filtering by correlation_id
+        chain = logger.get_chain(correlation_id="EXEC-WORM-TEST")
+        self.assertEqual(len(chain), 3)
+        self.assertEqual(chain[0].action, "JOB_SUBMITTED")
+        self.assertEqual(chain[2].action, "EXEC_COMPLETED")
+
+        # 3. Test tamper-detection
+        tampered_rec = AuditRecord(
+            id=rec2.id,
+            correlation_id=rec2.correlation_id,
+            timestamp=rec2.timestamp,
+            actor=rec2.actor,
+            action=rec2.action,
+            payload=rec2.payload,
+            prev_hash=rec2.prev_hash,
+            current_hash="f" * 64
+        )
+        logger.ledger[1] = tampered_rec
+        self.assertFalse(logger.verify_chain())
+        logger.ledger[1] = rec2
+        self.assertTrue(logger.verify_chain())
+
+        # 4. Test API endpoints
+        old_logger = container.audit_logger
+        try:
+            container.audit_logger = logger
+            container.jobs[job.correlation_id] = job
+            container.jobs[job.id] = job
+
+            audit_res = get_job_audit_chain("EXEC-WORM-TEST")
+            self.assertEqual(audit_res["correlation_id"], "EXEC-WORM-TEST")
+            self.assertTrue(audit_res["chain_valid"])
+            self.assertEqual(audit_res["records_count"], 3)
+            self.assertEqual(audit_res["tip_hash"], rec3.current_hash)
+
+            worm_res = export_worm_receipt("EXEC-WORM-TEST")
+            self.assertEqual(worm_res.status_code, 200)
+            self.assertIn("Content-Disposition", worm_res.headers)
+            self.assertIn("vulcan-worm-audit-EXEC-WORM-TEST.json", worm_res.headers["Content-Disposition"])
+        finally:
+            container.audit_logger = old_logger
+            container.jobs.pop(job.correlation_id, None)
+            container.jobs.pop(job.id, None)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+

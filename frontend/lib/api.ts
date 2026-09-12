@@ -75,13 +75,18 @@ export const api = {
       internal_git_repo,
       internal_commit_sha,
     }),
-  rejectCandidate: (id: string, reviewer_id: string, reason: string) =>
-    req<{ status: string; identifier: string; curation_status: string; reason: string }>(
-      "POST",
-      `/api/v1/curation/candidates/${encodeURIComponent(id)}/reject`,
-      { reviewer_id, reason }
-    ),
-};
+    rejectCandidate: (id: string, reviewer_id: string, reason: string) =>
+      req<{ status: string; identifier: string; curation_status: string; reason: string }>(
+        "POST",
+        `/api/v1/curation/candidates/${encodeURIComponent(id)}/reject`,
+        { reviewer_id, reason }
+      ),
+    // Cryptographic Merkle Audit & WORM Receipt (UI-15)
+    getJobAudit: (correlationId: string) =>
+      req<import("./types").JobAuditVerification>("GET", `/api/v1/jobs/${encodeURIComponent(correlationId)}/audit`),
+    getWormReceiptUrl: (correlationId: string) =>
+      `${getApiBaseUrl()}/api/v1/jobs/${encodeURIComponent(correlationId)}/audit/worm`,
+  };
 
 // Enterprise Banking Personas & RBAC Mapping
 export const DEMO_USERS = [

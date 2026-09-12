@@ -163,6 +163,17 @@ class MerkleAuditLogger(IAuditLogger):
         with self._lock:
             return self._last_hash
 
+    def get_chain(self, correlation_id: Optional[str] = None) -> List[AuditRecord]:
+        """Retrieves audit records, optionally filtered by correlation_id."""
+        with self._lock:
+            if correlation_id:
+                return [r for r in self.ledger if r.correlation_id == correlation_id]
+            return list(self.ledger)
+
+    def verify_integrity(self) -> bool:
+        """Alias for verify_chain for interface parity."""
+        return self.verify_chain()
+
     def verify_chain(self) -> bool:
         """
         Mathematically verifies the integrity of the entire cryptographic chain.
