@@ -21,7 +21,7 @@ from app.adapters.sqlite_repositories import (
 )
 from app.domain.entities import CatalogItem, ExecutionEngineType, RiskTier
 from app.use_cases.diagnose_failure import FailureDiagnosticEngine
-from app.use_cases.resolve_intent import IntentResolver
+from app.use_cases.secure_intent_resolver import SecureIntentResolver
 from app.use_cases.runner import AnsibleJobRunner
 from app.adapters.redis_chat_repository import RedisChatSessionRepository
 
@@ -168,7 +168,7 @@ class AppContainer:
 
         # 8. AI & Domain Use Cases
         active_catalog_repo = self.catalog_repo if self.persistence_backend == "postgres" else None
-        self.intent_resolver = IntentResolver(
+        self.intent_resolver = SecureIntentResolver(
             catalog=self.catalog,
             chat_model_provider=self.chat_provider,
             catalog_repo=active_catalog_repo,
