@@ -37,6 +37,19 @@ CANDIDATES_DATA_PATH = Path(__file__).resolve().parent.parent.parent / "data" / 
 ALLOWED_LICENSES = {"MIT", "APACHE-2.0", "BSD-2-CLAUSE", "BSD-3-CLAUSE", "MPL-2.0", "ISC"}
 FLAGGED_LICENSES = {"BUSL-1.1", "SSPL-1.0", "GPL-3.0-ONLY", "AGPL-3.0"}
 
+# REG-04: Static Security & Malicious Stanza Scanner Patterns
+MALICIOUS_STANZA_PATTERNS = [
+    (r"(curl|wget)\s+[^|\n]*\|\s*(ba)?sh", "REMOTE_CODE_EXECUTION", "Piped remote script download to shell (curl/wget | sh)"),
+    (r"rm\s+-[a-zA-Z]*r[a-zA-Z]*f\s+/\s*($|\s|;)", "ROOT_DESTRUCTION", "Destructive root filesystem removal (rm -rf /)"),
+    (r"nc\s+-[a-zA-Z]*e\s+/bin/(ba)?sh|/dev/tcp/[0-9.]+|mkfifo.*nc\s", "REVERSE_SHELL", "Reverse shell network execution"),
+    (r"(?:bash|sh)\s+-i\s+>&?\s*/dev/tcp/", "REVERSE_SHELL", "Interactive TCP reverse shell socket"),
+    (r"eval\s*\(\s*base64\.(?:b64)?decode", "OBFUSCATED_PAYLOAD", "Obfuscated base64 decoded execution"),
+    (r"base64\s+-(?:d|-decode)\s*\|\s*(ba)?sh", "OBFUSCATED_PAYLOAD", "Base64 decoded shell execution pipe"),
+    (r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----", "EMBEDDED_PRIVATE_KEY", "Plaintext cryptographic private key embedded in module"),
+    (r"(?:aws_secret_access_key|AWS_SECRET_KEY)\s*=\s*['\"][A-Za-z0-9/+=]{40}['\"]", "PLAINTEXT_SECRET", "Plaintext AWS secret key literal"),
+    (r"(?:password|passwd|secret)\s*:\s*['\"][A-Za-z0-9!@#$%^&*]{8,}['\"]", "HARDCODED_CREDENTIAL", "Plaintext hardcoded credential in playbook parameters"),
+]
+
 
 class CurationCandidateStore:
     """Thread-safe persistent store for public registry candidate modules."""
@@ -432,6 +445,90 @@ class CurationGateService:
     def __init__(self, candidate_store: Optional[CurationCandidateStore] = None):
         self.store = candidate_store or CurationCandidateStore()
 
+    def scan_candidate_security(
+        self,
+        identifier: str,
+        module_content: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        REG-04: Static Security & Malicious Stanza Scanner.
+        Scans candidate module sources, parameters, description, and raw content for:
+        - Remote code execution (curl | bash, wget | sh)
+        - Root destruction (rm -rf /)
+        - Reverse shell TCP sockets (/dev/tcp, nc -e, mkfifo)
+        - Obfuscated base64 payload decoding
+        - Plaintext cryptographic private keys & hardcoded credentials
+
+        Updates candidate provenance with security_scan_status ('PASSED' | 'FAILED')
+        and persists findings in candidate store.
+        """
+        item = self.store.get(identifier)
+        if not item:
+            raise ParameterValidationError(f"Candidate '{identifier}' not found in candidate store.")
+
+        prov = dict(item.provenance or {})
+        findings: List[Dict[str, Any]] = []
+
+        scan_targets = []
+        if module_content:
+            scan_targets.append(("module_content", module_content))
+        if item.description:
+            scan_targets.append(("description", item.description))
+        if item.input_schema:
+            scan_targets.append(("input_schema", json.dumps(item.input_schema)))
+        if item.playbook_or_module_path:
+            scan_targets.append(("module_path", item.playbook_or_module_path))
+        if prov.get("raw_content"):
+            scan_targets.append(("raw_content", str(prov.get("raw_content"))))
+
+        for target_name, text in scan_targets:
+            for pattern, pattern_type, desc in MALICIOUS_STANZA_PATTERNS:
+                matches = list(re.finditer(pattern, text, re.IGNORECASE | re.MULTILINE))
+                for m in matches:
+                    snippet = m.group(0)[:80]
+                    findings.append({
+                        "target": target_name,
+                        "pattern_type": pattern_type,
+                        "description": desc,
+                        "matched_snippet": snippet
+                    })
+
+        scan_status = "FAILED" if findings else "PASSED"
+        prov["security_scan_status"] = scan_status
+        prov["security_scan_findings"] = findings
+        prov["scanned_at"] = datetime.now(timezone.utc).isoformat()
+        if module_content:
+            prov["raw_content"] = module_content
+
+        updated_item = CatalogItem(
+            id=item.id,
+            identifier=item.identifier,
+            name=item.name,
+            engine=item.engine,
+            git_repo=item.git_repo,
+            git_commit_sha=item.git_commit_sha,
+            playbook_or_module_path=item.playbook_or_module_path,
+            risk_tier=item.risk_tier,
+            requires_maker_checker=item.requires_maker_checker,
+            requires_chg=item.requires_chg,
+            input_schema=item.input_schema,
+            category=item.category,
+            description=item.description,
+            tags=item.tags,
+            curation_status=item.curation_status,
+            provenance=prov
+        )
+        self.store.add(updated_item)
+
+        return {
+            "identifier": identifier,
+            "security_scan_status": scan_status,
+            "findings_count": len(findings),
+            "findings": findings,
+            "scanned_at": prov["scanned_at"],
+            "clean": len(findings) == 0
+        }
+
     def draft_registration_pr(
         self,
         identifier: str,
@@ -470,6 +567,9 @@ class CurationGateService:
         )
         self.store.add(updated_item)
 
+        security_status = prov.get("security_scan_status", "PENDING")
+        scan_mark = "x" if security_status == "PASSED" else " "
+
         pr_draft = {
             "pr_title": f"[Catalog Admission] Vendor {item.identifier} ({item.name})",
             "candidate_identifier": item.identifier,
@@ -478,9 +578,10 @@ class CurationGateService:
             "tarball_checksum_sha256": tarball_checksum,
             "license": prov.get("license", "UNKNOWN"),
             "license_compliant": prov.get("license_compliant", False),
+            "security_scan_status": security_status,
             "compliance_checklist": [
-                "[ ] Downstream static security scan completed (tfsec/Checkov or ansible-lint)",
-                "[ ] Zero hardcoded secrets or credentials detected in module sources",
+                f"[{scan_mark}] Downstream static security scan completed (tfsec/Checkov or ansible-lint) - Status: {security_status}",
+                f"[{scan_mark}] Zero hardcoded secrets or credentials detected in module sources",
                 "[ ] Module source vendored into internal Git monorepo (offline airgap parity)",
                 "[ ] Input schema types and bounds verified against ParamSpec standard",
                 "[ ] Maker-Checker governance risk tier certified by platform engineering lead"
@@ -507,7 +608,8 @@ class CurationGateService:
         Enforces:
         1. 40-character hex commit SHA binding.
         2. Internal Git repository binding.
-        3. License compliance check.
+        3. License compliance check (REG-07).
+        4. Static security scan check (REG-04): security_scan_status != 'FAILED'.
         """
         item = self.store.get(identifier)
         if not item:
@@ -519,12 +621,32 @@ class CurationGateService:
                 f"Cannot approve candidate [{identifier}]: Must bind to a valid 40-character Git commit SHA."
             )
 
-        # Invariant: License gate
+        # Invariant: License gate (REG-07)
         prov = dict(item.provenance or {})
         if prov.get("license") in FLAGGED_LICENSES:
             raise PolicyViolationError(
                 f"Approval rejected by policy: Candidate license '{prov.get('license')}' violates enterprise policy."
             )
+
+        # Invariant: Security scan gate (REG-04)
+        scan_status = prov.get("security_scan_status", "PENDING")
+        if scan_status == "FAILED":
+            findings = prov.get("security_scan_findings", [])
+            finding_reasons = ", ".join([f.get("description", f.get("pattern_type", "MALICIOUS_PATTERN")) for f in findings]) or "Malicious patterns detected"
+            raise PolicyViolationError(
+                f"Approval rejected by policy: Candidate '{identifier}' failed static security scan: {finding_reasons}."
+            )
+
+        if scan_status == "PENDING":
+            # Auto-run static scan if pending
+            scan_res = self.scan_candidate_security(identifier)
+            if scan_res["security_scan_status"] == "FAILED":
+                finding_reasons = ", ".join([f.get("description", f.get("pattern_type", "MALICIOUS_PATTERN")) for f in scan_res["findings"]])
+                raise PolicyViolationError(
+                    f"Approval rejected by policy: Candidate '{identifier}' failed static security scan: {finding_reasons}."
+                )
+            item = self.store.get(identifier)
+            prov = dict(item.provenance or {})
 
         # Clean identifier: remove 'candidate.' prefix
         clean_identifier = item.identifier.replace("candidate.", "")

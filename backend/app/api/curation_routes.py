@@ -51,6 +51,10 @@ class RejectCandidateRequest(BaseModel):
     reason: str = Field(..., description="Reason for rejecting candidate admission")
 
 
+class ScanCandidateRequest(BaseModel):
+    module_content: Optional[str] = Field(default=None, description="Optional raw code or playbook content to scan")
+
+
 @curation_router.get("/candidates")
 def list_candidates(
     source: Optional[str] = Query(None, description="Filter by source registry (terraform_registry, ansible_galaxy)"),
@@ -97,6 +101,21 @@ async def trigger_crawler(req: CrawlRequest):
             for c in new_candidates
         ]
     }
+
+
+@curation_router.post("/candidates/{identifier}/scan")
+def scan_candidate(identifier: str, req: Optional[ScanCandidateRequest] = None):
+    """
+    REG-04: Static Security & Malicious Stanza Scan.
+    Scans candidate module sources for reverse shells, remote code execution, root deletion,
+    and hardcoded credentials.
+    """
+    try:
+        content = req.module_content if req else None
+        result = curation_service.scan_candidate_security(identifier, module_content=content)
+        return result
+    except ParameterValidationError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 @curation_router.post("/candidates/{identifier}/draft-pr")

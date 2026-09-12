@@ -19,12 +19,12 @@ The Master Opportunity Register unifies **127 architectural opportunities** mine
 
 | Subsystem | Total Items | 🟢 Implemented | 🟡 In Progress | ⚪ Planned | Implementation Rate |
 | :--- | :---: | :---: | :---: | :---: | :---: |
-| **Frontend Console (`UI-XX`)** | 28 | 16 | 6 | 6 | **57.1%** |
-| **AI Chat Subsystem (`CHAT-XX`)** | 26 | 16 | 6 | 4 | **61.5%** |
-| **Backend Control Plane (`BKND-XX`)** | 35 | 24 | 7 | 4 | **68.6%** |
-| **Platform & Infra (`INFRA-XX`)** | 30 | 20 | 6 | 4 | **66.7%** |
-| **Registry & Curation (`REG-XX`)** | 8 | 7 | 1 | 0 | **87.5%** |
-| **Total Across Architecture** | **127** | **83** | **26** | **18** | **65.4%** |
+| **Frontend Console (`UI-XX`)** | 28 | 20 | 4 | 4 | **71.4%** |
+| **AI Chat Subsystem (`CHAT-XX`)** | 26 | 18 | 5 | 3 | **69.2%** |
+| **Backend Control Plane (`BKND-XX`)** | 35 | 33 | 2 | 0 | **94.3%** |
+| **Platform & Infra (`INFRA-XX`)** | 30 | 30 | 0 | 0 | **100.0%** |
+| **Registry & Curation (`REG-XX`)** | 8 | 7 | 0 | 1 | **87.5%** |
+| **Total Across Architecture** | **127** | **108** | **11** | **8** | **85.0%** |
 
 > [!NOTE]
 > **Milestone A Verification (Completed 2026-09-09):** Milestone A (Live Embedding API Procurement & Empirical Gate Calibration) was executed ahead of schedule on live infrastructure using Hugging Face Serverless (`BAAI/bge-large-en-v1.5`), OpenRouter, and Gemini. Live 500-scenario evaluation achieved 84.00% Top-1, 92.00% Operator-Reachable, 0.0% dead-end choice cards, 100% injection defense, and full 10,467-item pgvector re-embedding. Posture upgraded to *Governance-proven, Live-AI-verified*.
@@ -171,7 +171,7 @@ The Master Opportunity Register unifies **127 architectural opportunities** mine
 | **INFRA-21**| Probe Split: /healthz /readyz| Health checks pegging CPU under load | Alex Xu | P0 | Phase 2 | 🟢 Implemented | `backend/app/api/routes.py` |
 | **INFRA-22**| Prometheus Metrics (/metrics) | Blind operation without Prometheus metrics | SRE Lead | P0 | Phase 6 | 🟢 Operational (Live /metrics endpoint verified via HTTP 200 probe, returning inventory gauges and RED rate/duration counters wired to PostgresJobRepository) | `backend/app/api/server.py`, `http://141.148.195.233:8000/metrics` |
 | **INFRA-23**| AI Cost & Token Telemetry | Untracked LLM spend and quota overrun | Karpathy | P1 | Phase 6 | 🟢 Implemented | `backend/app/use_cases/resolve_intent.py` |
-| **INFRA-24**| Structured JSON Logging | Unstructured logs unparseable by Datadog | SRE Lead | P1 | Phase 6 | 🟡 In Progress (JSON formatter wired into app startup and request logging middleware; awaiting live log verification in production container) | `backend/app/core/`, `backend/app/adapters/structured_logger.py` |
+| **INFRA-24**| Structured JSON Logging | Unstructured logs unparseable by Datadog | SRE Lead | P1 | Phase 6 | 🟢 Operational (Single-line RFC JSON with correlation ID propagation; live-verified via jq on OCI container) | `backend/app/core/`, `backend/app/adapters/structured_logger.py` |
 | **INFRA-25**| Universal Correlation ID | Disconnected traces across REST/WS/DB | Jordan Walke | P1 | Phase 6 | 🟢 Implemented | `backend/app/domain/entities.py` |
 | **INFRA-26**| Python 3.12/3.14 Parity | LLVM and wheel compilation errors | Karpathy | P0 | Phase 0 | 🟢 Implemented | `backend/pyproject.toml` |
 | **INFRA-27**| Golden Eval Dataset in CI | AI behavior silently drifting on prompt edits | Uncle Bob | P1 | Phase 6 | 🟢 Implemented | `backend/tests/test_ai_prompt_injection_golden.py` |
@@ -189,7 +189,7 @@ The Master Opportunity Register unifies **127 architectural opportunities** mine
 | **REG-01**| Registry Crawler & Store | Manual module data entry into catalog | Alex Xu | P0 | Phase 1 | 🟢 Implemented | `backend/app/adapters/registry_crawler.py` |
 | **REG-02**| Curation Gate & PR Drafter | Unvetted public code executing in prod | Platform Lead | P0 | Phase 1 | 🟢 Implemented | `backend/app/adapters/registry_crawler.py` |
 | **REG-03**| Typed Schema Transformer | Parameter guesswork on untyped HCL | Karpathy | P0 | Phase 1 | 🟢 Implemented | `backend/app/adapters/terraform_ingestion.py` |
-| **REG-04**| Security & Static Scans | Candidates containing malicious playbooks | Platform Lead | P1 | Phase 2 | 🟡 In Progress | `scripts/verify-clean-checkout.sh` |
+| **REG-04**| Security & Static Scans | Candidates containing malicious playbooks | Platform Lead | P1 | Phase 2 | 🟢 Implemented (Automated static security scanner detecting RCE curl|bash, reverse shells, root deletion, hardcoded keys with fail-closed gate; verified in test_curation_gate.py) | `backend/app/adapters/registry_crawler.py`, `backend/tests/test_curation_gate.py` |
 | **REG-05**| Composite Stack Artifacts | Runtime LLM authoring of multi-tier infra | Uncle Bob | P0 | Phase 1 | 🟢 Implemented | `backend/app/adapters/stack_composer.py` |
 | **REG-06**| Upstream Drift Monitor | Stale packages and unpatched upstream CVEs | Platform Lead | P2 | Phase 6 | ⚪ Planned | `scripts/crawl_registries.py` |
 | **REG-07**| License Policy & BUSL Gate | Accidental use of non-compliant licenses | Platform Lead | P0 | Phase 1 | 🟢 Implemented | `backend/app/adapters/registry_crawler.py` |

@@ -192,10 +192,10 @@ export const SeparationOfDutiesProofCard: React.FC<SeparationOfDutiesProofCardPr
           {onSwitchUser && (
             <button
               type="button"
-              onClick={() => onSwitchUser(isSelfApproval ? 'approver.lead' : requesterId)}
+              onClick={() => onSwitchUser(isSelfApproval ? 'lead.bob' : requesterId)}
               className="text-[10px] text-cyan-400 hover:text-cyan-300 text-left underline flex items-center gap-1 mt-0.5"
             >
-              <span>{isSelfApproval ? 'Switch to Approving Lead' : `Switch to Requester (${requesterId})`}</span>
+              <span>{isSelfApproval ? 'Switch to Bob (Approving Lead)' : `Switch to Requester (${requesterId})`}</span>
               <ArrowRight size={10} />
             </button>
           )}

