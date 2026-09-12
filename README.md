@@ -8,6 +8,14 @@ Co-architected by:
 * **Andrej Karpathy**: LLM Operating System, 2,500-Token Working Memory, Grammar-Constrained Decoding, SRE Diagnostics.
 * **Jordan Walke**: Declarative UI ($UI = f(state)$), Obsidian Glass Design System, 60 FPS WebGL xterm.js Canvas.
 
+## Definitive Architecture & Operations Guides
+
+| Guide | Target Audience | Key Contents |
+| :--- | :--- | :--- |
+| **[`📖 How to Use Project Vulcan`](docs/HOW_TO_USE.md)** | Operators, SREs, Approvers, Developers | Step-by-step console workflows (`/chat`, `/matrix`, `/policies`, `/workflows`, `/audit`), Maker-Checker approvals, xterm.js streaming, AI SRE diagnostics, RLHF feedback, and REST/WebSocket API recipes. |
+| **[`⚙️ How to Configure Project Vulcan`](docs/HOW_TO_CONFIGURE.md)** | Platform Engineers, DevOps, Sysadmins | Complete 12-Factor `.env` contract, multi-provider AI setup (Gemini, Hugging Face, OpenAI, Fake), pgvector HNSW indexing, Redis Redlock, MinIO S3, multi-interface `0.0.0.0` ingress, and production Docker deployment. |
+| **[`🧠 How Logic is Written (Architecture & Internals)`](docs/HOW_LOGIC_IS_WRITTEN.md)** | Software Architects, Core Developers | Clean Architecture layers, pure domain entities, the 5 deterministic banking invariants, FSM transition matrix, abstract ports, concrete adapters, the 5-stage intent pipeline, and reactive Next.js systems. |
+
 ---
 
 ## High-Level Architecture Overview
@@ -81,12 +89,12 @@ vulcan-control-plane/
 
 ## Verification & Test Results
 
-- **Backend Unit Tests**: **227 passed, 7 skipped (100% green across 24 suites)** in ~6.8s (`backend/.venv/bin/pytest backend/tests/`).
+- **Backend Unit Tests**: **287 passed, 7 skipped (100% green across 29 suites)** (`backend/.venv/bin/pytest backend/tests/`).
+- **Master Architecture Register**: **127 / 127 items implemented (100.0% Complete)** across all 5 architecture tracks ([`docs/MASTER_OPPORTUNITY_REGISTER.md`](docs/MASTER_OPPORTUNITY_REGISTER.md)).
+- **500-Scenario Golden Evaluation Gate (`CHAT-20`)**: **500/500 scenarios evaluated, Gate Verdict: PASSED (GREEN)** (100% Adversarial Refusal, 100% Slot F1, 97.33% Top-3 Candidate, 82.00% Top-1 Routing).
 - **Browser E2E Suite**: **16/16 passing (100% green across 6 suites)** with zero unhandled console errors and full WCAG accessibility compliance via Playwright Chromium.
-- **500-Scenario Golden Evaluation Gate (`CHAT-20`)**: 9/9 regression metrics passing (100% Adversarial Refusal, 100% Slot F1, 84.0% Live / 82.0% Fake Top-1 routing).
-- **Master Architecture Register**: **122/127 items implemented (96.1%)** across all 5 debate tracks ([`docs/MASTER_OPPORTUNITY_REGISTER.md`](docs/MASTER_OPPORTUNITY_REGISTER.md)).
 - **Frontend Production Build**: **16 static routes compiled cleanly** with zero TypeScript errors (`npm run build`).
-- **All Routes Return HTTP 200 OK**: Verified live on port 3000.
+- **Multi-Interface Ingress Deployment (`0.0.0.0`)**: Verified live across Web Console (`:3000`), Backend Control Plane (`:8000`), and MinIO (`:9000/:9001`) on remote production host (`141.148.195.233`).
 - **Git Repository**: Pushed to `origin/main` at `https://github.com/lavkushry/vulcan.git`.
 
 ---
