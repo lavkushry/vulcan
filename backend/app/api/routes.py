@@ -642,6 +642,7 @@ def _format_job_response(job: ExecutionJob, current_user: Optional[str] = None) 
         "exit_code": job.exit_code,
         "error_message": job.error_message,
         "diagnostic": getattr(job, "diagnostic", None) or job.error_message,
+        "diagnostic_details": getattr(job, "diagnostic_details", None),
         "capabilities": {
             "can_approve": can_approve,
             "can_reject": can_reject,
@@ -1026,9 +1027,10 @@ def trigger_execution(correlation_id: str, request: Request):
             ws_hub.emit_log(job.correlation_id, f"\033[1;31m[EXECUTION ERROR]\033[0m {str(e)}", "stderr")
             ws_hub.publish(job.correlation_id, "status", {"status": job.status.value, "message": str(e)})
             try:
-                diag = container.diagnostic_engine.diagnose(str(e), job.catalog_item.identifier)
-                ws_hub.publish(job.correlation_id, "diagnostic", {"root_cause": diag.root_cause})
+                diag = container.diagnostic_engine.diagnose(str(e), job.catalog_item.identifier, exit_code=job.exit_code or 1)
+                ws_hub.publish(job.correlation_id, "diagnostic", diag.to_dict())
                 job.diagnostic = diag.root_cause
+                job.diagnostic_details = diag.to_dict()
                 container.job_repo.save(job)
             except Exception:
                 pass
@@ -1062,8 +1064,9 @@ def diagnose_job_failure(correlation_id: str):
     if not full_stdout and job.error_message:
         full_stdout = job.error_message
 
-    diag = container.diagnostic_engine.diagnose(full_stdout, job.catalog_item.identifier)
+    diag = container.diagnostic_engine.diagnose(full_stdout, job.catalog_item.identifier, exit_code=job.exit_code or 1)
     job.diagnostic = diag.root_cause
+    job.diagnostic_details = diag.to_dict()
     return diag.to_dict()
 
 

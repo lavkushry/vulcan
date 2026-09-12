@@ -40,6 +40,7 @@ from app.ports.interfaces import (
     IServiceNowGateway,
 )
 from app.use_cases.runner import AnsibleJobRunner
+from app.use_cases.diagnose_failure import FailureDiagnosticEngine
 
 
 # =====================================================================
@@ -1019,6 +1020,42 @@ class TestVulcanCleanArchitectureSuite(unittest.TestCase):
                 else:
                     with self.assertRaises(StateTransitionError, msg=f"Expected StateTransitionError for illegal {from_status} -> {to_status}"):
                         job.transition_to(to_status, "Illegal transition attempt")
+
+    def test_failure_diagnostic_ast_pinpoint_and_rollback_dag(self):
+        """UI-19: AST syntax-highlighted failure pinpoint & real rollback DAG synthesis."""
+        engine = FailureDiagnosticEngine()
+
+        # 1. SSL Handshake TLS Failure (Ansible YAML AST)
+        ssl_log = "TASK [f5_ssl_profile : Deploy TLS 1.3 Client SSL Profile] ***\nfatal: [f5-edge-01]: FAILED! => {\"msg\": \"Connection refused on port 443\"}"
+        diag_ssl = engine.diagnose(ssl_log, catalog_identifier="net-f5-cert-renew", exit_code=1)
+
+        self.assertIn("SSL Handshake", diag_ssl.fault_summary)
+        self.assertEqual(diag_ssl.syntax_type, "yaml")
+        self.assertEqual(diag_ssl.failing_stage, "TASK [f5_ssl_profile : Deploy TLS 1.3 Client SSL Profile]")
+        self.assertIn("tls1_3: enabled", diag_ssl.ast_block)
+        self.assertEqual(diag_ssl.failing_line_offset, 5)
+        self.assertEqual(diag_ssl.exit_code, 1)
+        self.assertEqual(diag_ssl.rollback_playbook, "rollback-net-f5-cert-renew")
+        self.assertEqual(len(diag_ssl.rollback_dag), 3)
+        self.assertEqual(diag_ssl.rollback_dag[0]["name"], "Drain Active VIP Connections")
+        self.assertEqual(diag_ssl.rollback_dag[1]["action"], "bigip_profile_rollback")
+
+        # 2. Storage Exhaustion Failure
+        storage_log = "TASK [storage_mgmt : Resize PostgreSQL Tablespace LVM Volume] ***\nERROR: No space left on device"
+        diag_storage = engine.diagnose(storage_log, catalog_identifier="db-storage-expansion", exit_code=1)
+
+        self.assertIn("Filesystem Storage", diag_storage.fault_summary)
+        self.assertEqual(diag_storage.syntax_type, "yaml")
+        self.assertIn("vg: vg_data", diag_storage.ast_block)
+        self.assertEqual(diag_storage.failing_line_offset, 5)
+        self.assertEqual(len(diag_storage.rollback_dag), 3)
+        self.assertEqual(diag_storage.rollback_dag[0]["action"], "redlock_mutex_acquire")
+
+        # 3. Serialized dictionary representation
+        d = diag_ssl.to_dict()
+        self.assertEqual(d["exit_code"], 1)
+        self.assertEqual(d["syntax_type"], "yaml")
+        self.assertTrue(len(d["rollback_dag"]) == 3)
 
 
 if __name__ == "__main__":

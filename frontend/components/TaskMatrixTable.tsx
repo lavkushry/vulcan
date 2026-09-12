@@ -28,10 +28,12 @@ import {
   Container,
   Download,
   FileSpreadsheet,
-  RefreshCw
+  RefreshCw,
+  Zap
 } from 'lucide-react';
 import { STATUS_STYLE, FILTER_LABELS } from '@/lib/types';
 import { timeAgo } from '@/lib/util';
+import { useVirtualWindow } from '@/lib/useVirtualWindow';
 
 export interface TaskRecord {
   id: string;
@@ -113,9 +115,10 @@ export default function TaskMatrixTable({
   const [sortColumn, setSortColumn] = useState<keyof TaskRecord>('created_at');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
-  // Pagination
+  // Pagination & Virtualization
   const [pageSize, setPageSize] = useState<number>(25);
   const [currentPage, setCurrentPage] = useState<number>(1);
+  const [viewMode, setViewMode] = useState<'virtual' | 'paginated'>('virtual');
 
   // Multi-dimensional filtering
   const filteredTasks = useMemo(() => {
@@ -178,6 +181,21 @@ export default function TaskMatrixTable({
   }, [sortedTasks, currentPage, pageSize]);
 
   const totalPages = Math.ceil(sortedTasks.length / pageSize) || 1;
+
+  // Virtual Window Hook (O(1) constant DOM nodes for 500+ tasks)
+  const virtualWindow = useVirtualWindow({
+    itemCount: sortedTasks.length,
+    itemHeight: 52,
+    overscan: 6,
+    enabled: viewMode === 'virtual',
+  });
+
+  const displayedTasks = useMemo(() => {
+    if (viewMode === 'virtual') {
+      return virtualWindow.virtualItems.map(vi => sortedTasks[vi.index]).filter(Boolean);
+    }
+    return paginatedTasks;
+  }, [viewMode, virtualWindow.virtualItems, sortedTasks, paginatedTasks]);
 
   const handleSort = (col: keyof TaskRecord) => {
     if (sortColumn === col) {
@@ -424,9 +442,13 @@ export default function TaskMatrixTable({
       {/* ===================================================================== */}
       {/* FULL SORTABLE DATA TABLE                                              */}
       {/* ===================================================================== */}
-      <div className="flex-1 overflow-auto">
+      <div 
+        ref={virtualWindow.containerRef}
+        data-testid="task-matrix-scroll-container"
+        className="flex-1 overflow-auto max-h-[calc(100vh-320px)] relative"
+      >
         <table className="w-full text-left border-collapse font-sans text-xs">
-          <thead className="sticky top-0 z-10 bg-[#0C101A] border-b border-slate-800 text-[11px] font-mono text-slate-400 uppercase tracking-wider">
+          <thead className="sticky top-0 z-20 bg-[#0C101A] border-b border-slate-800 text-[11px] font-mono text-slate-400 uppercase tracking-wider shadow-sm">
             <tr>
               <th 
                 onClick={() => handleSort('correlation_id')}
@@ -509,7 +531,13 @@ export default function TaskMatrixTable({
           </thead>
 
           <tbody className="divide-y divide-slate-800/60">
-            {paginatedTasks.length === 0 ? (
+            {viewMode === 'virtual' && virtualWindow.paddingTop > 0 && (
+              <tr style={{ height: `${virtualWindow.paddingTop}px` }} aria-hidden="true">
+                <td colSpan={9} className="p-0 m-0 border-0 pointer-events-none" />
+              </tr>
+            )}
+
+            {displayedTasks.length === 0 ? (
               <tr>
                 <td colSpan={9} className="py-16 text-center text-slate-500">
                   <div className="flex flex-col items-center justify-center gap-2">
@@ -520,7 +548,7 @@ export default function TaskMatrixTable({
                 </td>
               </tr>
             ) : (
-              paginatedTasks.map(task => {
+              displayedTasks.map(task => {
                 const isPending = task.status === 'PENDING_APPROVAL';
                 const isRunning = task.status === 'RUNNING' || task.status === 'VERIFYING';
                 const isFailed = task.status === 'FAILED';
@@ -662,52 +690,96 @@ export default function TaskMatrixTable({
                 );
               })
             )}
+            {viewMode === 'virtual' && virtualWindow.paddingBottom > 0 && (
+              <tr style={{ height: `${virtualWindow.paddingBottom}px` }} aria-hidden="true">
+                <td colSpan={9} className="p-0 m-0 border-0 pointer-events-none" />
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
 
       {/* ===================================================================== */}
-      {/* PAGINATION FOOTER                                                     */}
+      {/* PAGINATION & VIRTUALIZATION FOOTER                                    */}
       {/* ===================================================================== */}
       <div className="p-3 px-4 border-t border-slate-800 bg-[#0A0E16] flex flex-wrap items-center justify-between gap-3 text-xs text-slate-400">
-        <div className="flex items-center gap-2">
-          <span>Rows per page:</span>
-          <select
-            value={pageSize}
-            onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
-            aria-label="Rows per page"
-            className="rounded border border-slate-700 bg-[#07090E] px-2 py-1 text-xs text-slate-300 focus:outline-none focus:border-cyan-500"
-          >
-            {[10, 25, 50, 100].map(size => (
-              <option key={size} value={size}>{size}</option>
-            ))}
-          </select>
-          <span className="ml-2 font-mono">
-            {sortedTasks.length > 0 ? (
-              `${(currentPage - 1) * pageSize + 1} - ${Math.min(currentPage * pageSize, sortedTasks.length)} of ${sortedTasks.length}`
-            ) : '0 of 0'}
-          </span>
+        <div className="flex items-center gap-3">
+          {/* Virtualization Mode Toggle */}
+          <div className="flex items-center gap-1 p-0.5 rounded-lg border border-slate-800 bg-[#07090E]">
+            <button
+              onClick={() => setViewMode('virtual')}
+              className={`px-2.5 py-1 rounded-md text-[11px] font-mono flex items-center gap-1.5 transition-colors ${
+                viewMode === 'virtual'
+                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-bold shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Zap className="w-3 h-3 text-cyan-400" />
+              <span>Virtualized O(1)</span>
+            </button>
+            <button
+              onClick={() => setViewMode('paginated')}
+              className={`px-2.5 py-1 rounded-md text-[11px] font-mono flex items-center gap-1.5 transition-colors ${
+                viewMode === 'paginated'
+                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-bold shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <span>Paginated</span>
+            </button>
+          </div>
+
+          {/* Telemetry Indicator */}
+          {viewMode === 'virtual' ? (
+            <div className="flex items-center gap-2 font-mono text-[11px] text-slate-400">
+              <span className="px-2 py-0.5 rounded bg-cyan-950/40 text-cyan-300 border border-cyan-500/30">
+                DOM Rows: <strong className="text-cyan-200">{displayedTasks.length}</strong> / Total: <strong className="text-slate-200">{sortedTasks.length}</strong>
+              </span>
+              <span className="text-[10px] text-emerald-400 font-semibold">60 FPS Window</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <span>Rows per page:</span>
+              <select
+                value={pageSize}
+                onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
+                aria-label="Rows per page"
+                className="rounded border border-slate-700 bg-[#07090E] px-2 py-1 text-xs text-slate-300 focus:outline-none focus:border-cyan-500"
+              >
+                {[10, 25, 50, 100].map(size => (
+                  <option key={size} value={size}>{size}</option>
+                ))}
+              </select>
+              <span className="ml-2 font-mono">
+                {sortedTasks.length > 0 ? (
+                  `${(currentPage - 1) * pageSize + 1} - ${Math.min(currentPage * pageSize, sortedTasks.length)} of ${sortedTasks.length}`
+                ) : '0 of 0'}
+              </span>
+            </div>
+          )}
         </div>
 
-        <div className="flex items-center gap-1.5">
-          <button
-            onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-            disabled={currentPage === 1}
-            className="px-3 py-1 rounded border border-slate-700 bg-[#07090E] hover:bg-slate-800 text-slate-300 disabled:opacity-40 transition-colors"
-          >
-            Previous
-          </button>
-          <span className="px-2 font-mono text-slate-300">
-            Page {currentPage} of {totalPages}
-          </span>
-          <button
-            onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-            disabled={currentPage === totalPages}
-            className="px-3 py-1 rounded border border-slate-700 bg-[#07090E] hover:bg-slate-800 text-slate-300 disabled:opacity-40 transition-colors"
-          >
-            Next
-          </button>
-        </div>
+        {viewMode === 'paginated' && (
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+              disabled={currentPage === 1}
+              className="px-3 py-1 rounded border border-slate-700 bg-[#07090E] hover:bg-slate-800 text-slate-300 disabled:opacity-40 transition-colors"
+            >
+              Previous
+            </button>
+            <span className="px-2 font-mono text-slate-300">
+              Page {currentPage} of {totalPages}
+            </span>
+            <button
+              onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+              disabled={currentPage === totalPages}
+              className="px-3 py-1 rounded border border-slate-700 bg-[#07090E] hover:bg-slate-800 text-slate-300 disabled:opacity-40 transition-colors"
+            >
+              Next
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
