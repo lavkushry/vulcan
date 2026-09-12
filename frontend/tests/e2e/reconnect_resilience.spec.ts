@@ -64,7 +64,7 @@ test.describe('Flow 2: WebSocket Reconnect Resilience', () => {
 
     // Assert initial stdout lines rendered in accessible buffer
     const textBuffer = page.locator('[data-testid="terminal-text-buffer"]');
-    await expect(textBuffer).toContainText('[PROJECT VULCAN CONTROL PLANE]', { timeout: 10000 });
+    await expect(textBuffer).toContainText('[PROJECT VULCAN RUNNER]', { timeout: 10000 });
 
     // 5. Simulate Mid-Flight Connection Drop
     // Close the underlying client WebSocket connection
@@ -86,7 +86,7 @@ test.describe('Flow 2: WebSocket Reconnect Resilience', () => {
 
     // 8. Assert Stream Integrity Post-Reconnect
     // Check that terminal buffer still contains original output and stream resumed cleanly
-    await expect(textBuffer).toContainText('[PROJECT VULCAN CONTROL PLANE]');
+    await expect(textBuffer).toContainText('[PROJECT VULCAN RUNNER]');
 
     // 9. Zero Console Errors
     expect(consoleErrors).toEqual([]);

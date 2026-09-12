@@ -5,9 +5,10 @@ import { AppShell } from '@/components/layout/AppShell';
 import {
   GitMerge, Calendar, Clock, Play, CheckCircle2, AlertTriangle,
   RotateCcw, ArrowRight, Shield, ToggleLeft, ToggleRight,
-  Search, RefreshCw, Cpu, Layers, Database, ChevronRight, Check
+  Search, RefreshCw, Cpu, Layers, Database, ChevronRight, Check, Bot
 } from 'lucide-react';
 import { getApiBaseUrl } from '@/lib/env';
+import { AgentControlCenter } from '@/components/AgentControlCenter';
 
 interface WorkflowStep {
   step_id: string;
@@ -50,7 +51,7 @@ interface CronSchedule {
 }
 
 function WorkflowsContent() {
-  const [activeTab, setActiveTab] = useState<'workflows' | 'schedules'>('workflows');
+  const [activeTab, setActiveTab] = useState<'agentos' | 'workflows' | 'schedules'>('agentos');
   const [workflows, setWorkflows] = useState<WorkflowDefinition[]>([]);
   const [schedules, setSchedules] = useState<CronSchedule[]>([]);
   const [selectedWfId, setSelectedWfId] = useState<string>('wf-zero-downtime-patching');
@@ -113,6 +114,17 @@ function WorkflowsContent() {
       <div className="px-6 py-3 border-b border-glass-border bg-glass-surface/40 flex items-center justify-between">
         <div className="flex items-center gap-6 text-xs font-mono">
           <button
+            onClick={() => setActiveTab('agentos')}
+            className={`flex items-center gap-2 pb-1 border-b-2 transition-all ${
+              activeTab === 'agentos'
+                ? 'border-cyan-400 text-cyan-300 font-bold'
+                : 'border-transparent text-slate-500 hover:text-slate-300'
+            }`}
+          >
+            <Bot size={16} className="text-cyan-400" />
+            <span>AgentOS Ultra Multi-Agent</span>
+          </button>
+          <button
             onClick={() => setActiveTab('workflows')}
             className={`flex items-center gap-2 pb-1 border-b-2 transition-all ${
               activeTab === 'workflows'
@@ -141,6 +153,13 @@ function WorkflowsContent() {
           <span>Redlock Mutex Active (Zero-Overlap Guarantee)</span>
         </div>
       </div>
+
+      {/* ──── TAB 0: AGENTOS ULTRA MULTI-AGENT WORKFLOWS ──── */}
+      {activeTab === 'agentos' && (
+        <div className="flex-1 overflow-hidden">
+          <AgentControlCenter />
+        </div>
+      )}
 
       {/* ──── TAB 1: MULTI-STEP WORKFLOWS (DAGs) ──── */}
       {activeTab === 'workflows' && (

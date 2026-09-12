@@ -34,6 +34,9 @@ from app.ports.repositories import IExternalResourceRepository
 logger = logging.getLogger("vulcan.postgres_external_resources")
 
 
+_DEFAULT_DB_URL = object()
+
+
 class PostgresExternalResourceRepository(IExternalResourceRepository):
     """
     Two-tier persistence adapter for External Resources (R1, R2):
@@ -42,12 +45,11 @@ class PostgresExternalResourceRepository(IExternalResourceRepository):
     - SHA-256 Merkle audit chain and immutable revision snapshots.
     """
 
-    def __init__(self, db_url: Optional[str] = None, seed_defaults: bool = False, sqlite_path: Optional[str] = None):
-        self.db_url = (
-            db_url
-            if db_url is not None
-            else os.getenv("POSTGRES_URL") or os.getenv("DATABASE_URL")
-        )
+    def __init__(self, db_url: Any = _DEFAULT_DB_URL, seed_defaults: bool = False, sqlite_path: Optional[str] = None):
+        if db_url is _DEFAULT_DB_URL:
+            self.db_url = os.getenv("POSTGRES_URL") or os.getenv("DATABASE_URL")
+        else:
+            self.db_url = db_url
         self.sqlite_path = sqlite_path
         self._lock = threading.RLock()
         self._resources: Dict[str, ExternalResource] = {}
