@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from typing import List, Type, Dict, Optional, Any
 import abc
+import os
 from app.agentos.agents.base import BaseAgent
 from app.agentos.context import WorkflowContext, WorkflowState
 from app.agentos.schemas import AgentRole, BaseAgentOutput, VerificationProbe, VerifierOutput
