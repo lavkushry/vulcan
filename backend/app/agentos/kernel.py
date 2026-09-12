@@ -449,14 +449,13 @@ class AgentOSKernel:
             # Atomically consume capability token BEFORE execution
             consumed_token = self.repository.consume_capability_token(token.token_id)
             if not consumed_token:
-                ctx.transition_to(
+                event = ctx.transition_to(
                     WorkflowState.EXECUTION_FAILED, 
                     actor="kernel", 
                     reason="Capability token consumption failed. Token already used or expired."
                 )
-                event = ctx.get_events()[-1]
                 self.repository.save_workflow(ctx)
-                self.repository.save_event(event)
+                self.repository.record_event(event)
                 return ctx
 
             # Run Executor with the original token (is_used=False in memory)

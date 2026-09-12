@@ -334,7 +334,7 @@ class PostgresAgentWorkflowRepository:
                         cur.execute(
                             """
                             INSERT INTO agent_workflows (
-                                workflow_id, requester_id, environment, state, original_request, version,
+                                workflow_id, correlation_id, requester_id, environment, current_state, version, original_request,
                                 normalized_intent, desired_state, risk_classification, assumptions,
                                 unresolved_questions, discovered_assets, provenance, automation_plan,
                                 generated_artifacts, required_resources, resolved_resources, secret_references,
@@ -342,7 +342,7 @@ class PostgresAgentWorkflowRepository:
                                 policy_decision, approval_records, execution_plan, execution_result,
                                 postcondition_verification, rollback_state, curation_state, eval_result
                             ) VALUES (
-                                %s, 'system', %s, 'RECEIVED', 'Capability Token Parent', 1,
+                                %s, %s, 'system', %s, 'RECEIVED', 1, 'Capability Token Parent',
                                 '{}', '{}', '{}', '[]',
                                 '[]', '[]', '[]', '{}',
                                 '[]', '[]', '{}', '{}',
@@ -351,7 +351,7 @@ class PostgresAgentWorkflowRepository:
                                 '{}', '{}', '{}', '{}'
                             ) ON CONFLICT (workflow_id) DO NOTHING;
                             """,
-                            (token.workflow_id, token.environment if token.environment in ("PROD", "STAGE", "DEV") else "PROD")
+                            (token.workflow_id, f"corr-{token.workflow_id}", token.environment if token.environment in ("PROD", "STAGE", "DEV") else "PROD")
                         )
                         cur.execute(
                             """
