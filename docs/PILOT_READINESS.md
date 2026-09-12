@@ -131,12 +131,11 @@ As of 2026-09-12, the system is deployed on an isolated OCI VM cluster and empir
 3. **Single-host assumptions:** Redis is single-node (Redlock semantics are real but not multi-datacenter); orphan reaper uses PID liveness (one PID namespace); execution fleet is decoupled via Redis Streams consumer groups with 75-runner capacity (BKND-18).
 4. **Floating-branch execution:** playbooks run from the deployed working tree, not a SHA-pinned checkout — a documented pilot exception.
 5. **Missing operational capabilities:** Prometheus metrics endpoint `/metrics` exists live on `:8000/metrics` (INFRA-22, empirically verified HTTP 200 OK, wired to `PostgresJobRepository`, returning both inventory gauges and RED rate/duration counters) but has no external scraping Prometheus daemon/alertmanager cluster deployed; structured JSON logging with correlation IDs is active (INFRA-24); automated dual SBOM generation and Trivy CVE scanning enforced in CI across repo and container images (INFRA-30); backup freshness is enforced in `/ready` (<26h).
-6. **Enterprise connectors are fail-closed mocks:** ServiceNow Gateway (unknown tickets rejected fail-closed, valid tickets simulated; live ServiceNow/CMDB hydration tracked in CHAT-14), CyberArk PAM (RAM-only mock lease provider; live CCP integration tracked in BKND-19).
-7. **Register truth:** 123/127 implemented (96.9%) — see [`docs/MASTER_OPPORTUNITY_REGISTER.md`](MASTER_OPPORTUNITY_REGISTER.md); all spot-audited rows verified. The 4 remaining frozen register items are explicitly tracked:
+6. **Enterprise connectors:** ServiceNow Gateway is a fail-closed mock (unknown tickets rejected fail-closed, valid tickets simulated; live enterprise ServiceNow/CMDB hydration tracked in CHAT-14); CyberArk PAM is implemented via `CyberArkPAMProvider` Central Credential Provider (CCP) REST adapter with mTLS client certificates, fail-closed handling, RAM-only ephemeral checkout, and deterministic memory zeroization (BKND-19 implemented).
+7. **Register truth:** 124/127 implemented (97.6%) — see [`docs/MASTER_OPPORTUNITY_REGISTER.md`](MASTER_OPPORTUNITY_REGISTER.md); all spot-audited rows verified. The 3 remaining frozen register items are explicitly tracked:
    - `CHAT-14` (ServiceNow CHG & CMDB Hydration — In Progress)
    - `CHAT-17` (Multi-Stage Injection Refusal with Classifier — In Progress)
    - `CHAT-26` (Human Feedback Reinforcement Loop — Planned)
-   - `BKND-19` (CyberArk PAM RAM-Only Secrets / Live CCP — In Progress)
 8. **Multi-Cluster Radar (UI-25) vs Physical Topology:** The Multi-Cluster Topology Radar UI is fully implemented and browser-verified in Playwright E2E; however, its cluster consensus backend telemetry (`/api/v1/clusters`) is currently powered by a deterministic cluster consensus simulation engine, NOT a physical multi-region deployment.
 
 ---

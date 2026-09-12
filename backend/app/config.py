@@ -57,7 +57,17 @@ class AppContainer:
         redis_nodes = self._detect_redis()
         self.redis_nodes = redis_nodes
         self.lock_manager = RedlockManager(redis_nodes=redis_nodes)
-        self.secret_provider = CyberArkPAMProvider(mock_mode=True)
+        pam_url = os.getenv("CYBERARK_CCP_URL")
+        pam_mock = os.getenv("CYBERARK_MOCK_MODE", "true" if not pam_url else "false").lower() in ("1", "true", "yes")
+        self.secret_provider = CyberArkPAMProvider(
+            pam_url=pam_url,
+            app_id=os.getenv("CYBERARK_APP_ID", "VULCAN_CONTROL_PLANE"),
+            safe=os.getenv("CYBERARK_SAFE", "PNC_AUTOMATION_KEYS"),
+            cert_path=os.getenv("CYBERARK_CERT_PATH"),
+            key_path=os.getenv("CYBERARK_KEY_PATH"),
+            ca_bundle=os.getenv("CYBERARK_CA_BUNDLE"),
+            mock_mode=pam_mock
+        )
         self.snow_gateway = ServiceNowGateway(mock_mode=True)
         s3_endpoint = os.getenv("S3_ENDPOINT_URL")
         s3_access = os.getenv("S3_ACCESS_KEY") or os.getenv("AWS_ACCESS_KEY_ID")

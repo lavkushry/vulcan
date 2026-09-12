@@ -55,3 +55,9 @@ class AIProviderQuotaExhaustedError(DomainError):
         self.retry_after_seconds = retry_after_seconds
         self.quota_id = quota_id
 
+
+class SecretResolutionError(DomainError):
+    """Raised when JIT credential checkout from CyberArk PAM fails or credentials cannot be resolved."""
+    pass
+
+
