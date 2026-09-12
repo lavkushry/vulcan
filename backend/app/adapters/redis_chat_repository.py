@@ -60,20 +60,20 @@ class RedisChatSessionRepository(IChatSessionRepository):
     # PostgreSQL Helper Methods
     # -------------------------------------------------------------------------
 
-    def _get_pg_conn(self):
+    def _get_pg_conn(self, autocommit: bool = True):
         if not self.db_url:
             return None
         try:
             import psycopg
-            return psycopg.connect(self.db_url, autocommit=True)
+            return psycopg.connect(self.db_url, autocommit=autocommit)
         except Exception as e:
-            logger.debug("PostgreSQL connection unavailable for chat repo: %s", e)
-            return None
+            logger.error("PostgreSQL connection failed for chat repo: %s", e)
+            raise RuntimeError(f"PostgreSQL connection failed for chat repository: {e}") from e
 
     def _pg_save_session(self, session: ChatSession) -> None:
-        conn = self._get_pg_conn()
-        if not conn:
+        if not self.db_url:
             return
+        conn = self._get_pg_conn(autocommit=False)
         try:
             with conn.cursor() as cur:
                 cur.execute(
@@ -94,59 +94,18 @@ class RedisChatSessionRepository(IChatSessionRepository):
                         session.updated_at
                     )
                 )
+            conn.commit()
         except Exception as e:
-            logger.warning("PostgreSQL save session failed: %s", e)
-        finally:
-            conn.close()
-
-    def _pg_save_turn(self, turn: ChatTurn) -> None:
-        conn = self._get_pg_conn()
-        if not conn:
-            return
-        try:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    INSERT INTO chat_turns (
-                        turn_id, session_id, turn_index, role, content,
-                        intent_state, catalog_identifier, parameters,
-                        token_usage, latency_ms, metadata, created_at
-                    ) VALUES (
-                        %s, %s, %s, %s, %s,
-                        %s, %s, %s::jsonb,
-                        %s, %s, %s::jsonb, %s
-                    )
-                    ON CONFLICT (turn_id) DO NOTHING;
-                    """,
-                    (
-                        turn.turn_id,
-                        turn.session_id,
-                        turn.turn_index,
-                        turn.role,
-                        turn.content,
-                        turn.intent_state,
-                        turn.catalog_identifier,
-                        json.dumps(turn.parameters),
-                        turn.token_usage,
-                        turn.latency_ms,
-                        json.dumps(turn.metadata),
-                        turn.created_at
-                    )
-                )
-                # Update session updated_at in PG
-                cur.execute(
-                    "UPDATE chat_sessions SET updated_at = %s WHERE session_id = %s;",
-                    (turn.created_at, turn.session_id)
-                )
-        except Exception as e:
-            logger.warning("PostgreSQL save turn failed: %s", e)
+            conn.rollback()
+            logger.error("PostgreSQL save session failed: %s", e)
+            raise RuntimeError(f"PostgreSQL save session failed: {e}") from e
         finally:
             conn.close()
 
     def _pg_load_session(self, session_id: str) -> Optional[ChatSession]:
-        conn = self._get_pg_conn()
-        if not conn:
+        if not self.db_url:
             return None
+        conn = self._get_pg_conn(autocommit=True)
         try:
             with conn.cursor() as cur:
                 cur.execute(
@@ -196,8 +155,8 @@ class RedisChatSessionRepository(IChatSessionRepository):
                     updated_at=row[5]
                 )
         except Exception as e:
-            logger.warning("PostgreSQL load session failed: %s", e)
-            return None
+            logger.error("PostgreSQL load session failed: %s", e)
+            raise RuntimeError(f"PostgreSQL load session failed: {e}") from e
         finally:
             conn.close()
 
@@ -223,7 +182,11 @@ class RedisChatSessionRepository(IChatSessionRepository):
             updated_at=datetime.now(timezone.utc)
         )
 
-        # 1. Memory store
+        # 1. PostgreSQL store (Primary store if configured - fails loudly if DB error)
+        if self.db_url:
+            self._pg_save_session(session)
+
+        # 2. Memory store
         with self._lock:
             self._memory_sessions[sid] = session
             if user_id not in self._memory_user_index:
@@ -231,7 +194,7 @@ class RedisChatSessionRepository(IChatSessionRepository):
             if sid not in self._memory_user_index[user_id]:
                 self._memory_user_index[user_id].insert(0, sid)
 
-        # 2. Redis store
+        # 3. Redis store
         if self.redis:
             try:
                 meta_json = json.dumps(session.to_dict(include_turns=False))
@@ -241,9 +204,6 @@ class RedisChatSessionRepository(IChatSessionRepository):
                 self.redis.expire(self._redis_user_key(user_id), self.ttl * 4)
             except Exception as e:
                 logger.warning("Redis create session failed: %s", e)
-
-        # 3. PostgreSQL store
-        self._pg_save_session(session)
 
         return session
 
@@ -275,75 +235,174 @@ class RedisChatSessionRepository(IChatSessionRepository):
                 logger.debug("Redis cache read failed, falling back: %s", e)
 
         # 2. Check PostgreSQL Persistent Layer
-        pg_session = self._pg_load_session(session_id)
-        if pg_session:
-            # Rehydrate into Redis
-            if self.redis:
-                try:
-                    self.redis.set(self._redis_meta_key(session_id), json.dumps(pg_session.to_dict(include_turns=False)), ex=self.ttl)
-                    if pg_session.turns:
-                        turn_payloads = [json.dumps(t.to_dict()) for t in pg_session.turns]
-                        self.redis.delete(self._redis_turns_key(session_id))
-                        self.redis.rpush(self._redis_turns_key(session_id), *turn_payloads)
-                        self.redis.expire(self._redis_turns_key(session_id), self.ttl)
-                except Exception as e:
-                    logger.debug("Redis backfill failed: %s", e)
-            return pg_session
+        if self.db_url:
+            pg_session = self._pg_load_session(session_id)
+            if pg_session:
+                # Rehydrate into Redis
+                if self.redis:
+                    try:
+                        self.redis.set(self._redis_meta_key(session_id), json.dumps(pg_session.to_dict(include_turns=False)), ex=self.ttl)
+                        if pg_session.turns:
+                            turn_payloads = [json.dumps(t.to_dict()) for t in pg_session.turns]
+                            self.redis.delete(self._redis_turns_key(session_id))
+                            self.redis.rpush(self._redis_turns_key(session_id), *turn_payloads)
+                            self.redis.expire(self._redis_turns_key(session_id), self.ttl)
+                    except Exception as e:
+                        logger.debug("Redis backfill failed: %s", e)
+                with self._lock:
+                    self._memory_sessions[session_id] = pg_session
+                return pg_session
+            return None
 
-        # 3. Check In-Memory Fallback
+        # 3. Check In-Memory Fallback (only when db_url is None)
         with self._lock:
             return self._memory_sessions.get(session_id)
 
     def append_turn(self, session_id: str, turn: ChatTurn) -> ChatTurn:
-        session = self.get_session(session_id)
-        if not session:
-            # Create on the fly if missing
-            session = self.create_session(user_id=getattr(turn, "metadata", {}).get("user_id", "operator"))
+        # 1. PostgreSQL Transaction (Primary source of truth if configured - atomic turn index & loud failure)
+        if self.db_url:
+            conn = self._get_pg_conn(autocommit=False)
+            try:
+                with conn.cursor() as cur:
+                    # Row-level lock on session to serialize turn addition
+                    cur.execute(
+                        "SELECT session_id, user_id FROM chat_sessions WHERE session_id = %s FOR UPDATE;",
+                        (session_id,)
+                    )
+                    row = cur.fetchone()
+                    if not row:
+                        # Auto-create session in PG if missing
+                        cur.execute(
+                            """
+                            INSERT INTO chat_sessions (session_id, user_id, title, metadata, created_at, updated_at)
+                            VALUES (%s, %s, %s, '{}'::jsonb, %s, %s);
+                            """,
+                            (
+                                session_id,
+                                getattr(turn, "metadata", {}).get("user_id", "operator"),
+                                "New Session",
+                                turn.created_at,
+                                turn.created_at
+                            )
+                        )
+                    # Derive turn_index atomically inside the locked transaction
+                    cur.execute(
+                        "SELECT COALESCE(MAX(turn_index), -1) + 1 FROM chat_turns WHERE session_id = %s;",
+                        (session_id,)
+                    )
+                    atomic_turn_index = cur.fetchone()[0]
 
-        # Fix turn index if necessary
-        if turn.turn_index != len(session.turns):
-            turn = ChatTurn(
-                turn_id=turn.turn_id,
-                session_id=session_id,
-                turn_index=len(session.turns),
-                role=turn.role,
-                content=turn.content,
-                intent_state=turn.intent_state,
-                catalog_identifier=turn.catalog_identifier,
-                parameters=turn.parameters,
-                token_usage=turn.token_usage,
-                latency_ms=turn.latency_ms,
-                metadata=turn.metadata,
-                created_at=turn.created_at
-            )
+                    # Create immutable turn instance with atomic index
+                    persisted_turn = ChatTurn(
+                        turn_id=turn.turn_id,
+                        session_id=session_id,
+                        turn_index=atomic_turn_index,
+                        role=turn.role,
+                        content=turn.content,
+                        intent_state=turn.intent_state,
+                        catalog_identifier=turn.catalog_identifier,
+                        parameters=turn.parameters,
+                        token_usage=turn.token_usage,
+                        latency_ms=turn.latency_ms,
+                        metadata=turn.metadata,
+                        created_at=turn.created_at
+                    )
 
-        session.add_turn(turn)
+                    # Insert the turn
+                    cur.execute(
+                        """
+                        INSERT INTO chat_turns (
+                            turn_id, session_id, turn_index, role, content,
+                            intent_state, catalog_identifier, parameters,
+                            token_usage, latency_ms, metadata, created_at
+                        ) VALUES (
+                            %s, %s, %s, %s, %s,
+                            %s, %s, %s::jsonb,
+                            %s, %s, %s::jsonb, %s
+                        );
+                        """,
+                        (
+                            persisted_turn.turn_id,
+                            session_id,
+                            persisted_turn.turn_index,
+                            persisted_turn.role,
+                            persisted_turn.content,
+                            persisted_turn.intent_state,
+                            persisted_turn.catalog_identifier,
+                            json.dumps(persisted_turn.parameters or {}),
+                            persisted_turn.token_usage,
+                            persisted_turn.latency_ms,
+                            json.dumps(persisted_turn.metadata or {}),
+                            persisted_turn.created_at
+                        )
+                    )
+                    # Update session updated_at
+                    cur.execute(
+                        "UPDATE chat_sessions SET updated_at = %s WHERE session_id = %s;",
+                        (persisted_turn.created_at, session_id)
+                    )
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                logger.error("PostgreSQL append_turn transaction failed: %s", e)
+                raise RuntimeError(f"PostgreSQL append_turn transaction failed: {e}") from e
+            finally:
+                conn.close()
+        else:
+            # In-memory storage fallback
+            with self._lock:
+                session = self._memory_sessions.get(session_id)
+                if not session:
+                    session = self.create_session(
+                        user_id=getattr(turn, "metadata", {}).get("user_id", "operator"),
+                        session_id=session_id
+                    )
+                persisted_turn = ChatTurn(
+                    turn_id=turn.turn_id,
+                    session_id=session_id,
+                    turn_index=len(session.turns),
+                    role=turn.role,
+                    content=turn.content,
+                    intent_state=turn.intent_state,
+                    catalog_identifier=turn.catalog_identifier,
+                    parameters=turn.parameters,
+                    token_usage=turn.token_usage,
+                    latency_ms=turn.latency_ms,
+                    metadata=turn.metadata,
+                    created_at=turn.created_at
+                )
 
-        # 1. Update in-memory
+        # 2. Update in-memory cache
         with self._lock:
-            self._memory_sessions[session_id] = session
+            session = self._memory_sessions.get(session_id)
+            if session:
+                session.add_turn(persisted_turn)
+                session.updated_at = persisted_turn.created_at
 
-        # 2. Update Redis
+        # 3. Update Redis cache ONLY after PG commits
         if self.redis:
             try:
-                turn_json = json.dumps(turn.to_dict())
+                turn_json = json.dumps(persisted_turn.to_dict())
                 self.redis.rpush(self._redis_turns_key(session_id), turn_json)
                 self.redis.expire(self._redis_turns_key(session_id), self.ttl)
 
                 # Update session metadata in Redis
-                meta_json = json.dumps(session.to_dict(include_turns=False))
-                self.redis.set(self._redis_meta_key(session_id), meta_json, ex=self.ttl)
+                meta_raw = self.redis.get(self._redis_meta_key(session_id))
+                user_id = getattr(persisted_turn, "metadata", {}).get("user_id", "operator")
+                if meta_raw:
+                    meta_dict = json.loads(meta_raw)
+                    meta_dict["updated_at"] = persisted_turn.created_at.isoformat()
+                    meta_dict["turn_count"] = meta_dict.get("turn_count", 0) + 1
+                    user_id = meta_dict.get("user_id", user_id)
+                    self.redis.set(self._redis_meta_key(session_id), json.dumps(meta_dict), ex=self.ttl)
 
                 # Update user index score
-                score = session.updated_at.timestamp()
-                self.redis.zadd(self._redis_user_key(session.user_id), {session_id: score})
+                score = persisted_turn.created_at.timestamp()
+                self.redis.zadd(self._redis_user_key(user_id), {session_id: score})
             except Exception as e:
-                logger.warning("Redis append turn failed: %s", e)
+                logger.warning("Redis append turn cache update failed: %s", e)
 
-        # 3. Update PostgreSQL
-        self._pg_save_turn(turn)
-
-        return turn
+        return persisted_turn
 
     def get_turns(self, session_id: str, limit: int = 50) -> List[ChatTurn]:
         session = self.get_session(session_id)
@@ -364,7 +423,7 @@ class RedisChatSessionRepository(IChatSessionRepository):
 
         # 2. Try PostgreSQL if Redis returned nothing
         if not session_ids and self.db_url:
-            conn = self._get_pg_conn()
+            conn = self._get_pg_conn(autocommit=True)
             if conn:
                 try:
                     with conn.cursor() as cur:
@@ -374,12 +433,13 @@ class RedisChatSessionRepository(IChatSessionRepository):
                         )
                         session_ids = [r[0] for r in cur.fetchall()]
                 except Exception as e:
-                    logger.warning("PostgreSQL list sessions failed: %s", e)
+                    logger.error("PostgreSQL list sessions failed: %s", e)
+                    raise RuntimeError(f"PostgreSQL list sessions failed: {e}") from e
                 finally:
                     conn.close()
 
-        # 3. In-memory fallback
-        if not session_ids:
+        # 3. In-memory fallback (only if db_url is None)
+        if not session_ids and not self.db_url:
             with self._lock:
                 session_ids = self._memory_user_index.get(user_id, [])[:limit]
 
@@ -394,7 +454,21 @@ class RedisChatSessionRepository(IChatSessionRepository):
         session = self.get_session(session_id)
         user_id = session.user_id if session else None
 
-        # 1. Memory
+        # 1. PostgreSQL (fails loudly if DB error occurs)
+        if self.db_url:
+            conn = self._get_pg_conn(autocommit=False)
+            try:
+                with conn.cursor() as cur:
+                    cur.execute("DELETE FROM chat_sessions WHERE session_id = %s;", (session_id,))
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                logger.error("PostgreSQL delete session failed: %s", e)
+                raise RuntimeError(f"PostgreSQL delete session failed: {e}") from e
+            finally:
+                conn.close()
+
+        # 2. Memory
         with self._lock:
             if session_id in self._memory_sessions:
                 del self._memory_sessions[session_id]
@@ -403,7 +477,7 @@ class RedisChatSessionRepository(IChatSessionRepository):
                     s for s in self._memory_user_index[user_id] if s != session_id
                 ]
 
-        # 2. Redis
+        # 3. Redis
         if self.redis:
             try:
                 self.redis.delete(self._redis_meta_key(session_id))
@@ -412,16 +486,5 @@ class RedisChatSessionRepository(IChatSessionRepository):
                     self.redis.zrem(self._redis_user_key(user_id), session_id)
             except Exception as e:
                 logger.warning("Redis delete session failed: %s", e)
-
-        # 3. PostgreSQL
-        conn = self._get_pg_conn()
-        if conn:
-            try:
-                with conn.cursor() as cur:
-                    cur.execute("DELETE FROM chat_sessions WHERE session_id = %s;", (session_id,))
-            except Exception as e:
-                logger.warning("PostgreSQL delete session failed: %s", e)
-            finally:
-                conn.close()
 
         return True

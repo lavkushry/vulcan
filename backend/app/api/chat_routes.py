@@ -32,12 +32,20 @@ class AppendTurnRequest(BaseModel):
     metadata: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Additional client telemetry")
 
 
-def _get_current_user(request: Request, fallback: str = "eng.alice") -> str:
-    """Extracts authenticated username from request state or fallback."""
+def _get_current_user(request: Request) -> str:
+    """Extracts authenticated username strictly from request state. Fails closed with 401 if missing."""
     user = getattr(request.state, "user_id", None) or getattr(request.state, "user", None)
-    if user and isinstance(user, str):
-        return user
-    return fallback
+    if user and isinstance(user, str) and user.strip():
+        return user.strip()
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Authentication required: No valid user identity found in request context."
+    )
+
+
+def _is_admin(user_id: str) -> bool:
+    """Checks if the user has administrative privileges."""
+    return user_id in {"system.admin", "admin.dave", "local.dev"}
 
 
 @chat_router.get("/sessions")
@@ -47,20 +55,35 @@ def list_sessions(
     limit: int = Query(20, ge=1, le=100)
 ):
     """Lists recent multi-turn chat sessions for an operator."""
-    current_user = user_id or _get_current_user(request)
+    current_user = _get_current_user(request)
+    target_user = user_id or current_user
+    if target_user != current_user and not _is_admin(current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Forbidden: Cannot list sessions for another user '{target_user}'"
+        )
     repo = container.chat_session_repo
-    sessions = repo.list_sessions_for_user(current_user, limit=limit)
+    sessions = repo.list_sessions_for_user(target_user, limit=limit)
     return [s.to_dict(include_turns=False) for s in sessions]
 
 
 @chat_router.post("/sessions")
 def create_session(request: Request, req: CreateSessionRequest):
     """Creates a new distributed conversational session (UUIDv4)."""
-    user_id = req.user_id or _get_current_user(request)
+    current_user = _get_current_user(request)
+    session_user = current_user
+    if req.user_id and req.user_id != current_user:
+        if not _is_admin(current_user):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Forbidden: Cannot create session on behalf of another user '{req.user_id}'"
+            )
+        session_user = req.user_id
+
     repo = container.chat_session_repo
     session_id = str(uuid.uuid4())
     session = repo.create_session(
-        user_id=user_id,
+        user_id=session_user,
         session_id=session_id,
         title=req.title,
         metadata=req.metadata
@@ -72,12 +95,18 @@ def create_session(request: Request, req: CreateSessionRequest):
 
 
 @chat_router.get("/sessions/{session_id}")
-def get_session(session_id: str):
+def get_session(session_id: str, request: Request):
     """Retrieves an existing chat session and all historical turns (<10ms rehydration)."""
+    current_user = _get_current_user(request)
     repo = container.chat_session_repo
     session = repo.get_session(session_id)
     if not session:
-        raise HTTPException(status_code=404, detail=f"Chat session '{session_id}' not found.")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Chat session '{session_id}' not found.")
+    if session.user_id != current_user and not _is_admin(current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: You do not own this chat session"
+        )
     return session.to_dict(include_turns=True)
 
 
@@ -87,12 +116,21 @@ def append_turn(session_id: str, req: AppendTurnRequest, request: Request):
     Appends an operator turn to a session, invokes IntentResolver,
     records assistant response with tokenomics, and persists to distributed store.
     """
+    current_user = _get_current_user(request)
     repo = container.chat_session_repo
     session = repo.get_session(session_id)
-    user_id = session.user_id if session else _get_current_user(request)
 
     if not session:
-        session = repo.create_session(user_id=user_id, session_id=session_id)
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Chat session '{session_id}' not found."
+        )
+
+    if session.user_id != current_user and not _is_admin(current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: You do not own this chat session"
+        )
 
     turn_start = time.perf_counter()
 
@@ -103,7 +141,7 @@ def append_turn(session_id: str, req: AppendTurnRequest, request: Request):
         turn_index=len(session.turns),
         role="user",
         content=req.content,
-        metadata={"ambient_params": req.ambient_params or {}, **(req.metadata or {})}
+        metadata={"user_id": current_user, "ambient_params": req.ambient_params or {}, **(req.metadata or {})}
     )
     repo.append_turn(session_id, user_turn)
 
@@ -159,8 +197,18 @@ def append_turn(session_id: str, req: AppendTurnRequest, request: Request):
 
 
 @chat_router.delete("/sessions/{session_id}")
-def delete_session(session_id: str):
+def delete_session(session_id: str, request: Request):
     """Deletes a chat session and historical turns."""
+    current_user = _get_current_user(request)
     repo = container.chat_session_repo
+    session = repo.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Chat session '{session_id}' not found.")
+    if session.user_id != current_user and not _is_admin(current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: You do not own this chat session"
+        )
     deleted = repo.delete_session(session_id)
     return {"status": "SUCCESS", "session_id": session_id, "deleted": deleted}
+

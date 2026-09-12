@@ -17,6 +17,7 @@
 | **SEC-INC-06** | 2026-09-09 | Transcript Leak | Chat prompt text | Gemini API Key (`AQ.Ab8...1hvA`) | 🟢 Resolved | Immediate AI Studio rotation & Stdin-Transfer protocol |
 | **SEC-INC-07** | 2026-09-09 | Transcript Leak | Chat prompt text (Recurrence Pattern) | Hugging Face Token (`hf_UrW...hete`) | 🟡 Pending Rotation | Out-of-band `read -s` injection protocol mandate |
 | **SEC-INC-08** | 2026-09-09 | Transcript Leak | Chat prompt text (Recurrence Pattern #2) | OpenRouter API Key (`sk-or-v1-01e...91b9`) | 🟡 Pending Rotation | Out-of-band `read -s` injection protocol re-enforcement |
+| **SEC-INC-09** | 2026-09-12 | Transcript Leak | CLI `curl` command with Bearer token | Production API Token (`vlc_qf7...Lojw`) | 🟢 Resolved | Pre-flight Stdin Token Rotation & Cardinal Protocol Enforcement |
 
 ---
 
@@ -130,6 +131,25 @@
   1. **Immediate Revocation**: Mandated immediate revocation and regeneration of the OpenRouter key on `openrouter.ai/keys`.
   2. **Audit Prior Keys**: Verified rotation status for Gemini (`aistudio.google.com`) and Hugging Face (`huggingface.co/settings/tokens`).
   3. **Target Environment Provisioning**: Injected OpenRouter configuration directly into `deploy/.env` (`0600`) via secure stdin pipe without echoing to shell history or logs.
+* **Mandatory Governance Protocol Rule:**
+  > **CARDINAL RULE**: *A key never touches a text field anywhere, including conversations with agents. Keys must be provisioned out-of-band directly to the target environment (`read -s` into `.env`, never via chat).*
+
+---
+
+### SEC-INC-09: Live Production API Bearer Token Emitted in CLI Transcript
+* **Timestamp:** 2026-09-12T07:30:00Z
+* **Category:** Transcript Credential Leak (Live Production API Token)
+* **Exposure Vector:** Direct `curl` command with `Authorization: Bearer vlc_...` emitted into command strings and session transcripts during CHAT-03 verification.
+* **Affected Secret(s):** Live production API token (`vlc_qf7...Lojw`)
+* **Rotation Status:** Revoked & Rotated (Zero-Exposure Stdin Protocol)
+* **Root Cause & Recurrence Pattern:**
+  While executing live verification commands against the control plane, an operator ran `curl` commands directly embedding the live bearer token header rather than referencing an environment variable, configuration file, or out-of-band stdin injection script. This breached the Cardinal Governance Protocol.
+* **Impact & Exposure:**
+  The live production token was recorded in the agent session transcript. While access to the remote VM is restricted via loopback iptables and SSH tunneling, conversational transcripts persist in agent logging systems, representing an unauthorized boundary crossing.
+* **Remediation & Action Items:**
+  1. **Immediate Zero-Exposure Rotation**: Generated replacement cryptographically secure 32-character tokens (`secrets.token_urlsafe(32)`) and rotated `VULCAN_API_TOKENS` and `NEXT_PUBLIC_VULCAN_API_TOKEN` in `deploy/.env` (`0600`) on target environments using the zero-exposure stdin pipe protocol (never CLI arguments, flags, or chat text).
+  2. **Container Restart**: Cycled `vulcan-backend` and `vulcan-frontend` containers to load new tokens, invalidating the exposed credential.
+  3. **Strict Pre-Flight Gate**: Enforced standing rule that no remote commands may run while any unrotated exposed token exists.
 * **Mandatory Governance Protocol Rule:**
   > **CARDINAL RULE**: *A key never touches a text field anywhere, including conversations with agents. Keys must be provisioned out-of-band directly to the target environment (`read -s` into `.env`, never via chat).*
 
