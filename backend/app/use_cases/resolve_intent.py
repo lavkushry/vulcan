@@ -391,33 +391,52 @@ class IntentResolver:
         extracted: Dict[str, Any] = dict(ambient_params or {})
         ticket_hydration_data: Optional[Dict[str, Any]] = None
 
-        # Multi-Platform Change Ticket Extraction & Provenance Validation (CHAT-16)
+        # Multi-Platform Change Ticket Extraction & Provenance Validation (CHAT-14 / CHAT-16)
         # Supports ServiceNow (CHG, INC, RITM) and BMC Remedy (CRQ) formats
         chg_match = re.search(r"\b((?:CHG|CRQ|INC|RITM)(?:-[A-Za-z0-9_-]+|\d{3,10}))\b", prompt, re.I)
         if chg_match:
             chg_num = chg_match.group(1).upper()
             extracted["servicenow_chg"] = chg_num
             if self.servicenow_gateway:
-                ticket_info = self.servicenow_gateway.validate_chg(chg_num)
-                is_valid = ticket_info.get("is_valid", False) or ticket_info.get("valid", False)
-                # Fail-closed: check validity, state, and maintenance window
-                in_window = self.servicenow_gateway.is_within_maintenance_window(chg_num, datetime.now(timezone.utc))
-                if not is_valid or ticket_info.get("state") in ("Invalid", "Cancelled") or not in_window:
-                    return IntentResolutionResult(
-                        status="REFUSED",
-                        catalog_item=best_item or (ranked[0][0] if ranked else None),
-                        refusal_reason=f"Change ticket '{chg_num}' is invalid, unapproved, outside maintenance window, or unknown. Governance check failed.",
-                        tokens_used=65,
-                        top_candidates=top_candidates
-                    )
-                ticket_hydration_data = ticket_info
-                # Hydrate Configuration Item (CI) if available
-                ci_val = ticket_info.get("ci")
-                if ci_val:
-                    if "hostname" not in extracted:
-                        extracted["hostname"] = ci_val
-                    if "target_host" not in extracted:
-                        extracted["target_host"] = ci_val
+                if hasattr(self.servicenow_gateway, "hydrate_ticket_and_cmdb"):
+                    hydration = self.servicenow_gateway.hydrate_ticket_and_cmdb(chg_num)
+                    is_valid = hydration.get("is_valid", False)
+                    in_window = hydration.get("in_maintenance_window", False)
+                    state = hydration.get("state")
+                    if not is_valid or state in ("Invalid", "Cancelled") or not in_window:
+                        return IntentResolutionResult(
+                            status="REFUSED",
+                            catalog_item=best_item or (ranked[0][0] if ranked else None),
+                            refusal_reason=f"Change ticket '{chg_num}' is invalid, unapproved, outside maintenance window, or unknown. Governance check failed.",
+                            tokens_used=65,
+                            top_candidates=top_candidates
+                        )
+                    ticket_hydration_data = hydration
+                    # Hydrate parameters from CMDB & ticket
+                    for k, v in hydration.get("parameters_hydrated", {}).items():
+                        if v and k not in extracted:
+                            extracted[k] = v
+                else:
+                    ticket_info = self.servicenow_gateway.validate_chg(chg_num)
+                    is_valid = ticket_info.get("is_valid", False) or ticket_info.get("valid", False)
+                    # Fail-closed: check validity, state, and maintenance window
+                    in_window = self.servicenow_gateway.is_within_maintenance_window(chg_num, datetime.now(timezone.utc))
+                    if not is_valid or ticket_info.get("state") in ("Invalid", "Cancelled") or not in_window:
+                        return IntentResolutionResult(
+                            status="REFUSED",
+                            catalog_item=best_item or (ranked[0][0] if ranked else None),
+                            refusal_reason=f"Change ticket '{chg_num}' is invalid, unapproved, outside maintenance window, or unknown. Governance check failed.",
+                            tokens_used=65,
+                            top_candidates=top_candidates
+                        )
+                    ticket_hydration_data = ticket_info
+                    # Hydrate Configuration Item (CI) if available
+                    ci_val = ticket_info.get("ci")
+                    if ci_val:
+                        if "hostname" not in extracted:
+                            extracted["hostname"] = ci_val
+                        if "target_host" not in extracted:
+                            extracted["target_host"] = ci_val
 
         # 2b. Semantic Ambivalence Detection & Disambiguation Gate (CHAT-08)
         if not best_item and len(ranked) >= 2:

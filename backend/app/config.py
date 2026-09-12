@@ -68,7 +68,18 @@ class AppContainer:
             ca_bundle=os.getenv("CYBERARK_CA_BUNDLE"),
             mock_mode=pam_mock
         )
-        self.snow_gateway = ServiceNowGateway(mock_mode=True)
+        snow_instance = os.getenv("SERVICENOW_INSTANCE_URL")
+        snow_user = os.getenv("SERVICENOW_USERNAME")
+        snow_pass = os.getenv("SERVICENOW_PASSWORD")
+        snow_token = os.getenv("SERVICENOW_AUTH_TOKEN")
+        snow_mock = os.getenv("SERVICENOW_MOCK_MODE", "true").lower() in ("1", "true", "yes") or not snow_instance
+        self.snow_gateway = ServiceNowGateway(
+            instance_url=snow_instance,
+            username=snow_user,
+            password=snow_pass,
+            auth_token=snow_token,
+            mock_mode=snow_mock
+        )
         s3_endpoint = os.getenv("S3_ENDPOINT_URL")
         s3_access = os.getenv("S3_ACCESS_KEY") or os.getenv("AWS_ACCESS_KEY_ID")
         s3_secret = os.getenv("S3_SECRET_KEY") or os.getenv("AWS_SECRET_ACCESS_KEY")

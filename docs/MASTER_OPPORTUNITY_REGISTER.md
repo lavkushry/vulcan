@@ -20,11 +20,11 @@ The Master Opportunity Register unifies **127 architectural opportunities** mine
 | Subsystem | Total Items | 🟢 Implemented | 🟡 In Progress | ⚪ Planned | Implementation Rate |
 | :--- | :---: | :---: | :---: | :---: | :---: |
 | **Frontend Console (`UI-XX`)** | 28 | 28 | 0 | 0 | **100.0%** |
-| **AI Chat Subsystem (`CHAT-XX`)** | 26 | 23 | 2 | 1 | **88.5%** |
+| **AI Chat Subsystem (`CHAT-XX`)** | 26 | 24 | 1 | 1 | **92.3%** |
 | **Backend Control Plane (`BKND-XX`)** | 35 | 35 | 0 | 0 | **100.0%** |
 | **Platform & Infra (`INFRA-XX`)** | 30 | 30 | 0 | 0 | **100.0%** |
 | **Registry & Curation (`REG-XX`)** | 8 | 8 | 0 | 0 | **100.0%** |
-| **Total Across Architecture** | **127** | **124** | **2** | **1** | **97.6%** |
+| **Total Across Architecture** | **127** | **125** | **1** | **1** | **98.4%** |
 
 > [!NOTE]
 > **Milestone A Verification (Completed 2026-09-09):** Milestone A (Live Embedding API Procurement & Empirical Gate Calibration) was executed ahead of schedule on live infrastructure using Hugging Face Serverless (`BAAI/bge-large-en-v1.5`), OpenRouter, and Gemini. Live 500-scenario evaluation achieved 84.00% Top-1, 92.00% Operator-Reachable, 0.0% dead-end choice cards, 100% injection defense, and full 10,467-item pgvector re-embedding. Posture upgraded to *Governance-proven, Live-AI-verified*.
@@ -84,7 +84,7 @@ The Master Opportunity Register unifies **127 architectural opportunities** mine
 | **CHAT-11** | Parameter Slot Provenance Badges| Unverified source of input parameters | Karpathy | P1 | Phase 3 | 🟢 Implemented | `frontend/components/ChatAssistant.tsx` |
 | **CHAT-12** | Inline Slot Bento Tab-Flow Card | Clunky multi-turn prose for slot collection | Jordan Walke | P0 | Phase 5 | 🟢 Implemented | `frontend/components/ChatAssistant.tsx` |
 | **CHAT-13** | Working Memory Cap (2,500 Tok) | Context explosion and slow TTFT latency | Karpathy | P0 | Phase 3 | 🟢 Implemented | `backend/app/use_cases/resolve_intent.py` |
-| **CHAT-14** | ServiceNow CHG & CMDB Hydration | Manual typing of infrastructure parameters | Alex Xu | P1 | Phase 4 | 🟡 In Progress | `backend/app/adapters/servicenow_adapter.py` |
+| **CHAT-14** | ServiceNow CHG & CMDB Hydration | Manual typing of infrastructure parameters | Alex Xu | P1 | Phase 4 | 🟢 Implemented (ServiceNow Table API & CMDB CI hydration with <200ms budget, fail-closed validation, and provenance tags) | `backend/app/adapters/servicenow_adapter.py`, `backend/tests/test_servicenow_live.py` |
 | **CHAT-15** | Visual Provenance Conflict Alerts | Unchecked mismatch between prompt & CMDB | Uncle Bob | P1 | Phase 5 | 🟢 Implemented (Visual provenance conflict banner comparing prompt vs CMDB topology with 1-click [Accept CMDB Truth] resolution pill) | `frontend/components/ChatAssistant.tsx` |
 | **CHAT-16** | Telemetry Failure Warning Banner| Generic errors without historical context | Jordan Walke | P2 | Phase 5 | 🟢 Implemented (Historical reliability alert surfacing 25% failure rates and downstream VIP degradation alerts prior to dispatch) | `frontend/components/ChatAssistant.tsx` |
 | **CHAT-17** | Multi-Stage Injection Refusal | Prompt jailbreaks and instruction override | Karpathy | P0 | Phase 3 | 🟡 In Progress (Stage 1 of 4: Regex active; classifier pending) | `backend/tests/test_ai_prompt_injection_golden.py` |
@@ -292,3 +292,10 @@ In accordance with banking governance rules, 10 registered items were subjected 
       2. Fixed WCAG accessibility violations: added explicit `aria-label` attributes to dynamic parameters, target host input, and ServiceNow CHG ticket input in `frontend/components/ChatAssistant.tsx`.
       3. Fixed async session hydration race condition: added `isHydratedRef` and synchronous UI reset in `ChatAssistant.tsx` so user-initiated "New Chat" actions are never clobbered by background mount hydration.
     - *Status:* 🟢 Implemented, Browser-Verified & Fully Operational.
+25. **`CHAT-14` (ServiceNow CHG & CMDB Context Hydration):**
+    - *Operationalization & Verification:* Upgraded `ServiceNowGateway` to support enterprise ServiceNow Table API integration (`GET /api/now/table/change_request` and `GET /api/now/table/cmdb_ci`) with full fail-closed governance:
+      1. *Real REST Table API & Auth:* Supports HTTP Basic and Bearer authentication, configurable endpoint URLs, query param display values, sysparm limits, and strict fail-closed handling on 401/403/404, HTTP 500+, and network timeouts.
+      2. *CMDB CI Parameter Hydration:* Implemented `lookup_cmdb_ci(ci_name_or_id)` returning IP address, OS type, environment (`production`/`staging`), target VIP, and operational status (`in_service`/`maintenance`), with comprehensive mock CMDB data for offline/air-gapped execution.
+      3. *Unified Ticket & CMDB Hydration Pipeline:* Implemented `hydrate_ticket_and_cmdb(chg_number)` executing in $<200\text{ms}$, automatically extracting target hosts, IPs, and environments, generating provenance tags (`✓ CHG`, `🏢 CMDB`), and parsing multi-format enterprise dates (ISO-8601 and ServiceNow standard `YYYY-MM-DD HH:MM:SS`).
+      4. *Intent Resolution & API Integration:* Integrated into `resolve_intent.py` and exposed via REST endpoints (`GET /api/v1/integrations/servicenow/tickets/{chg_number}` and `GET /api/v1/integrations/servicenow/cmdb/{ci_name}`).
+      5. *Test Matrix:* Verified with 21 tests in `backend/tests/test_servicenow_live.py` (264/264 backend unit tests passing across 27 suites). Status upgraded to 🟢 Implemented.

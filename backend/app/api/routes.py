@@ -158,6 +158,30 @@ def update_integration_config(key: str, payload: Dict[str, Any]):
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@router.get("/integrations/servicenow/tickets/{chg_number}")
+def get_servicenow_ticket(chg_number: str):
+    """
+    CHAT-14: Fetch and validate ServiceNow Change Request (CHG) and maintenance window.
+    """
+    if not container.snow_gateway:
+        raise HTTPException(status_code=503, detail="ServiceNow gateway not configured.")
+    return container.snow_gateway.hydrate_ticket_and_cmdb(chg_number)
+
+
+@router.get("/integrations/servicenow/cmdb/{ci_name}")
+def get_servicenow_cmdb_ci(ci_name: str):
+    """
+    CHAT-14: Query Configuration Item (CI) details from ServiceNow CMDB.
+    """
+    if not container.snow_gateway:
+        raise HTTPException(status_code=503, detail="ServiceNow gateway not configured.")
+    ci_data = container.snow_gateway.lookup_cmdb_ci(ci_name)
+    if not ci_data:
+        raise HTTPException(status_code=404, detail=f"Configuration Item [{ci_name}] not found in CMDB.")
+    return ci_data
+
+
+
 # =====================================================================
 # WORKFLOWS & CRON SCHEDULES (DAG Pipelines & Periodic Jobs)
 # =====================================================================
@@ -713,7 +737,8 @@ def resolve_intent(req: ResolveIntentRequest):
             {"identifier": c.identifier, "name": c.name}
             for c in container.catalog[:3]
         ] if status_str == "REJECTED" or not cat_item else [],
-        "servicenow_chg": "CHG-98412" if cat_item and cat_item.requires_chg else None,
+        "servicenow_chg": result.extracted_parameters.get("servicenow_chg") or ("CHG-98412" if cat_item and cat_item.requires_chg else None),
+        "ticket_hydration": result.ticket_hydration,
     }
 
 
@@ -824,7 +849,8 @@ async def stream_intent_resolution(
                 {"identifier": c.identifier, "name": c.name}
                 for c in container.catalog[:3]
             ] if status_str == "REJECTED" or not cat_item else [],
-            "servicenow_chg": "CHG-98412" if cat_item and cat_item.requires_chg else None,
+            "servicenow_chg": result.extracted_parameters.get("servicenow_chg") or ("CHG-98412" if cat_item and cat_item.requires_chg else None),
+            "ticket_hydration": result.ticket_hydration,
         }
 
         # Phase 4: Resolution

@@ -153,6 +153,9 @@ class CyberArkPAMProvider(ISecretProvider):
         Deterministic memory zeroization and lease revocation.
         Overwrites in-memory secrets and purges lease from active registry.
         """
+        self._revoke_internal(lease, log=True)
+
+    def _revoke_internal(self, lease: EphemeralSecretLease, log: bool = True) -> None:
         lease_id = lease.lease_id
 
         # 1. Zero out and clear secrets dictionary in-place
@@ -171,7 +174,7 @@ class CyberArkPAMProvider(ISecretProvider):
 
         # 3. Record in revoked list
         self.revoked_leases.append(lease_id)
-        if not sys.is_finalizing():
+        if log:
             try:
                 logger.info("Revoked and zeroized ephemeral secret lease [%s]", lease_id)
             except Exception:
@@ -187,16 +190,11 @@ class CyberArkPAMProvider(ISecretProvider):
             self.revoke_ephemeral_secret(lease)
 
     def emergency_wipe(self) -> int:
-        """Emergency process-exit hook: scrubs all active leases from RAM."""
+        """Emergency process-exit hook: scrubs all active leases from RAM silently."""
         count = len(self.active_leases)
         if count > 0:
-            if not sys.is_finalizing():
-                try:
-                    logger.warning("Emergency RAM scrubber triggered. Wiping %d active CyberArk leases from memory.", count)
-                except Exception:
-                    pass
             for lease in list(self.active_leases.values()):
-                self.revoke_ephemeral_secret(lease)
+                self._revoke_internal(lease, log=False)
             self.active_leases.clear()
         return count
 

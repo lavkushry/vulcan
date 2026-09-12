@@ -3,7 +3,7 @@ Project Vulcan: Domain Ports (Dependency Inversion Interfaces)
 Pure abstract base classes defining outer boundaries.
 """
 import abc
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, AsyncIterator, Callable, Dict, List, Optional
 from pydantic import BaseModel, Field
 from app.domain.entities import (
@@ -91,6 +91,58 @@ class IServiceNowGateway(abc.ABC):
     def update_work_notes(self, chg_number: str, notes: str, new_state: Optional[str] = None) -> None:
         """Synchronize execution status and work notes bi-directionally to ServiceNow."""
         pass
+
+    def lookup_cmdb_ci(self, ci_name_or_id: str) -> Optional[Dict[str, Any]]:
+        """Fetch Configuration Item (CI) details from ServiceNow CMDB."""
+        return None
+
+    def hydrate_ticket_and_cmdb(self, chg_number: str) -> Dict[str, Any]:
+        """
+        Unified fetch: validates change ticket and enriches with CMDB CI attributes (CHAT-14).
+        Default implementation wraps validate_chg and lookup_cmdb_ci.
+        """
+        ticket = self.validate_chg(chg_number)
+        is_valid = ticket.get("is_valid", False)
+        ci_val = ticket.get("ci")
+        cmdb_data = self.lookup_cmdb_ci(ci_val) if ci_val else None
+        now = datetime.now(timezone.utc)
+        in_window = self.is_within_maintenance_window(chg_number, now) if is_valid else False
+
+        params: Dict[str, Any] = {"servicenow_chg": chg_number}
+        provenance: Dict[str, str] = {"servicenow_chg": "✓ CHG"}
+        if ci_val:
+            params["target_host"] = ci_val
+            params["hostname"] = ci_val
+            provenance["target_host"] = "🏢 CMDB"
+            provenance["hostname"] = "🏢 CMDB"
+        if cmdb_data:
+            if cmdb_data.get("ip_address"):
+                params["ip_address"] = cmdb_data["ip_address"]
+                provenance["ip_address"] = "🏢 CMDB"
+            if cmdb_data.get("environment"):
+                params["environment"] = cmdb_data["environment"]
+                provenance["environment"] = "🏢 CMDB"
+            if cmdb_data.get("tier"):
+                params["tier"] = cmdb_data["tier"]
+                provenance["tier"] = "🏢 CMDB"
+            if cmdb_data.get("datacenter"):
+                params["datacenter"] = cmdb_data["datacenter"]
+                provenance["datacenter"] = "🏢 CMDB"
+
+        return {
+            "chg_number": chg_number,
+            "is_valid": is_valid,
+            "state": ticket.get("state"),
+            "risk": ticket.get("risk"),
+            "start_time": ticket.get("start_time"),
+            "end_time": ticket.get("end_time"),
+            "in_maintenance_window": in_window,
+            "ci": ci_val,
+            "cmdb": cmdb_data,
+            "parameters_hydrated": params,
+            "provenance": provenance,
+            "error": ticket.get("error")
+        }
 
 
 class IObjectStorageGateway(abc.ABC):
