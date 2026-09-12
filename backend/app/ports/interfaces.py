@@ -239,6 +239,35 @@ class IChatModelProvider(abc.ABC):
         pass
 
 
+class InjectionInspectionResult(BaseModel):
+    """Result of multi-stage prompt injection, secret leak, and adversarial intent analysis (CHAT-17)."""
+    is_adversarial: bool = False
+    stage: Optional[str] = None  # stage_1_normalization, stage_2_secrets_entropy, stage_3_delimiters_patterns, stage_4_intent_classifier
+    refusal_reason: Optional[str] = None
+    risk_score: float = 0.0  # Normalized [0.0, 1.0]
+    entropy_score: float = 0.0  # Max Shannon entropy observed in alphanumeric tokens
+    detected_patterns: List[str] = Field(default_factory=list)
+    sanitized_prompt: str = ""
+    unpacked_payload: Optional[str] = None
+    latency_ms: float = 0.0
+
+
+class IInjectionDefensePipeline(abc.ABC):
+    """Port for Four-Stage Adversarial Prompt Injection & Secret Sanitization Pipeline (CHAT-17)."""
+
+    @abc.abstractmethod
+    def inspect(self, prompt: str) -> InjectionInspectionResult:
+        """
+        Inspects an incoming prompt across all four defense-in-depth stages:
+        Stage 1: Unicode NFKC normalization, homoglyph translation & invisible character stripping.
+        Stage 2: High-entropy secret detection (Shannon entropy, API keys, private keys, Base64/Hex unpacking).
+        Stage 3: Delimiter framing, structural tag escapes, prompt injection & destructive execution patterns.
+        Stage 4: Adversarial Intent Classifier (multi-signal semantic scoring with operational whitelist weighting).
+        """
+        pass
+
+
+
 class IEmbeddingProvider(abc.ABC):
     """Port for text and query vector embedding generation (pgvector 1,536-dim)."""
 

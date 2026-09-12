@@ -16,9 +16,16 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from app.domain.entities import CatalogItem, CurationStatus, ExecutionEngineType, RiskTier
 from app.domain.exceptions import AIProviderQuotaExhaustedError
-from app.ports.interfaces import IChatModelProvider, IEmbeddingProvider, IServiceNowGateway
+from app.ports.interfaces import (
+    IChatModelProvider,
+    IEmbeddingProvider,
+    IInjectionDefensePipeline,
+    InjectionInspectionResult,
+    IServiceNowGateway,
+)
 from app.ports.repositories import ICatalogRepository
 from app.adapters.embedding_providers import get_embedding_provider
+from app.use_cases.injection_defense import MultiStageInjectionDefensePipeline
 from app.use_cases.tokenizer import token_calculator
 
 logger = logging.getLogger("vulcan.intent_resolver")
@@ -37,6 +44,7 @@ class IntentResolutionResult:
         delta_sim: float = 0.0,
         ticket_hydration: Optional[Dict[str, Any]] = None,
         top_candidates: Optional[List[CatalogItem]] = None,
+        injection_inspection: Optional[Dict[str, Any]] = None,
     ):
         self.status = status
         self.catalog_item = catalog_item
@@ -48,6 +56,7 @@ class IntentResolutionResult:
         self.delta_sim = delta_sim
         self.ticket_hydration = ticket_hydration
         self.top_candidates = top_candidates or []
+        self.injection_inspection = injection_inspection
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -61,7 +70,8 @@ class IntentResolutionResult:
             "disambiguation_candidates": self.disambiguation_candidates,
             "delta_sim": self.delta_sim,
             "ticket_hydration": self.ticket_hydration,
-            "top_candidates": [c.identifier for c in self.top_candidates]
+            "top_candidates": [c.identifier for c in self.top_candidates],
+            "injection_inspection": self.injection_inspection,
         }
 
 
@@ -176,12 +186,14 @@ class IntentResolver:
         catalog_repo: Optional[ICatalogRepository] = None,
         embedding_provider: Optional[IEmbeddingProvider] = None,
         servicenow_gateway: Optional[IServiceNowGateway] = None,
+        injection_defense: Optional[IInjectionDefensePipeline] = None,
     ):
         self.catalog = catalog
         self.chat_model_provider = chat_model_provider
         self.catalog_repo = catalog_repo
         self.embedding_provider = embedding_provider or get_embedding_provider()
         self.servicenow_gateway = servicenow_gateway
+        self.injection_defense = injection_defense or MultiStageInjectionDefensePipeline()
         # Precompute search indices for sub-millisecond retrieval across 10,000+ items
         self._item_tokens: Dict[str, set] = {}
         self._item_texts: Dict[str, str] = {}
@@ -190,30 +202,22 @@ class IntentResolver:
             self._item_tokens[item.id] = set(re.findall(r"\w+", full_text))
             self._item_texts[item.id] = full_text
 
+    def inspect_adversarial(self, prompt: str) -> InjectionInspectionResult:
+        """
+        Executes the Four-Stage Adversarial Injection & Secret Sanitization Pipeline (CHAT-17).
+        """
+        return self.injection_defense.inspect(prompt)
+
     def _check_adversarial(self, prompt: str) -> Optional[str]:
         """
         Four-Stage Adversarial Injection & Secret Sanitization Pipeline (CHAT-17).
         Stage 1: Unicode normalization (NFKC), homoglyph translation & control char stripping.
         Stage 2: High-entropy secret, AKIA, and private key detection.
         Stage 3: Comprehensive regex pattern matching.
+        Stage 4: Adversarial Intent Classifier (multi-signal semantic scoring).
         """
-        # Stage 1: Normalize unicode (NFKC), map homoglyphs & strip zero-width characters
-        normalized = unicodedata.normalize("NFKC", prompt)
-        translated = normalized.translate(self.HOMOGLYPH_MAP)
-        # Zero-width characters replaced with whitespace to prevent token-concatenation bypasses
-        clean_prompt = re.sub(r"[\u200B-\u200D\uFEFF]", " ", translated)
-        clean_prompt = re.sub(r"\s+", " ", clean_prompt)
-
-        # Stage 2: Secret and key leak detection (AKIA, private keys, Vault tokens)
-        for sec_pattern in self.SENSITIVE_SECRET_PATTERNS:
-            if re.search(sec_pattern, prompt) or re.search(sec_pattern, clean_prompt):
-                return "Adversarial security violation: Prompt contains private credentials or sensitive secrets."
-
-        # Stage 3: Heuristic pattern blacklist
-        for pattern in self.ADVERSARIAL_PATTERNS:
-            if re.search(pattern, clean_prompt):
-                return f"Adversarial security policy violation detected: Prompt matches blocked pattern [{pattern}]."
-        return None
+        res = self.inspect_adversarial(prompt)
+        return res.refusal_reason if res.is_adversarial else None
 
     def _sparse_bm25_score(self, query: str, text: str) -> float:
         """Token-overlap BM25 approximation for keyword anchoring."""
@@ -342,13 +346,14 @@ class IntentResolver:
         """
         Resolves prompt into structured intent within 2,500-token budget.
         """
-        # 1. Adversarial Guardrail Check (100% Refusal Rate)
-        violation = self._check_adversarial(prompt)
-        if violation:
+        # 1. Four-Stage Adversarial Prompt Injection & Guardrail Check (CHAT-17)
+        inspection = self.inspect_adversarial(prompt)
+        if inspection.is_adversarial:
             return IntentResolutionResult(
                 status="REFUSED",
-                refusal_reason=violation,
-                tokens_used=45
+                refusal_reason=inspection.refusal_reason,
+                tokens_used=45,
+                injection_inspection=inspection.model_dump(),
             )
 
         # Check if caller explicitly disambiguated/selected an item (e.g. multi-turn session)

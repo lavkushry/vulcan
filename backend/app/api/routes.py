@@ -39,6 +39,11 @@ class ResolveIntentRequest(BaseModel):
     text: Optional[str] = None
     ambient_params: Optional[Dict[str, Any]] = None
 
+
+class InspectInjectionRequest(BaseModel):
+    prompt: str = Field(..., description="Natural language prompt to inspect for injection attacks, secrets, or adversarial intent")
+
+
 class CreateJobRequest(BaseModel):
     catalog_identifier: Optional[str] = None
     identifier: Optional[str] = None
@@ -739,7 +744,20 @@ def resolve_intent(req: ResolveIntentRequest):
         ] if status_str == "REJECTED" or not cat_item else [],
         "servicenow_chg": result.extracted_parameters.get("servicenow_chg") or ("CHG-98412" if cat_item and cat_item.requires_chg else None),
         "ticket_hydration": result.ticket_hydration,
+        "injection_inspection": result.injection_inspection,
     }
+
+
+@router.post("/intent/inspect-injection")
+def inspect_injection(req: InspectInjectionRequest):
+    """
+    CHAT-17: Four-Stage Adversarial Prompt Injection & Secret Sanitization Inspector.
+    Inspects prompt across Unicode NFKC/homoglyphs, high-entropy secrets/keys, delimiter escapes,
+    and multi-signal adversarial intent classifier.
+    """
+    inspection = container.intent_resolver.inspect_adversarial(req.prompt)
+    return inspection.model_dump()
+
 
 
 @router.get("/intent/stream")
