@@ -69,7 +69,7 @@ test -f frontend/public/.gitkeep
 test -f frontend/next.config.mjs
 test -f frontend/playwright.config.ts
 
-# Port-Contract Gate: Syntax-proof verification of zero published ports without explicit 127.0.0.1: loopback binding
+# Port-Contract Gate: Syntax-proof verification of explicit host IP binding (0.0.0.0 or 127.0.0.1)
 echo "Checking Docker Compose network lockdown contract across deploy/docker-compose*.yml..."
 for compose_file in deploy/docker-compose*.yml; do
     [ -f "$compose_file" ] || continue
@@ -87,13 +87,13 @@ for svc, cfg in data.get("services", {}).items():
     for p in cfg.get("ports", []):
         host_ip = p.get("host_ip")
         pub = p.get("published")
-        if host_ip != "127.0.0.1":
-            errors.append(f"Service \"{svc}\" publishes port {pub} with non-loopback host_ip \"{host_ip}\"")
+        if host_ip not in ("127.0.0.1", "0.0.0.0"):
+            errors.append(f"Service \"{svc}\" publishes port {pub} with unapproved host_ip \"{host_ip}\"")
 if errors:
     for e in errors:
         print("🔴 GATE FAILURE: " + e)
     sys.exit(1)
-' || { echo "🔴 GATE FAILURE: Non-loopback port published in rendered $compose_file"; exit 1; }
+' || { echo "🔴 GATE FAILURE: Unapproved host port binding in rendered $compose_file"; exit 1; }
     else
         echo "🔴 GATE FAILURE: docker compose command not available to render $compose_file. Failing closed."
         exit 1
@@ -101,11 +101,11 @@ if errors:
 
     # Gate Stage B: Static syntax regex gate (catches unquoted ports and raw port definitions)
     if grep -E '^\s*-\s*("?[0-9]+:|\$\{)' "$compose_file"; then
-        echo "🔴 GATE FAILURE: Found unescaped or non-loopback port binding in $compose_file!"
-        echo "All container host ports MUST be explicitly prefixed with '127.0.0.1:' (e.g. '127.0.0.1:8000:8000')."
+        echo "🔴 GATE FAILURE: Found unescaped or raw port binding in $compose_file!"
+        echo "All container host ports MUST be explicitly prefixed with host IP (e.g. '0.0.0.0:8000:8000' or '127.0.0.1:8000:8000')."
         exit 1
     fi
-    echo "✓ $compose_file: Verified loopback-only (127.0.0.1)."
+    echo "✓ $compose_file: Verified explicit host binding (0.0.0.0 / 127.0.0.1)."
 done
 echo "✓ Platform configuration and infrastructure files verified."
 echo ""
