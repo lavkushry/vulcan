@@ -8,7 +8,7 @@ import {
   Eye, EyeOff, Save, X, Radio, Clock, Check, Sparkles,
   Database, Server, Compass, ChevronRight, Terminal,
   AlertTriangle, Cloud, Zap, ShieldAlert, FileCode2,
-  HardDrive, Sliders, CheckSquare, Square
+  HardDrive, Sliders, CheckSquare, Square, ToggleLeft, ToggleRight
 } from 'lucide-react';
 import { useVulcan } from '@/lib/context';
 import { api, DEMO_USERS } from '@/lib/api';
@@ -24,8 +24,9 @@ import type {
   DiscoveredDeployment
 } from '@/lib/types';
 
-// Fallback seed catalog if backend has not loaded yet
+// Complete enterprise seed catalog covering all 7 categories and 16 providers
 const DEFAULT_SEED_RESOURCES: ExternalResource[] = [
+  // 1. AI & Models
   {
     resource_id: 'res-foundry-default',
     provider: 'microsoft_foundry',
@@ -38,12 +39,26 @@ const DEFAULT_SEED_RESOURCES: ExternalResource[] = [
     health_status: 'CONFIGURED',
     latency_ms: 28,
     config: {
+      foundry_resource_name: 'vulcan-ai',
+      project_name: 'vulcan-prod',
+      azure_region: 'eastus2',
       tenant_id: '00000000-0000-0000-0000-000000000001',
       client_id: '00000000-0000-0000-0000-000000000002',
+      managed_identity_client_id: '',
       default_chat_deployment: 'gpt-4o',
       default_embedding_deployment: 'text-embedding-3-small',
+      reasoning_deployment: 'o1-preview',
+      agent_deployment: 'sre-diagnostic-agent',
+      default_deployment: 'gpt-4o',
+      request_timeout: 30,
+      max_retries: 3,
+      content_safety_profile: 'strict',
+      api_version: 'v1',
       routing_chat_default: true,
       routing_embedding_default: true,
+      routing_sre_diagnostics: false,
+      routing_agent_workflows: false,
+      priority_order: '1',
       fallback_policy: 'deterministic_fake',
     },
     secret_refs: { client_secret: 'vault://secret/vulcan/azure/sp_secret' },
@@ -56,6 +71,96 @@ const DEFAULT_SEED_RESOURCES: ExternalResource[] = [
     updated_at: new Date().toISOString(),
     updated_by: 'system',
   },
+  {
+    resource_id: 'res-openai-default',
+    provider: 'openai',
+    category: 'AI & Models',
+    display_name: 'OpenAI Enterprise Gateway',
+    environment: 'PROD',
+    endpoint: 'https://api.openai.com/v1',
+    auth_mode: 'API_KEY',
+    enabled: true,
+    health_status: 'HEALTHY',
+    latency_ms: 35,
+    config: { default_model: 'gpt-4o', organization_id: 'org-vulcan' },
+    secret_refs: { api_key: 'vault://secret/vulcan/openai/api_key' },
+    version: '1.0.0',
+    revision: 1,
+    merkle_root: 'sha256:2b4e6a8c0e2a4c6e8f0b2d4e6a8c0e2a4c6e8f0b2d4e6a8c0e2a4c6e8f0b2d4e',
+    audit_count: 1,
+    created_at: new Date().toISOString(),
+    created_by: 'system',
+    updated_at: new Date().toISOString(),
+    updated_by: 'system',
+  },
+  {
+    resource_id: 'res-openrouter-default',
+    provider: 'openrouter',
+    category: 'AI & Models',
+    display_name: 'OpenRouter Aggregator',
+    environment: 'PROD',
+    endpoint: 'https://openrouter.ai/api/v1',
+    auth_mode: 'API_KEY',
+    enabled: true,
+    health_status: 'HEALTHY',
+    latency_ms: 48,
+    config: { default_model: 'anthropic/claude-3.5-sonnet' },
+    secret_refs: { api_key: 'vault://secret/vulcan/openrouter/api_key' },
+    version: '1.0.0',
+    revision: 1,
+    merkle_root: 'sha256:4c6e8f0b2d4e6a8c0e2a4c6e8f0b2d4e6a8c0e2a4c6e8f0b2d4e6a8c0e2a4c6e',
+    audit_count: 1,
+    created_at: new Date().toISOString(),
+    created_by: 'system',
+    updated_at: new Date().toISOString(),
+    updated_by: 'system',
+  },
+  {
+    resource_id: 'res-gemini-default',
+    provider: 'gemini',
+    category: 'AI & Models',
+    display_name: 'Google Gemini Vertex AI',
+    environment: 'PROD',
+    endpoint: 'https://generativelanguage.googleapis.com/v1beta',
+    auth_mode: 'API_KEY',
+    enabled: true,
+    health_status: 'HEALTHY',
+    latency_ms: 31,
+    config: { model: 'gemini-1.5-pro' },
+    secret_refs: { api_key: 'vault://secret/vulcan/google/gemini_key' },
+    version: '1.0.0',
+    revision: 1,
+    merkle_root: 'sha256:6e8f0b2d4e6a8c0e2a4c6e8f0b2d4e6a8c0e2a4c6e8f0b2d4e6a8c0e2a4c6e8f',
+    audit_count: 1,
+    created_at: new Date().toISOString(),
+    created_by: 'system',
+    updated_at: new Date().toISOString(),
+    updated_by: 'system',
+  },
+  {
+    resource_id: 'res-huggingface-default',
+    provider: 'huggingface',
+    category: 'AI & Models',
+    display_name: 'Hugging Face Inference',
+    environment: 'PROD',
+    endpoint: 'https://api-inference.huggingface.co',
+    auth_mode: 'API_KEY',
+    enabled: true,
+    health_status: 'HEALTHY',
+    latency_ms: 55,
+    config: { default_embedding_model: 'BAAI/bge-large-en-v1.5' },
+    secret_refs: { api_token: 'vault://secret/vulcan/hf/token' },
+    version: '1.0.0',
+    revision: 1,
+    merkle_root: 'sha256:8f0b2d4e6a8c0e2a4c6e8f0b2d4e6a8c0e2a4c6e8f0b2d4e6a8c0e2a4c6e8f0b',
+    audit_count: 1,
+    created_at: new Date().toISOString(),
+    created_by: 'system',
+    updated_at: new Date().toISOString(),
+    updated_by: 'system',
+  },
+
+  // 2. ITSM & CMDB
   {
     resource_id: 'res-servicenow-default',
     provider: 'servicenow',
@@ -78,6 +183,8 @@ const DEFAULT_SEED_RESOURCES: ExternalResource[] = [
     updated_at: new Date().toISOString(),
     updated_by: 'system',
   },
+
+  // 3. Secrets & PAM
   {
     resource_id: 'res-cyberark-default',
     provider: 'cyberark',
@@ -101,6 +208,30 @@ const DEFAULT_SEED_RESOURCES: ExternalResource[] = [
     updated_by: 'system',
   },
   {
+    resource_id: 'res-vault-default',
+    provider: 'vault',
+    category: 'Secrets & PAM',
+    display_name: 'HashiCorp Vault Cluster',
+    environment: 'PROD',
+    endpoint: 'https://vault.internal.bank.com:8200',
+    auth_mode: 'BEARER_TOKEN',
+    enabled: true,
+    health_status: 'HEALTHY',
+    latency_ms: 8,
+    config: { engine_path: 'secret', namespace: 'vulcan' },
+    secret_refs: { token: 'vault://secret/vulcan/vault_root_token' },
+    version: '1.15.0',
+    revision: 1,
+    merkle_root: 'sha256:9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d1e0f9a8b',
+    audit_count: 1,
+    created_at: new Date().toISOString(),
+    created_by: 'system',
+    updated_at: new Date().toISOString(),
+    updated_by: 'system',
+  },
+
+  // 4. Source Control
+  {
     resource_id: 'res-github-default',
     provider: 'github',
     category: 'Source Control',
@@ -123,10 +254,34 @@ const DEFAULT_SEED_RESOURCES: ExternalResource[] = [
     updated_by: 'system',
   },
   {
+    resource_id: 'res-bitbucket-default',
+    provider: 'bitbucket',
+    category: 'Source Control',
+    display_name: 'Bitbucket Data Center',
+    environment: 'PROD',
+    endpoint: 'https://bitbucket.internal.bank.com/rest/api/1.0',
+    auth_mode: 'BEARER_TOKEN',
+    enabled: true,
+    health_status: 'HEALTHY',
+    latency_ms: 26,
+    config: { project_key: 'AUT', default_branch: 'main' },
+    secret_refs: { http_token: 'vault://secret/vulcan/bitbucket/token' },
+    version: '8.19.0',
+    revision: 1,
+    merkle_root: 'sha256:1f2e3d4c5b6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c',
+    audit_count: 1,
+    created_at: new Date().toISOString(),
+    created_by: 'system',
+    updated_at: new Date().toISOString(),
+    updated_by: 'system',
+  },
+
+  // 5. Execution / Orchestration & Runners
+  {
     resource_id: 'res-aap-default',
     provider: 'aap',
-    category: 'Orchestration & Runners',
-    display_name: 'Ansible Automation Platform',
+    category: 'Execution',
+    display_name: 'Red Hat AAP / AWX',
     environment: 'PROD',
     endpoint: 'https://aap.internal.bank.com/api/v2',
     auth_mode: 'BEARER_TOKEN',
@@ -144,6 +299,8 @@ const DEFAULT_SEED_RESOURCES: ExternalResource[] = [
     updated_at: new Date().toISOString(),
     updated_by: 'system',
   },
+
+  // 6. Observability
   {
     resource_id: 'res-datadog-default',
     provider: 'datadog',
@@ -167,9 +324,33 @@ const DEFAULT_SEED_RESOURCES: ExternalResource[] = [
     updated_by: 'system',
   },
   {
+    resource_id: 'res-prometheus-default',
+    provider: 'prometheus',
+    category: 'Observability',
+    display_name: 'Prometheus TSDB',
+    environment: 'PROD',
+    endpoint: 'http://prometheus:9090/api/v1',
+    auth_mode: 'NONE',
+    enabled: true,
+    health_status: 'HEALTHY',
+    latency_ms: 6,
+    config: { scrape_interval: '15s' },
+    secret_refs: {},
+    version: '2.50.0',
+    revision: 1,
+    merkle_root: 'sha256:7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b',
+    audit_count: 1,
+    created_at: new Date().toISOString(),
+    created_by: 'system',
+    updated_at: new Date().toISOString(),
+    updated_by: 'system',
+  },
+
+  // 7. Storage & Data / Persistence
+  {
     resource_id: 'res-postgres-default',
     provider: 'postgres',
-    category: 'Persistence',
+    category: 'Storage & Data',
     display_name: 'PostgreSQL 16 Control Store',
     environment: 'PROD',
     endpoint: 'postgresql://***@postgres:5432/vulcan_dev',
@@ -187,6 +368,50 @@ const DEFAULT_SEED_RESOURCES: ExternalResource[] = [
     created_by: 'system',
     updated_at: new Date().toISOString(),
     updated_by: 'system',
+  },
+  {
+    resource_id: 'res-redis-default',
+    provider: 'redis',
+    category: 'Storage & Data',
+    display_name: 'Redis 7.2 Distributed Lock & Cache',
+    environment: 'PROD',
+    endpoint: 'redis://***@redis:6379/0',
+    auth_mode: 'BASIC_AUTH',
+    enabled: true,
+    health_status: 'HEALTHY',
+    latency_ms: 2,
+    config: { cluster_mode: false },
+    secret_refs: { password: 'vault://secret/vulcan/redis/auth' },
+    version: '7.2.4',
+    revision: 1,
+    merkle_root: 'sha256:3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b',
+    audit_count: 1,
+    created_at: new Date().toISOString(),
+    created_by: 'system',
+    updated_at: new Date().toISOString(),
+    updated_by: 'system',
+  },
+  {
+    resource_id: 'res-minio-default',
+    provider: 'minio',
+    category: 'Storage & Data',
+    display_name: 'S3 / MinIO Object Storage',
+    environment: 'PROD',
+    endpoint: 'http://minio:9000',
+    auth_mode: 'API_KEY',
+    enabled: true,
+    health_status: 'HEALTHY',
+    latency_ms: 5,
+    config: { bucket: 'vulcan-artifacts', multipart_chunk_mb: 64 },
+    secret_refs: { secret_key: 'vault://secret/vulcan/minio/secret_key' },
+    version: 'RELEASE.2024-01',
+    revision: 1,
+    merkle_root: 'sha256:5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d',
+    audit_count: 1,
+    created_at: new Date().toISOString(),
+    created_by: 'system',
+    updated_at: new Date().toISOString(),
+    updated_by: 'system',
   }
 ];
 
@@ -195,9 +420,9 @@ const CATEGORY_ICONS: Record<string, React.ReactNode> = {
   'ITSM & CMDB': <Shield className="w-4 h-4 text-purple-400" />,
   'Secrets & PAM': <Lock className="w-4 h-4 text-amber-400" />,
   'Source Control': <GitBranch className="w-4 h-4 text-cyan-400" />,
-  'Orchestration & Runners': <Cpu className="w-4 h-4 text-rose-400" />,
+  'Execution': <Cpu className="w-4 h-4 text-rose-400" />,
   'Observability': <Activity className="w-4 h-4 text-emerald-400" />,
-  'Persistence': <Database className="w-4 h-4 text-blue-400" />,
+  'Storage & Data': <Database className="w-4 h-4 text-blue-400" />,
   'Cloud & Infrastructure': <Cloud className="w-4 h-4 text-indigo-400" />,
   'Other': <Layers className="w-4 h-4 text-slate-400" />,
 };
@@ -225,28 +450,47 @@ export function ExternalResourcesConsole() {
   const [search, setSearch] = useState<string>('');
   const [envFilter, setEnvFilter] = useState<string>('ALL');
   const [activeTab, setActiveTab] = useState<ActiveTab>('Overview');
-  const [loading, setLoading] = useState<boolean>(false);
   const [testingId, setTestingId] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<ConnectionTestResult | null>(null);
   const [syncingId, setSyncingId] = useState<string | null>(null);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
 
-  // Configuration Form State
+  // Configuration Form State (Generic & Microsoft Foundry Specialized)
   const [formDisplayName, setFormDisplayName] = useState<string>('');
   const [formEndpoint, setFormEndpoint] = useState<string>('');
   const [formEnvironment, setFormEnvironment] = useState<string>('PROD');
+  const [formEnabled, setFormEnabled] = useState<boolean>(true);
   const [formAuthMode, setFormAuthMode] = useState<string>('API_KEY');
   const [formSecretRef, setFormSecretRef] = useState<string>('');
   const [secretError, setSecretError] = useState<string | null>(null);
-  const [formConfigJson, setFormConfigJson] = useState<string>('{}');
   const [savingConfig, setSavingConfig] = useState<boolean>(false);
   const [configSaveSuccess, setConfigSaveSuccess] = useState<string | null>(null);
+
+  // Microsoft Foundry Specific Form Fields
+  const [foundryResourceName, setFoundryResourceName] = useState<string>('vulcan-ai');
+  const [foundryProjectName, setFoundryProjectName] = useState<string>('vulcan-prod');
+  const [foundryRegion, setFoundryRegion] = useState<string>('eastus2');
+  const [foundryTenantId, setFoundryTenantId] = useState<string>('');
+  const [foundryClientId, setFoundryClientId] = useState<string>('');
+  const [foundryManagedIdClientId, setFoundryManagedIdClientId] = useState<string>('');
+  const [foundryChatDeployment, setFoundryChatDeployment] = useState<string>('gpt-4o');
+  const [foundryEmbeddingDeployment, setFoundryEmbeddingDeployment] = useState<string>('text-embedding-3-small');
+  const [foundryReasoningDeployment, setFoundryReasoningDeployment] = useState<string>('o1-preview');
+  const [foundryAgentDeployment, setFoundryAgentDeployment] = useState<string>('sre-diagnostic-agent');
+  const [foundryDefaultDeployment, setFoundryDefaultDeployment] = useState<string>('gpt-4o');
+  const [foundryTimeout, setFoundryTimeout] = useState<number>(30);
+  const [foundryMaxRetries, setFoundryMaxRetries] = useState<number>(3);
+  const [foundrySafetyProfile, setFoundrySafetyProfile] = useState<string>('strict');
+  const [foundryApiVersion, setFoundryApiVersion] = useState<string>('v1');
 
   // Dynamic Capabilities & Deployment Discovery State (R4)
   const [discovering, setDiscovering] = useState<boolean>(false);
   const [discoveredCaps, setDiscoveredCaps] = useState<DiscoveredCapabilities | null>(null);
   const [routingChatDefault, setRoutingChatDefault] = useState<boolean>(true);
   const [routingEmbedDefault, setRoutingEmbedDefault] = useState<boolean>(true);
+  const [routingSreDiag, setRoutingSreDiag] = useState<boolean>(false);
+  const [routingAgentWorkflows, setRoutingAgentWorkflows] = useState<boolean>(false);
+  const [priorityOrder, setPriorityOrder] = useState<string>('1');
   const [fallbackPolicy, setFallbackPolicy] = useState<string>('deterministic_fake');
 
   // Diagnostics History State
@@ -274,13 +518,42 @@ export function ExternalResourcesConsole() {
     return resources.find(r => r.resource_id === selectedId) || resources[0] || DEFAULT_SEED_RESOURCES[0];
   }, [resources, selectedId]);
 
+  const isFoundry = selectedResource.provider === 'microsoft_foundry';
+
   // Populate Configuration Form on Selection Change
   useEffect(() => {
     if (selectedResource) {
       setFormDisplayName(selectedResource.display_name || '');
       setFormEndpoint(selectedResource.endpoint || '');
       setFormEnvironment(selectedResource.environment || 'PROD');
-      setFormAuthMode(selectedResource.auth_mode || 'API_KEY');
+      setFormEnabled(selectedResource.enabled ?? true);
+      setFormAuthMode(selectedResource.auth_mode || (isFoundry ? 'ENTRA_SERVICE_PRINCIPAL' : 'API_KEY'));
+
+      // Populate Foundry specific fields
+      const cfg = selectedResource.config || {};
+      setFoundryResourceName(cfg.foundry_resource_name || 'vulcan-ai');
+      setFoundryProjectName(cfg.project_name || 'vulcan-prod');
+      setFoundryRegion(cfg.azure_region || 'eastus2');
+      setFoundryTenantId(cfg.tenant_id || '');
+      setFoundryClientId(cfg.client_id || '');
+      setFoundryManagedIdClientId(cfg.managed_identity_client_id || '');
+      setFoundryChatDeployment(cfg.default_chat_deployment || 'gpt-4o');
+      setFoundryEmbeddingDeployment(cfg.default_embedding_deployment || 'text-embedding-3-small');
+      setFoundryReasoningDeployment(cfg.reasoning_deployment || 'o1-preview');
+      setFoundryAgentDeployment(cfg.agent_deployment || 'sre-diagnostic-agent');
+      setFoundryDefaultDeployment(cfg.default_deployment || 'gpt-4o');
+      setFoundryTimeout(cfg.request_timeout || 30);
+      setFoundryMaxRetries(cfg.max_retries || 3);
+      setFoundrySafetyProfile(cfg.content_safety_profile || 'strict');
+      setFoundryApiVersion(cfg.api_version || 'v1');
+
+      // Routing defaults
+      setRoutingChatDefault(cfg.routing_chat_default ?? true);
+      setRoutingEmbedDefault(cfg.routing_embedding_default ?? true);
+      setRoutingSreDiag(cfg.routing_sre_diagnostics ?? false);
+      setRoutingAgentWorkflows(cfg.routing_agent_workflows ?? false);
+      setPriorityOrder(cfg.priority_order || '1');
+      setFallbackPolicy(cfg.fallback_policy || 'deterministic_fake');
 
       // Zero-Raw-Secrets reference handling: Mask if not Platform Admin
       const firstSecret = Object.values(selectedResource.secret_refs || {})[0] || '';
@@ -290,16 +563,11 @@ export function ExternalResourcesConsole() {
         setFormSecretRef(firstSecret || 'vault://secret/vulcan/credentials');
       }
       setSecretError(null);
-      setFormConfigJson(JSON.stringify(selectedResource.config || {}, null, 2));
       setConfigSaveSuccess(null);
       setTestResult(null);
       setSyncMessage(null);
-
-      // Default routing values
-      setRoutingChatDefault(selectedResource.config?.routing_chat_default ?? true);
-      setRoutingEmbedDefault(selectedResource.config?.routing_embedding_default ?? true);
     }
-  }, [selectedResource, isPlatformAdmin]);
+  }, [selectedResource, isPlatformAdmin, isFoundry]);
 
   // Load Diagnostics when Diagnostics Tab selected
   useEffect(() => {
@@ -335,32 +603,43 @@ export function ExternalResourcesConsole() {
     setSavingConfig(true);
     setConfigSaveSuccess(null);
     try {
-      let parsedConfig = {};
-      try {
-        parsedConfig = JSON.parse(formConfigJson);
-      } catch {
-        parsedConfig = selectedResource.config || {};
-      }
-
-      // Merge routing defaults
       const updatedConfig = {
-        ...parsedConfig,
+        ...(selectedResource.config || {}),
+        foundry_resource_name: foundryResourceName,
+        project_name: foundryProjectName,
+        azure_region: foundryRegion,
+        tenant_id: foundryTenantId,
+        client_id: foundryClientId,
+        managed_identity_client_id: foundryManagedIdClientId,
+        default_chat_deployment: foundryChatDeployment,
+        default_embedding_deployment: foundryEmbeddingDeployment,
+        reasoning_deployment: foundryReasoningDeployment,
+        agent_deployment: foundryAgentDeployment,
+        default_deployment: foundryDefaultDeployment,
+        request_timeout: foundryTimeout,
+        max_retries: foundryMaxRetries,
+        content_safety_profile: foundrySafetyProfile,
+        api_version: foundryApiVersion,
         routing_chat_default: routingChatDefault,
         routing_embedding_default: routingEmbedDefault,
+        routing_sre_diagnostics: routingSreDiag,
+        routing_agent_workflows: routingAgentWorkflows,
+        priority_order: priorityOrder,
         fallback_policy: fallbackPolicy,
       };
 
       const secretRefs: Record<string, string> = {};
       if (formSecretRef && !formSecretRef.includes('••••')) {
-        const key = Object.keys(selectedResource.secret_refs || {})[0] || 'credential_ref';
+        const key = formAuthMode === 'API_KEY' ? 'api_key' : 'client_secret';
         secretRefs[key] = formSecretRef.trim();
       }
 
-      const updated = await api.updateExternalResource(selectedResource.resource_id, {
+      await api.updateExternalResource(selectedResource.resource_id, {
         display_name: formDisplayName,
         endpoint: formEndpoint,
         environment: formEnvironment,
         auth_mode: formAuthMode,
+        enabled: formEnabled,
         config: updatedConfig,
         ...(Object.keys(secretRefs).length > 0 ? { secret_refs: secretRefs } : {}),
       });
@@ -371,6 +650,21 @@ export function ExternalResourcesConsole() {
       setSecretError(e?.message || 'Failed to update configuration.');
     } finally {
       setSavingConfig(false);
+    }
+  };
+
+  // Toggle Enable / Disable
+  const handleToggleEnable = async () => {
+    if (!isPlatformAdmin) return;
+    try {
+      const newEnabled = !formEnabled;
+      setFormEnabled(newEnabled);
+      await api.updateExternalResource(selectedResource.resource_id, {
+        enabled: newEnabled,
+      });
+      await loadResources();
+    } catch (e) {
+      /* ignore */
     }
   };
 
@@ -431,8 +725,9 @@ export function ExternalResourcesConsole() {
           { name: 'gpt-4o-mini', model: 'gpt-4o-mini', type: 'chat', capacity: 200000, status: 'Succeeded' },
           { name: 'text-embedding-3-small', model: 'text-embedding-3-small', type: 'embeddings', capacity: 350000, status: 'Succeeded' },
           { name: 'text-embedding-3-large', model: 'text-embedding-3-large', type: 'embeddings', capacity: 350000, status: 'Succeeded' },
+          { name: 'o1-preview', model: 'o1-preview', type: 'reasoning', capacity: 100000, status: 'Succeeded' },
         ],
-        models: ['gpt-4o', 'gpt-4o-mini', 'text-embedding-3-small', 'text-embedding-3-large'],
+        models: ['gpt-4o', 'gpt-4o-mini', 'text-embedding-3-small', 'text-embedding-3-large', 'o1-preview'],
         tools: ['web_search', 'code_interpreter', 'vulcan_catalog_resolver'],
         agents: ['SRE_Diagnostic_Agent', 'Maker_Checker_Verifier'],
         discovered_at: new Date().toISOString(),
@@ -460,13 +755,12 @@ export function ExternalResourcesConsole() {
       'ITSM & CMDB',
       'Secrets & PAM',
       'Source Control',
-      'Orchestration & Runners',
+      'Execution',
       'Observability',
-      'Persistence',
+      'Storage & Data',
     ];
-    const presentCats = Array.from(new Set(resources.map(r => r.category)));
-    return defaultOrder.filter(c => presentCats.includes(c) || true);
-  }, [resources]);
+    return defaultOrder;
+  }, []);
 
   const getStatusBadge = (status: string, latencyMs?: number) => {
     const s = (status || 'CONFIGURED').toUpperCase();
@@ -492,14 +786,14 @@ export function ExternalResourcesConsole() {
         </span>
       );
     }
-    if (s === 'UNREACHABLE' || s === 'FAILED') {
+    if (s === 'UNREACHABLE' || s === 'FAILED' || s === 'AUTH FAILED') {
       return (
         <span
           data-testid="status-badge"
           className="status-badge flex items-center gap-1 text-[10px] font-mono text-rose-400 bg-rose-500/10 border border-rose-500/30 px-2 py-0.5 rounded-full"
         >
           <XCircle size={10} />
-          UNREACHABLE
+          {s === 'AUTH FAILED' ? 'AUTH FAILED' : 'UNREACHABLE'}
         </span>
       );
     }
@@ -537,7 +831,7 @@ export function ExternalResourcesConsole() {
                   External Resources
                 </h1>
                 <p className="text-[10px] text-slate-500">
-                  Governed Cloud &amp; AI Integrations
+                  Settings → Governed Cloud &amp; AI Integrations
                 </p>
               </div>
             </div>
@@ -665,6 +959,9 @@ export function ExternalResourcesConsole() {
                     [{selectedResource.environment}]
                   </span>
                   {getStatusBadge(selectedResource.health_status, selectedResource.latency_ms)}
+                  <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${selectedResource.enabled ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400' : 'border-slate-700 bg-slate-900 text-slate-500'}`}>
+                    {selectedResource.enabled ? 'ENABLED' : 'DISABLED'}
+                  </span>
                 </div>
                 <div className="flex items-center gap-4 text-xs font-mono text-slate-400 mt-1">
                   <span>ID: <strong className="text-slate-200">{selectedResource.resource_id}</strong></span>
@@ -679,6 +976,21 @@ export function ExternalResourcesConsole() {
 
           {/* Action Bar */}
           <div className="flex items-center gap-2.5">
+            {/* Enable / Disable Button */}
+            <button
+              type="button"
+              disabled={!isPlatformAdmin}
+              onClick={handleToggleEnable}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-mono transition-all border ${
+                !isPlatformAdmin
+                  ? 'opacity-40 cursor-not-allowed border-glass-border bg-slate-900 text-slate-500'
+                  : 'bg-glass-surface hover:bg-white/[0.06] border-glass-border text-slate-300'
+              }`}
+            >
+              {formEnabled ? <ToggleRight size={14} className="text-emerald-400" /> : <ToggleLeft size={14} className="text-slate-500" />}
+              <span>{formEnabled ? 'Disable' : 'Enable'}</span>
+            </button>
+
             <button
               type="button"
               disabled={!isPlatformAdmin || testingId === selectedResource.resource_id}
@@ -859,131 +1171,370 @@ export function ExternalResourcesConsole() {
 
           {/* TAB 2: CONFIGURATION */}
           {activeTab === 'Configuration' && (
-            <div className="space-y-6 max-w-2xl">
-              <div className="p-4 rounded-xl bg-slate-950/60 border border-glass-border space-y-4">
-                <div className="flex items-center justify-between pb-2 border-b border-glass-border">
-                  <h3 className="text-xs font-bold font-mono text-slate-200 uppercase tracking-wider">
-                    Resource Identity &amp; Transport
-                  </h3>
-                  {!isPlatformAdmin && (
-                    <span className="text-[10px] font-mono text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded">
-                      READ-ONLY (Operator Mode)
-                    </span>
-                  )}
-                </div>
-
-                <div className="space-y-3 text-xs">
-                  <div>
-                    <label className="block text-slate-400 font-mono text-[11px] mb-1">
-                      Display Name
-                    </label>
-                    <input
-                      type="text"
-                      disabled={!isPlatformAdmin}
-                      value={formDisplayName}
-                      onChange={(e) => setFormDisplayName(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-glass-border text-slate-200 outline-none focus:border-cyan-500/50 disabled:opacity-50"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-400 font-mono text-[11px] mb-1">
-                      Endpoint Base URL
-                    </label>
-                    <input
-                      type="text"
-                      disabled={!isPlatformAdmin}
-                      value={formEndpoint}
-                      onChange={(e) => setFormEndpoint(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-glass-border text-slate-200 outline-none focus:border-cyan-500/50 disabled:opacity-50 font-mono text-xs"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-slate-400 font-mono text-[11px] mb-1">
-                        Environment Tier
-                      </label>
-                      <select
-                        disabled={!isPlatformAdmin}
-                        value={formEnvironment}
-                        onChange={(e) => setFormEnvironment(e.target.value)}
-                        className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-glass-border text-slate-200 outline-none focus:border-cyan-500/50 disabled:opacity-50 font-mono text-xs"
-                      >
-                        <option value="PROD">PROD (Production)</option>
-                        <option value="STAGE">STAGE (Staging)</option>
-                        <option value="DEV">DEV (Development)</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-slate-400 font-mono text-[11px] mb-1">
-                        Authentication Strategy
-                      </label>
-                      <select
-                        disabled={!isPlatformAdmin}
-                        value={formAuthMode}
-                        onChange={(e) => setFormAuthMode(e.target.value)}
-                        className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-glass-border text-slate-200 outline-none focus:border-cyan-500/50 disabled:opacity-50 font-mono text-xs"
-                      >
-                        <option value="API_KEY">API_KEY (Bearer Token)</option>
-                        <option value="ENTRA_SERVICE_PRINCIPAL">ENTRA_SERVICE_PRINCIPAL</option>
-                        <option value="MANAGED_IDENTITY">MANAGED_IDENTITY (Azure IMDS)</option>
-                        <option value="MUTUAL_TLS">MUTUAL_TLS (mTLS Client Cert)</option>
-                        <option value="BASIC_AUTH">BASIC_AUTH (Username/Password)</option>
-                        <option value="NONE">NONE (Unauthenticated)</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Secret References Form (Zero-Raw-Secrets Invariant) */}
-              <div className="p-4 rounded-xl bg-slate-950/60 border border-glass-border space-y-4">
-                <div className="flex items-center justify-between pb-2 border-b border-glass-border">
-                  <div className="flex items-center gap-2">
-                    <Key size={14} className="text-amber-400" />
-                    <h3 className="text-xs font-bold font-mono text-slate-200 uppercase tracking-wider">
-                      Secret References (Zero-Raw-Secrets Invariant)
+            <div className="space-y-6 max-w-3xl">
+              {/* Microsoft Foundry Specialized Configuration */}
+              {isFoundry ? (
+                <div className="space-y-5">
+                  {/* General Section */}
+                  <div className="p-4 rounded-xl bg-slate-950/60 border border-glass-border space-y-3">
+                    <h3 className="text-xs font-bold font-mono text-slate-200 uppercase tracking-wider pb-2 border-b border-glass-border flex items-center justify-between">
+                      <span>Microsoft Foundry General</span>
+                      {!isPlatformAdmin && (
+                        <span className="text-[10px] text-amber-400 font-mono bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded">
+                          READ-ONLY
+                        </span>
+                      )}
                     </h3>
-                  </div>
-                  <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded">
-                    ENFORCED
-                  </span>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="block text-slate-400 font-mono text-[11px]">
-                    Vault Pointer or PAM Reference
-                  </label>
-                  <input
-                    type="text"
-                    name="secret_refs"
-                    disabled={!isPlatformAdmin}
-                    value={formSecretRef}
-                    onChange={(e) => {
-                      setFormSecretRef(e.target.value);
-                      if (secretError) setSecretError(null);
-                    }}
-                    onBlur={handleSecretBlur}
-                    placeholder="vault://secret/vulcan/... or cyberark://..."
-                    className={`w-full px-3 py-2 rounded-lg bg-slate-900 border text-slate-200 outline-none font-mono text-xs transition-all ${
-                      secretError ? 'border-rose-500/70 focus:border-rose-500' : 'border-glass-border focus:border-cyan-500/50'
-                    } disabled:opacity-50`}
-                  />
-
-                  {secretError && (
-                    <div className="p-2.5 rounded-lg bg-rose-950/40 border border-rose-500/40 text-rose-300 text-xs font-mono flex items-center gap-2">
-                      <AlertCircle size={14} className="text-rose-400 flex-shrink-0" />
-                      <span>{secretError}</span>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                      <div>
+                        <label className="block text-slate-400 font-mono text-[11px] mb-1">Display Name</label>
+                        <input
+                          type="text"
+                          disabled={!isPlatformAdmin}
+                          value={formDisplayName}
+                          onChange={(e) => setFormDisplayName(e.target.value)}
+                          className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-glass-border text-slate-200 outline-none focus:border-cyan-500/50 disabled:opacity-50 font-sans"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-slate-400 font-mono text-[11px] mb-1">Foundry Resource Name</label>
+                        <input
+                          type="text"
+                          disabled={!isPlatformAdmin}
+                          value={foundryResourceName}
+                          onChange={(e) => setFoundryResourceName(e.target.value)}
+                          className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-glass-border text-slate-200 outline-none focus:border-cyan-500/50 disabled:opacity-50 font-mono text-xs"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-slate-400 font-mono text-[11px] mb-1">Project Name</label>
+                        <input
+                          type="text"
+                          disabled={!isPlatformAdmin}
+                          value={foundryProjectName}
+                          onChange={(e) => setFoundryProjectName(e.target.value)}
+                          className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-glass-border text-slate-200 outline-none focus:border-cyan-500/50 disabled:opacity-50 font-mono text-xs"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-slate-400 font-mono text-[11px] mb-1">Azure Region</label>
+                        <input
+                          type="text"
+                          disabled={!isPlatformAdmin}
+                          value={foundryRegion}
+                          onChange={(e) => setFoundryRegion(e.target.value)}
+                          className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-glass-border text-slate-200 outline-none focus:border-cyan-500/50 disabled:opacity-50 font-mono text-xs"
+                        />
+                      </div>
+                      <div className="md:col-span-2">
+                        <label className="block text-slate-400 font-mono text-[11px] mb-1">Project Endpoint</label>
+                        <input
+                          type="text"
+                          disabled={!isPlatformAdmin}
+                          value={formEndpoint}
+                          onChange={(e) => setFormEndpoint(e.target.value)}
+                          placeholder="https://<resource>.services.ai.azure.com/api/projects/<project>"
+                          className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-glass-border text-slate-200 outline-none focus:border-cyan-500/50 disabled:opacity-50 font-mono text-xs"
+                        />
+                      </div>
                     </div>
-                  )}
+                  </div>
 
-                  <p className="text-[10px] text-slate-500 leading-relaxed">
-                    Zero-Raw-Secrets Invariant (R2): Plaintext credentials (passwords, keys, tokens) are mathematically rejected by the schema validator. Only pointer schemes (<code className="text-cyan-400 font-mono">vault://</code>, <code className="text-cyan-400 font-mono">cyberark://</code>, <code className="text-cyan-400 font-mono">env://</code>) are permitted.
-                  </p>
+                  {/* Authentication Section */}
+                  <div className="p-4 rounded-xl bg-slate-950/60 border border-glass-border space-y-3">
+                    <h3 className="text-xs font-bold font-mono text-slate-200 uppercase tracking-wider pb-2 border-b border-glass-border flex items-center gap-2">
+                      <Lock size={13} className="text-amber-400" />
+                      Authentication
+                    </h3>
+
+                    {/* Radio Options */}
+                    <div className="flex flex-wrap gap-4 text-xs font-mono pt-1">
+                      {[
+                        { id: 'ENTRA_SERVICE_PRINCIPAL', label: 'Microsoft Entra Service Principal' },
+                        { id: 'MANAGED_IDENTITY', label: 'Managed Identity' },
+                        { id: 'API_KEY', label: 'API Key' }
+                      ].map((m) => (
+                        <label key={m.id} className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="foundry_auth_mode"
+                            value={m.id}
+                            checked={formAuthMode === m.id}
+                            onChange={(e) => setFormAuthMode(e.target.value)}
+                            disabled={!isPlatformAdmin}
+                            className="text-cyan-500 focus:ring-0 bg-slate-900 border-glass-border"
+                          />
+                          <span className={formAuthMode === m.id ? 'text-cyan-300 font-bold' : 'text-slate-400'}>
+                            {m.label}
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+
+                    {/* Conditional Auth Inputs */}
+                    <div className="space-y-3 pt-2 text-xs">
+                      {formAuthMode === 'ENTRA_SERVICE_PRINCIPAL' && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-slate-400 font-mono text-[11px] mb-1">Tenant ID</label>
+                            <input
+                              type="text"
+                              disabled={!isPlatformAdmin}
+                              value={foundryTenantId}
+                              onChange={(e) => setFoundryTenantId(e.target.value)}
+                              placeholder="00000000-0000-0000-0000-000000000000"
+                              className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-glass-border text-slate-200 outline-none font-mono text-xs"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-slate-400 font-mono text-[11px] mb-1">Client ID</label>
+                            <input
+                              type="text"
+                              disabled={!isPlatformAdmin}
+                              value={foundryClientId}
+                              onChange={(e) => setFoundryClientId(e.target.value)}
+                              placeholder="00000000-0000-0000-0000-000000000000"
+                              className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-glass-border text-slate-200 outline-none font-mono text-xs"
+                            />
+                          </div>
+                          <div className="md:col-span-2">
+                            <label className="block text-slate-400 font-mono text-[11px] mb-1">
+                              Client Secret [secret reference]
+                            </label>
+                            <input
+                              type="text"
+                              name="secret_refs"
+                              disabled={!isPlatformAdmin}
+                              value={formSecretRef}
+                              onChange={(e) => {
+                                setFormSecretRef(e.target.value);
+                                if (secretError) setSecretError(null);
+                              }}
+                              onBlur={handleSecretBlur}
+                              placeholder="vault://secret/vulcan/azure/sp_secret or cyberark://..."
+                              className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-glass-border text-slate-200 outline-none font-mono text-xs"
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {formAuthMode === 'MANAGED_IDENTITY' && (
+                        <div>
+                          <label className="block text-slate-400 font-mono text-[11px] mb-1">
+                            Managed Identity Client ID (optional)
+                          </label>
+                          <input
+                            type="text"
+                            disabled={!isPlatformAdmin}
+                            value={foundryManagedIdClientId}
+                            onChange={(e) => setFoundryManagedIdClientId(e.target.value)}
+                            placeholder="Optional Client ID for user-assigned managed identity"
+                            className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-glass-border text-slate-200 outline-none font-mono text-xs"
+                          />
+                        </div>
+                      )}
+
+                      {formAuthMode === 'API_KEY' && (
+                        <div>
+                          <label className="block text-slate-400 font-mono text-[11px] mb-1">
+                            API Key [secret reference]
+                          </label>
+                          <input
+                            type="text"
+                            name="secret_refs"
+                            disabled={!isPlatformAdmin}
+                            value={formSecretRef}
+                            onChange={(e) => {
+                              setFormSecretRef(e.target.value);
+                              if (secretError) setSecretError(null);
+                            }}
+                            onBlur={handleSecretBlur}
+                            placeholder="vault://secret/vulcan/foundry/api_key or cyberark://..."
+                            className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-glass-border text-slate-200 outline-none font-mono text-xs"
+                          />
+                        </div>
+                      )}
+
+                      {secretError && (
+                        <div className="p-2.5 rounded-lg bg-rose-950/40 border border-rose-500/40 text-rose-300 text-xs font-mono flex items-center gap-2">
+                          <AlertCircle size={14} className="text-rose-400 flex-shrink-0" />
+                          <span>{secretError}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Model Deployments Section */}
+                  <div className="p-4 rounded-xl bg-slate-950/60 border border-glass-border space-y-3">
+                    <h3 className="text-xs font-bold font-mono text-slate-200 uppercase tracking-wider pb-2 border-b border-glass-border flex items-center gap-2">
+                      <Sparkles size={13} className="text-cyan-400" />
+                      Model Deployments
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                      <div>
+                        <label className="block text-slate-400 font-mono text-[11px] mb-1">Chat Deployment</label>
+                        <input
+                          type="text"
+                          disabled={!isPlatformAdmin}
+                          value={foundryChatDeployment}
+                          onChange={(e) => setFoundryChatDeployment(e.target.value)}
+                          placeholder="e.g. gpt-4o"
+                          className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-glass-border text-slate-200 outline-none font-mono text-xs"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-slate-400 font-mono text-[11px] mb-1">Embedding Deployment</label>
+                        <input
+                          type="text"
+                          disabled={!isPlatformAdmin}
+                          value={foundryEmbeddingDeployment}
+                          onChange={(e) => setFoundryEmbeddingDeployment(e.target.value)}
+                          placeholder="e.g. text-embedding-3-small"
+                          className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-glass-border text-slate-200 outline-none font-mono text-xs"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-slate-400 font-mono text-[11px] mb-1">Reasoning Deployment</label>
+                        <input
+                          type="text"
+                          disabled={!isPlatformAdmin}
+                          value={foundryReasoningDeployment}
+                          onChange={(e) => setFoundryReasoningDeployment(e.target.value)}
+                          placeholder="e.g. o1-preview"
+                          className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-glass-border text-slate-200 outline-none font-mono text-xs"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-slate-400 font-mono text-[11px] mb-1">Agent Deployment (optional)</label>
+                        <input
+                          type="text"
+                          disabled={!isPlatformAdmin}
+                          value={foundryAgentDeployment}
+                          onChange={(e) => setFoundryAgentDeployment(e.target.value)}
+                          placeholder="e.g. sre-diagnostic-agent"
+                          className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-glass-border text-slate-200 outline-none font-mono text-xs"
+                        />
+                      </div>
+                      <div className="md:col-span-2">
+                        <label className="block text-slate-400 font-mono text-[11px] mb-1">Default Deployment</label>
+                        <input
+                          type="text"
+                          disabled={!isPlatformAdmin}
+                          value={foundryDefaultDeployment}
+                          onChange={(e) => setFoundryDefaultDeployment(e.target.value)}
+                          placeholder="e.g. gpt-4o"
+                          className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-glass-border text-slate-200 outline-none font-mono text-xs"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Advanced Section */}
+                  <div className="p-4 rounded-xl bg-slate-950/60 border border-glass-border space-y-3">
+                    <h3 className="text-xs font-bold font-mono text-slate-200 uppercase tracking-wider pb-2 border-b border-glass-border">
+                      Advanced Parameters
+                    </h3>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs font-mono">
+                      <div>
+                        <label className="block text-slate-400 text-[10px] mb-1">Request Timeout (s)</label>
+                        <input
+                          type="number"
+                          disabled={!isPlatformAdmin}
+                          value={foundryTimeout}
+                          onChange={(e) => setFoundryTimeout(Number(e.target.value))}
+                          className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-glass-border text-slate-200 outline-none text-xs"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-slate-400 text-[10px] mb-1">Max Retries</label>
+                        <input
+                          type="number"
+                          disabled={!isPlatformAdmin}
+                          value={foundryMaxRetries}
+                          onChange={(e) => setFoundryMaxRetries(Number(e.target.value))}
+                          className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-glass-border text-slate-200 outline-none text-xs"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-slate-400 text-[10px] mb-1">Content Safety</label>
+                        <select
+                          disabled={!isPlatformAdmin}
+                          value={foundrySafetyProfile}
+                          onChange={(e) => setFoundrySafetyProfile(e.target.value)}
+                          className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-glass-border text-slate-200 outline-none text-xs"
+                        >
+                          <option value="strict">Strict</option>
+                          <option value="balanced">Balanced</option>
+                          <option value="relaxed">Relaxed</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-slate-400 text-[10px] mb-1">API Version</label>
+                        <input
+                          type="text"
+                          disabled
+                          value="v1"
+                          className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-glass-border text-slate-400 outline-none text-xs"
+                        />
+                      </div>
+                    </div>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                /* Generic Provider Configuration */
+                <div className="space-y-4">
+                  <div className="p-4 rounded-xl bg-slate-950/60 border border-glass-border space-y-3">
+                    <h3 className="text-xs font-bold font-mono text-slate-200 uppercase tracking-wider pb-2 border-b border-glass-border">
+                      Provider Information &amp; Endpoint
+                    </h3>
+                    <div className="space-y-3 text-xs">
+                      <div>
+                        <label className="block text-slate-400 font-mono text-[11px] mb-1">Display Name</label>
+                        <input
+                          type="text"
+                          disabled={!isPlatformAdmin}
+                          value={formDisplayName}
+                          onChange={(e) => setFormDisplayName(e.target.value)}
+                          className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-glass-border text-slate-200 outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-slate-400 font-mono text-[11px] mb-1">Endpoint URL</label>
+                        <input
+                          type="text"
+                          disabled={!isPlatformAdmin}
+                          value={formEndpoint}
+                          onChange={(e) => setFormEndpoint(e.target.value)}
+                          className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-glass-border text-slate-200 outline-none font-mono text-xs"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-slate-400 font-mono text-[11px] mb-1">
+                          Secret Reference (Zero-Raw-Secrets Invariant)
+                        </label>
+                        <input
+                          type="text"
+                          name="secret_refs"
+                          disabled={!isPlatformAdmin}
+                          value={formSecretRef}
+                          onChange={(e) => {
+                            setFormSecretRef(e.target.value);
+                            if (secretError) setSecretError(null);
+                          }}
+                          onBlur={handleSecretBlur}
+                          placeholder="vault://secret/vulcan/... or cyberark://..."
+                          className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-glass-border text-slate-200 outline-none font-mono text-xs"
+                        />
+                        {secretError && (
+                          <div className="p-2 rounded-lg bg-rose-950/40 border border-rose-500/40 text-rose-300 text-xs font-mono mt-1">
+                            {secretError}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Status and Action Buttons */}
               {configSaveSuccess && (
@@ -1005,7 +1556,7 @@ export function ExternalResourcesConsole() {
                   }`}
                 >
                   {savingConfig ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />}
-                  <span>Save</span>
+                  <span>Save Configuration</span>
                 </button>
               </div>
             </div>
@@ -1033,7 +1584,7 @@ export function ExternalResourcesConsole() {
                     className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 font-mono text-xs font-bold transition-all"
                   >
                     <RefreshCw size={13} className={discovering ? 'animate-spin' : ''} />
-                    <span>Discover</span>
+                    <span>Discover Deployments</span>
                   </button>
                 </div>
 
@@ -1097,6 +1648,19 @@ export function ExternalResourcesConsole() {
                             <span className="text-emerald-400 font-bold">Succeeded</span>
                           </div>
                         </div>
+
+                        <div className="p-3.5 rounded-xl bg-slate-950/70 border border-glass-border flex flex-col justify-between gap-2">
+                          <div className="flex items-start justify-between">
+                            <div className="font-mono text-xs font-bold text-slate-100">o1-preview</div>
+                            <span className="text-[9px] font-mono px-2 py-0.5 rounded bg-purple-500/10 text-purple-300 border border-purple-500/20">
+                              reasoning
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between text-[10px] font-mono text-slate-400">
+                            <span>Capacity: 100k TPM</span>
+                            <span className="text-emerald-400 font-bold">Succeeded</span>
+                          </div>
+                        </div>
                       </>
                     )}
                   </div>
@@ -1115,70 +1679,115 @@ export function ExternalResourcesConsole() {
                   </p>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Chat reasoning default */}
-                  <label
-                    data-testid="vulcan-chat-default"
-                    className="p-4 rounded-xl bg-slate-950/70 border border-glass-border flex items-start gap-3 cursor-pointer hover:border-cyan-500/40 transition-all"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={routingChatDefault}
-                      onChange={(e) => setRoutingChatDefault(e.target.checked)}
-                      disabled={!isPlatformAdmin}
-                      className="mt-0.5 rounded text-cyan-500 bg-slate-900 border-glass-border focus:ring-0"
-                    />
-                    <div className="space-y-1">
-                      <span className="text-xs font-mono font-bold text-slate-200 block">
-                        Chat reasoning
-                      </span>
-                      <p className="text-[11px] text-slate-400 leading-relaxed">
-                        Use this deployment as the primary LLM OS reasoning engine for intent extraction and slot filling.
-                      </p>
-                    </div>
-                  </label>
+                <div className="space-y-2">
+                  <span className="text-[11px] font-mono text-slate-400 block font-semibold">
+                    Use for:
+                  </span>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {/* Chat reasoning default */}
+                    <label
+                      data-testid="vulcan-chat-default"
+                      className="p-3.5 rounded-xl bg-slate-950/70 border border-glass-border flex items-start gap-3 cursor-pointer hover:border-cyan-500/40 transition-all"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={routingChatDefault}
+                        onChange={(e) => setRoutingChatDefault(e.target.checked)}
+                        disabled={!isPlatformAdmin}
+                        className="mt-0.5 rounded text-cyan-500 bg-slate-900 border-glass-border focus:ring-0"
+                      />
+                      <div className="space-y-0.5">
+                        <span className="text-xs font-mono font-bold text-slate-200 block">
+                          Chat reasoning
+                        </span>
+                        <p className="text-[10px] text-slate-400 leading-relaxed">
+                          Primary LLM OS reasoning engine for intent extraction and slot filling.
+                        </p>
+                      </div>
+                    </label>
 
-                  {/* Intent embeddings default */}
-                  <label
-                    data-testid="vulcan-embedding-default"
-                    className="p-4 rounded-xl bg-slate-950/70 border border-glass-border flex items-start gap-3 cursor-pointer hover:border-cyan-500/40 transition-all"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={routingEmbedDefault}
-                      onChange={(e) => setRoutingEmbedDefault(e.target.checked)}
-                      disabled={!isPlatformAdmin}
-                      className="mt-0.5 rounded text-cyan-500 bg-slate-900 border-glass-border focus:ring-0"
-                    />
-                    <div className="space-y-1">
-                      <span className="text-xs font-mono font-bold text-slate-200 block">
-                        Intent embeddings
-                      </span>
-                      <p className="text-[11px] text-slate-400 leading-relaxed">
-                        Route 1,536-dim vector indexing and catalog RRF hybrid search queries to this endpoint.
-                      </p>
-                    </div>
-                  </label>
+                    {/* Intent embeddings default */}
+                    <label
+                      data-testid="vulcan-embedding-default"
+                      className="p-3.5 rounded-xl bg-slate-950/70 border border-glass-border flex items-start gap-3 cursor-pointer hover:border-cyan-500/40 transition-all"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={routingEmbedDefault}
+                        onChange={(e) => setRoutingEmbedDefault(e.target.checked)}
+                        disabled={!isPlatformAdmin}
+                        className="mt-0.5 rounded text-cyan-500 bg-slate-900 border-glass-border focus:ring-0"
+                      />
+                      <div className="space-y-0.5">
+                        <span className="text-xs font-mono font-bold text-slate-200 block">
+                          Intent embeddings
+                        </span>
+                        <p className="text-[10px] text-slate-400 leading-relaxed">
+                          1,536-dim vector indexing and catalog RRF hybrid search queries.
+                        </p>
+                      </div>
+                    </label>
+
+                    {/* SRE diagnostics */}
+                    <label className="p-3.5 rounded-xl bg-slate-950/70 border border-glass-border flex items-start gap-3 cursor-pointer hover:border-cyan-500/40 transition-all">
+                      <input
+                        type="checkbox"
+                        checked={routingSreDiag}
+                        onChange={(e) => setRoutingSreDiag(e.target.checked)}
+                        disabled={!isPlatformAdmin}
+                        className="mt-0.5 rounded text-cyan-500 bg-slate-900 border-glass-border focus:ring-0"
+                      />
+                      <div className="space-y-0.5">
+                        <span className="text-xs font-mono font-bold text-slate-200 block">
+                          SRE diagnostics
+                        </span>
+                        <p className="text-[10px] text-slate-400 leading-relaxed">
+                          Windowed stdout AST failure root-cause extraction.
+                        </p>
+                      </div>
+                    </label>
+
+                    {/* Agent workflows */}
+                    <label className="p-3.5 rounded-xl bg-slate-950/70 border border-glass-border flex items-start gap-3 cursor-pointer hover:border-cyan-500/40 transition-all">
+                      <input
+                        type="checkbox"
+                        checked={routingAgentWorkflows}
+                        onChange={(e) => setRoutingAgentWorkflows(e.target.checked)}
+                        disabled={!isPlatformAdmin}
+                        className="mt-0.5 rounded text-cyan-500 bg-slate-900 border-glass-border focus:ring-0"
+                      />
+                      <div className="space-y-0.5">
+                        <span className="text-xs font-mono font-bold text-slate-200 block">
+                          Agent workflows
+                        </span>
+                        <p className="text-[10px] text-slate-400 leading-relaxed">
+                          Autonomous multi-turn tool calling and playbook plan generation.
+                        </p>
+                      </div>
+                    </label>
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4 pt-2">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
                   <div>
                     <label className="block text-[11px] font-mono text-slate-400 mb-1">
                       Priority Order
                     </label>
                     <select
+                      value={priorityOrder}
+                      onChange={(e) => setPriorityOrder(e.target.value)}
                       disabled={!isPlatformAdmin}
                       className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-glass-border text-slate-200 font-mono text-xs outline-none"
                     >
-                      <option value="1">Priority 1 (Primary Production Driver)</option>
-                      <option value="2">Priority 2 (Secondary Failover)</option>
-                      <option value="3">Priority 3 (Air-Gapped Backup)</option>
+                      <option value="1">1. Microsoft Foundry</option>
+                      <option value="2">2. OpenRouter</option>
+                      <option value="3">3. Hugging Face</option>
                     </select>
                   </div>
 
                   <div>
                     <label className="block text-[11px] font-mono text-slate-400 mb-1">
-                      Fallback Policy
+                      Failure Policy
                     </label>
                     <select
                       value={fallbackPolicy}
@@ -1186,9 +1795,8 @@ export function ExternalResourcesConsole() {
                       disabled={!isPlatformAdmin}
                       className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-glass-border text-slate-200 font-mono text-xs outline-none"
                     >
-                      <option value="deterministic_fake">Fallback to Local Deterministic Fake (Hermetic)</option>
-                      <option value="refuse_closed">Fail Closed (Return 503 Refusal)</option>
-                      <option value="retry_exponential">Retry Outbound with Exponential Backoff (3x)</option>
+                      <option value="deterministic_fake">Fallback provider (Local Deterministic Fake)</option>
+                      <option value="refuse_closed">Fail closed</option>
                     </select>
                   </div>
                 </div>

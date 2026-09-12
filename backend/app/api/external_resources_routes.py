@@ -245,6 +245,33 @@ def delete_external_resource(request: Request, resource_id: str):
     return {"ok": deleted, "resource_id": resource_id, "message": f"Resource '{resource_id}' deleted."}
 
 
+@router.post("/{resource_id}/enable", summary="Enable an external resource")
+def enable_external_resource(request: Request, resource_id: str):
+    """Enables an external resource. Restricted to Platform Admins."""
+    user_id = _require_platform_admin(request)
+    repo = _get_repo(request)
+    res = repo.get_by_id(resource_id)
+    if not res:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"External resource '{resource_id}' not found.")
+    res.enabled = True
+    saved = repo.save(res, actor=user_id, reason="Enabled via REST API")
+    return saved.to_dict(mask_secrets=False, is_admin=True)
+
+
+@router.post("/{resource_id}/disable", summary="Disable an external resource")
+def disable_external_resource(request: Request, resource_id: str):
+    """Disables an external resource. Restricted to Platform Admins."""
+    user_id = _require_platform_admin(request)
+    repo = _get_repo(request)
+    res = repo.get_by_id(resource_id)
+    if not res:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"External resource '{resource_id}' not found.")
+    res.enabled = False
+    saved = repo.save(res, actor=user_id, reason="Disabled via REST API")
+    return saved.to_dict(mask_secrets=False, is_admin=True)
+
+
+
 @router.post("/{resource_id}/test", summary="Execute live network reachability and authentication probe")
 def test_external_resource_connection(request: Request, resource_id: str):
     """Triggers outbound network test and records telemetry. Restricted to Platform Admins."""
@@ -312,6 +339,35 @@ def discover_resource_deployments(request: Request, resource_id: str):
         "agents": caps.agents,
         "discovered_at": caps.discovered_at.isoformat() if hasattr(caps.discovered_at, "isoformat") else str(caps.discovered_at),
     }
+
+
+@router.get("/{resource_id}/models", summary="List model endpoints for AI provider")
+def get_resource_models(request: Request, resource_id: str):
+    """Lists discovered models (for AI providers like Microsoft Foundry)."""
+    repo = _get_repo(request)
+    res = repo.get_by_id(resource_id)
+    if not res:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"External resource '{resource_id}' not found.")
+    provider = ProviderRegistry.get_provider(res.provider)
+    if not provider:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"No provider driver found for '{res.provider}'.")
+    caps = provider.discover_capabilities(res.config, res.secret_refs, endpoint=res.endpoint)
+    return {"resource_id": resource_id, "provider": res.provider, "models": caps.models}
+
+
+@router.get("/{resource_id}/agents", summary="List agents for AI provider")
+def get_resource_agents(request: Request, resource_id: str):
+    """Lists discovered agents (for AI providers like Microsoft Foundry)."""
+    repo = _get_repo(request)
+    res = repo.get_by_id(resource_id)
+    if not res:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"External resource '{resource_id}' not found.")
+    provider = ProviderRegistry.get_provider(res.provider)
+    if not provider:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"No provider driver found for '{res.provider}'.")
+    caps = provider.discover_capabilities(res.config, res.secret_refs, endpoint=res.endpoint)
+    return {"resource_id": resource_id, "provider": res.provider, "agents": caps.agents}
+
 
 
 @router.get("/{resource_id}/capabilities", summary="Get discovered capabilities of resource")
