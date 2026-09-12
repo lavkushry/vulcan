@@ -2,9 +2,9 @@ name: Project Vulcan Enterprise CI Gate
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, dev, agentos-ultra ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, dev ]
   workflow_dispatch:
 
 concurrency:
