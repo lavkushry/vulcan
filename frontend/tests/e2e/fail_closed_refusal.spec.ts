@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { setupAuth } from './helpers';
+import { setupAuth, TOKENS } from './helpers';
 
 /**
  * Project Vulcan: Milestone C.1 — Flow 3: Fail-Closed Refusal Gate
@@ -24,9 +24,17 @@ test.describe('Flow 3: Fail-Closed Refusal Gate (Safety & Ungrounded Intent)', (
     });
 
     // 2. Setup Auth & Navigate to Chat Console
-    await setupAuth(page);
+    await setupAuth(page, TOKENS.bot);
     await page.goto('/chat');
     await expect(page).toHaveTitle(/Vulcan/i);
+
+    // Ensure a clean chat session
+    const newChatBtn = page.locator('button:has-text("New Chat")');
+    await expect(newChatBtn).toBeVisible({ timeout: 10000 });
+    await expect(newChatBtn).toBeEnabled({ timeout: 10000 });
+    await newChatBtn.click();
+    // Verify chat reset: no action/approval buttons from previous sessions remain
+    await expect(page.locator('button:has-text("SUBMIT FOR APPROVAL"), button:has-text("LAUNCH ACTION NOW")')).toHaveCount(0, { timeout: 10000 });
 
     // 3. Submit Nonsense / Out-of-Catalog Query
     const promptInput = page.locator('[data-testid="chat-assistant-input"]');
@@ -35,16 +43,16 @@ test.describe('Flow 3: Fail-Closed Refusal Gate (Safety & Ungrounded Intent)', (
     await page.locator('[data-testid="chat-submit-btn"]').click();
 
     // 4. Assert Refusal Cockpit Card is Rendered
-    const refusalBanner = page.locator('text=SAFETY REFUSAL: UNGROUNDED OR DISALLOWED INTENT');
+    const refusalBanner = page.locator('text=SAFETY REFUSAL: UNGROUNDED OR DISALLOWED INTENT').last();
     await expect(refusalBanner).toBeVisible({ timeout: 15000 });
 
     // Assert that the refusal reason is rendered
-    const refusalReason = page.locator('text=Out-of-catalog intent');
+    const refusalReason = page.locator('text=Out-of-catalog intent').last();
     await expect(refusalReason).toBeVisible();
 
     // Assert that NO execution card was rendered
     const launchBtn = page.locator('button:has-text("SUBMIT FOR APPROVAL"), button:has-text("LAUNCH ACTION NOW")');
-    await expect(launchBtn).not.toBeVisible();
+    await expect(launchBtn).toHaveCount(0);
 
     // 5. Zero unhandled console errors
     expect(consoleErrors).toEqual([]);
@@ -61,8 +69,15 @@ test.describe('Flow 3: Fail-Closed Refusal Gate (Safety & Ungrounded Intent)', (
       }
     });
 
-    await setupAuth(page);
+    await setupAuth(page, TOKENS.bot);
     await page.goto('/chat');
+
+    // Ensure a clean chat session
+    const newChatBtn = page.locator('button:has-text("New Chat")');
+    await expect(newChatBtn).toBeVisible({ timeout: 10000 });
+    await expect(newChatBtn).toBeEnabled({ timeout: 10000 });
+    await newChatBtn.click();
+    await expect(page.locator('button:has-text("SUBMIT FOR APPROVAL"), button:has-text("LAUNCH ACTION NOW")')).toHaveCount(0, { timeout: 10000 });
 
     const promptInput = page.locator('[data-testid="chat-assistant-input"]');
     await expect(promptInput).toBeVisible();
@@ -70,7 +85,7 @@ test.describe('Flow 3: Fail-Closed Refusal Gate (Safety & Ungrounded Intent)', (
     await page.locator('[data-testid="chat-submit-btn"]').click();
 
     // Refusal card must trigger
-    const refusalBanner = page.locator('text=SAFETY REFUSAL: UNGROUNDED OR DISALLOWED INTENT');
+    const refusalBanner = page.locator('text=SAFETY REFUSAL: UNGROUNDED OR DISALLOWED INTENT').last();
     await expect(refusalBanner).toBeVisible({ timeout: 15000 });
 
     expect(consoleErrors).toEqual([]);

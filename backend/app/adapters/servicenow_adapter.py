@@ -50,6 +50,15 @@ class ServiceNowGateway(IServiceNowGateway):
                 "type": "e2e-fixture",
                 "work_notes": []
             },
+            "CHG-90210": {
+                "state": "Scheduled",
+                "risk": "High",
+                "start_time": "2026-01-01T00:00:00Z",
+                "end_time": "2027-01-01T00:00:00Z",
+                "ci": "pnc-core-db01",
+                "type": "e2e-fixture",
+                "work_notes": []
+            },
             "CHG-998811": {
                 "state": "Scheduled",
                 "risk": "High",

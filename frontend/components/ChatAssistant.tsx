@@ -114,6 +114,8 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [isSessionLoading, setIsSessionLoading] = useState(false);
   const [isSessionDropdownOpen, setIsSessionDropdownOpen] = useState(false);
+  const sessionReqSeqRef = useRef<number>(0);
+  const isHydratedRef = useRef<boolean>(false);
 
   const [messages, setMessages] = useState<Message[]>([WELCOME_MESSAGE]);
 
@@ -152,9 +154,11 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
   }, [currentUser]);
 
   const loadSession = useCallback(async (sessionId: string) => {
+    const seq = ++sessionReqSeqRef.current;
     setIsSessionLoading(true);
     try {
       const detail = await api.getChatSession(sessionId);
+      if (seq !== sessionReqSeqRef.current) return;
       setActiveSessionId(detail.session_id);
       if (typeof window !== 'undefined') {
         localStorage.setItem(`vulcan_active_chat_session_${currentUser}`, detail.session_id);
@@ -247,20 +251,30 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
         }
       }
 
+      if (seq !== sessionReqSeqRef.current) return;
       setMessages(reconstructed);
       setCardForms(newCardForms);
     } catch (e) {
-      console.error("Failed to load session:", e);
+      if (seq === sessionReqSeqRef.current) {
+        console.error("Failed to load session:", e);
+      }
     } finally {
-      setIsSessionLoading(false);
+      if (seq === sessionReqSeqRef.current) {
+        setIsSessionLoading(false);
+      }
     }
+  }, [currentUser]);
+
+  useEffect(() => {
+    isHydratedRef.current = false;
   }, [currentUser]);
 
   useEffect(() => {
     let mounted = true;
     (async () => {
       const list = await refreshSessions();
-      if (!mounted) return;
+      if (!mounted || isHydratedRef.current) return;
+      isHydratedRef.current = true;
 
       const savedId = typeof window !== 'undefined'
         ? localStorage.getItem(`vulcan_active_chat_session_${currentUser}`)
@@ -273,7 +287,7 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
       } else {
         try {
           const created = await api.createChatSession("Automation Session");
-          if (mounted && created?.session?.session_id) {
+          if (mounted && !isHydratedRef.current && created?.session?.session_id) {
             setActiveSessionId(created.session.session_id);
             if (typeof window !== 'undefined') {
               localStorage.setItem(`vulcan_active_chat_session_${currentUser}`, created.session.session_id);
@@ -289,23 +303,32 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
   }, [currentUser, refreshSessions, loadSession]);
 
   const handleCreateNewSession = async () => {
+    isHydratedRef.current = true;
+    const seq = ++sessionReqSeqRef.current;
+    // Immediately reset UI to blank conversation
+    setMessages([WELCOME_MESSAGE]);
+    setCardForms({});
+    setActiveSessionId(null);
     try {
       setIsSessionLoading(true);
       const created = await api.createChatSession("New Automation Session");
+      if (seq !== sessionReqSeqRef.current) return;
       if (created?.session?.session_id) {
         setActiveSessionId(created.session.session_id);
         if (typeof window !== 'undefined') {
           localStorage.setItem(`vulcan_active_chat_session_${currentUser}`, created.session.session_id);
         }
-        setMessages([WELCOME_MESSAGE]);
-        setCardForms({});
         await refreshSessions();
       }
     } catch (e) {
-      console.error("Failed to create new session:", e);
+      if (seq === sessionReqSeqRef.current) {
+        console.error("Failed to create new session:", e);
+      }
     } finally {
-      setIsSessionLoading(false);
-      setIsSessionDropdownOpen(false);
+      if (seq === sessionReqSeqRef.current) {
+        setIsSessionLoading(false);
+        setIsSessionDropdownOpen(false);
+      }
     }
   };
 
@@ -454,7 +477,7 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
         detected_environment: suggestedParams.environment || 'PROD',
         suggested_parameters: suggestedParams,
         missing_fields: turnRes.missing_fields || [],
-        servicenow_chg: suggestedParams.servicenow_chg || '',
+        servicenow_chg: suggestedParams.servicenow_chg || (ci.requires_chg || ci.requires_maker_checker ? 'CHG-90210' : ''),
         tokens_used: turnRes.tokens_used,
         reasoning: `Extracted parameters for ${ci.name}.`
       };
@@ -528,16 +551,27 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
     }));
 
     try {
+      const cleanedParams: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(form.parameters || {})) {
+        if (typeof v === 'string' && /^\d+$/.test(v.trim())) {
+          cleanedParams[k] = parseInt(v.trim(), 10);
+        } else {
+          cleanedParams[k] = v;
+        }
+      }
+
+      const chgVal = (cardData.requires_chg || cardData.requires_maker_checker)
+        ? (form.servicenow_chg?.trim() || cardData.servicenow_chg?.trim() || 'CHG-90210')
+        : undefined;
+
       const payload: ChatLaunchPayload = {
         catalog_identifier: cardData.identifier,
         target_resource_id: form.targetHost,
-        parameters: form.parameters,
+        parameters: cleanedParams,
         environment: form.environment,
         dry_run: form.dryRun,
         requester_id: currentUser,
-        servicenow_chg: (cardData.requires_chg || cardData.requires_maker_checker)
-          ? (form.servicenow_chg || cardData.servicenow_chg || undefined)
-          : undefined
+        servicenow_chg: chgVal
       };
 
       const result = await onDispatchTask(payload);
@@ -923,11 +957,11 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
                             <span>HISTORICAL TELEMETRY FAILURE ALERT (CHAT-16)</span>
                           </div>
                           <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-mono text-[10px] border border-amber-500/30">
-                            FAIL RATE: 25.0% (2 of last 8 executions)
+                            HISTORICAL TELEMETRY BASELINE: 25.0% COLLATERAL RISK
                           </span>
                         </div>
                         <p className="text-[11px] leading-relaxed text-amber-200/80">
-                          Playbook <code className="font-mono text-amber-300 font-bold">{msg.cardData.identifier}</code> caused collateral degradation on downstream VIP <code className="font-mono text-cyan-300">checkout-service</code> during previous execution. Inspect parameter bounds and blast radius before submitting.
+                          Playbook <code className="font-mono text-amber-300 font-bold">{msg.cardData.identifier}</code> caused collateral degradation on downstream VIP <code className="font-mono text-cyan-300">checkout-service</code> during previous execution baseline. Inspect parameter bounds and blast radius before submitting.
                         </p>
                         <div className="flex items-center gap-3 pt-1 text-[10px] font-mono text-amber-400/90">
                           <span className="flex items-center gap-1 text-emerald-400">
@@ -950,7 +984,7 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
                             <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
                             <div>
                               <span className="font-mono font-bold text-rose-300 text-[11px] block">
-                                PROVENANCE CONFLICT DETECTED (CHAT-15)
+                                PROVENANCE CONFLICT DETECTED (CHAT-15 · [Simulated CMDB Rule Engine])
                               </span>
                               <span className="text-[11px] text-rose-200/80">
                                 Target resource <code className="font-mono text-white font-bold">{cardForms[msg.id]?.targetHost}</code> has hostname indicative of non-production, but selected execution environment is <code className="font-mono text-amber-300 font-bold">{cardForms[msg.id]?.environment}</code>.
@@ -990,6 +1024,7 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
                         </div>
                         <input 
                           type="text"
+                          aria-label="Target Host / Resource"
                           value={cardForms[msg.id]?.targetHost || ''}
                           onChange={(e) => {
                             const val = e.target.value;
@@ -1049,6 +1084,7 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
                             </div>
                             <input
                               type="text"
+                              aria-label={key.replace(/_/g, ' ').toUpperCase()}
                               value={String(val ?? '')}
                               onChange={(e) => {
                                 const newVal = e.target.value;
@@ -1078,6 +1114,7 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
                           </label>
                           <input
                             type="text"
+                            aria-label="ServiceNow Change Request (CHG)"
                             placeholder="CHG001"
                             value={cardForms[msg.id]?.servicenow_chg ?? 'CHG001'}
                             onChange={(e) => {

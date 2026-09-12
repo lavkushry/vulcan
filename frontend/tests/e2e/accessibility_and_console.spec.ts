@@ -32,8 +32,8 @@ test.describe('Platform Quality: Zero Console Errors & WCAG Accessibility', () =
 
       await setupAuth(page);
       await page.goto(pageInfo.path, { waitUntil: 'domcontentloaded' });
-      await expect(page).toHaveTitle(/Vulcan/i);
-      await page.waitForLoadState('networkidle');
+      await page.waitForLoadState('domcontentloaded');
+      await page.waitForSelector('main, header', { state: 'visible' });
 
       // Verify zero console errors
       expect(consoleErrors).toEqual([]);

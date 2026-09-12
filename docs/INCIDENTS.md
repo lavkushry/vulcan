@@ -175,6 +175,18 @@
 * **Mandatory Governance Protocol Rule:**
   > **CARDINAL RULE**: *A key never touches a text field anywhere, including conversations with agents. Keys must be provisioned out-of-band directly to the target environment (`read -s` into `.env`, never via chat).*
 
+### SEC-INC-10: Residual Token Exposure via Query Parameters in SSE & WebSocket Transports
+* **Timestamp:** 2026-09-12T14:30:00Z
+* **Category:** Architectural Risk / Transport Protocol Residual
+* **Description:** Implementation of `CHAT-22` (Server-Sent Events streaming transport for intent resolution) and WebSocket live execution telemetry allows token authentication via URL query parameters (`?token=...`). This accommodation exists because standard browser `EventSource` and `WebSocket` APIs do not support setting custom `Authorization: Bearer` request headers natively.
+* **Impact & Exposure Risk:** Query string parameters are traditionally logged by default in web server and reverse proxy access logs (e.g., Nginx, Envoy, AWS ALB), and can appear in browser histories or TLS termination proxies if log masking is misconfigured.
+* **Mitigation & Defense-in-Depth:**
+  1. **Log Sanitization Mandate**: Access log formatting rules in Nginx/Envoy must explicitly mask or drop the `token` query parameter (`log_format ... "$request_uri_sanitized"`).
+  2. **Loopback Perimeter Lockdown**: Pilot environment operates under loopback lockdown (`127.0.0.1:8000`), reachable exclusively via authenticated SSH port forwarding (`ssh -L`), preventing intermediate proxy exposure.
+  3. **Ephemeral Ticket Exchange (Phase 7 Roadmap)**: For multi-operator browser clients post-pilot, replace query-parameter tokens with a short-lived (60s), single-use connection ticket issued via a secure POST handshake (`POST /api/v1/auth/tickets`).
+  4. **Header Auth Default**: Standard REST endpoints continue to enforce strict `Authorization: Bearer <token>` header authentication.
+* **Residual Status:** Formally Documented & Risk-Accepted for Pilot Scope.
+
 ---
 
 ## Ongoing Governance Protocol

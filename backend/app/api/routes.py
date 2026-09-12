@@ -103,11 +103,12 @@ class PolicyEvaluateRequest(BaseModel):
 def get_health():
     """System Health & Audit Integrity Check."""
     is_audit_valid = container.audit_logger.verify_chain()
+    job_count = container.job_repo.count() if hasattr(container.job_repo, "count") else len(container.jobs)
     return {
         "status": "OPERATIONAL",
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "catalog_size": len(container.catalog),
-        "active_jobs_count": len(container.job_repo.list_jobs(limit=1000)),
+        "active_jobs_count": job_count,
         "audit_chain_valid": is_audit_valid,
         "audit_tip_hash": container.audit_logger.get_last_hash(),
     }
@@ -874,12 +875,12 @@ async def stream_intent_resolution(
 
 
 @router.get("/jobs")
-def list_jobs(request: Request, current_user: Optional[str] = Query(None)):
+def list_jobs(request: Request, current_user: Optional[str] = Query(None), limit: int = Query(50, ge=1, le=1000)):
     """List all jobs in the control plane."""
     user = current_user or getattr(request.state, "user_id", None) or request.headers.get("x-vulcan-user")
-    all_jobs = container.job_repo.list_jobs(limit=1000)
+    all_jobs = container.job_repo.list_jobs(limit=limit)
     if not all_jobs:
-        all_jobs = list(container.jobs.values())
+        all_jobs = list(container.jobs.values())[:limit]
     return [_format_job_response(job, current_user=user) for job in all_jobs]
 
 

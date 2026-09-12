@@ -95,19 +95,29 @@ class PostgresJobRepository(IJobRepository):
             logger.warning("Could not verify execution_jobs table on init: %s", e)
 
     def _get_catalog_item(self, identifier: str) -> Optional[CatalogItem]:
-        if self._catalog_repo:
-            item = self._catalog_repo.get_by_identifier(identifier)
-            if item:
-                return item
+        if not hasattr(self, "_catalog_cache"):
+            self._catalog_cache = {}
+        if identifier in self._catalog_cache:
+            return self._catalog_cache[identifier]
+
+        item = None
         if self._catalog:
             for it in self._catalog:
                 if it.identifier == identifier:
-                    return it
-        from app.catalog_data import get_catalog_items
-        for it in get_catalog_items():
-            if it.identifier == identifier:
-                return it
-        return None
+                    item = it
+                    break
+        if not item and self._catalog_repo:
+            item = self._catalog_repo.get_by_identifier(identifier)
+        if not item:
+            from app.catalog_data import get_catalog_items
+            for it in get_catalog_items():
+                if it.identifier == identifier:
+                    item = it
+                    break
+
+        if item:
+            self._catalog_cache[identifier] = item
+        return item
 
     def save(self, job: ExecutionJob) -> None:
         """Persists or updates the execution job state via atomic UPSERT."""

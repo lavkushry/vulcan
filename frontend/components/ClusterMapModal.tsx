@@ -51,7 +51,13 @@ export const ClusterMapModal: React.FC<ClusterMapModalProps> = ({
   useEffect(() => {
     if (!isOpen) return;
     fetchTopology();
-  }, [isOpen]);
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -97,6 +103,7 @@ export const ClusterMapModal: React.FC<ClusterMapModalProps> = ({
             <button
               type="button"
               onClick={onClose}
+              data-testid="close-cluster-radar-btn"
               aria-label="Close cluster radar"
               className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition-colors cursor-pointer"
             >
@@ -264,6 +271,7 @@ export const ClusterMapModal: React.FC<ClusterMapModalProps> = ({
           <button
             type="button"
             onClick={onClose}
+            data-testid="close-cluster-radar-footer-btn"
             className="px-4 py-1.5 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold transition-colors cursor-pointer"
           >
             Close Radar

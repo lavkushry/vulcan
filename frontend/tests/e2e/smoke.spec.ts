@@ -31,7 +31,7 @@ test.describe('Vulcan Operator Console Smoke Tests', () => {
     await page.goto('/chat');
     await expect(page).toHaveTitle(/Vulcan/i);
     // Verify chat assistant input field exists
-    const chatInput = page.locator('input[placeholder*="automate"], textarea').first();
+    const chatInput = page.locator('[data-testid="chat-assistant-input"], input[placeholder*="Ask Copilot"], textarea').first();
     await expect(chatInput).toBeVisible();
   });
 

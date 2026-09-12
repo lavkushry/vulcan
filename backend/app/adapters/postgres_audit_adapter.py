@@ -8,6 +8,7 @@ for tamper-evident, cross-process safe Merkle hash chaining.
 import json
 import logging
 import os
+import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -215,16 +216,44 @@ class PostgresAuditAdapter(IAuditLedgerRepository, IAuditLogger):
             ))
         return records
 
-    def verify_integrity(self) -> bool:
+    def verify_integrity(self, window: Optional[int] = None) -> bool:
         """
-        Validates the SHA-256 hash chain from genesis to head.
+        Validates the SHA-256 hash chain from genesis (or window) to head.
         Recalculates every block's cryptographic hash and checks link integrity.
         """
-        chain = self.get_chain()
-        if not chain:
-            return True
+        if window:
+            with self._get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT * FROM audit_ledger ORDER BY id DESC LIMIT %s;", (window,))
+                    rows = cur.fetchall()
+            if not rows:
+                return True
+            rows.reverse()
+            chain = []
+            for row in rows:
+                payload = row["payload"]
+                if isinstance(payload, str):
+                    try:
+                        payload = json.loads(payload)
+                    except Exception:
+                        payload = {}
+                chain.append(AuditRecord(
+                    id=int(row["id"]),
+                    correlation_id=row["correlation_id"],
+                    timestamp=row["timestamp"].isoformat() if hasattr(row["timestamp"], "isoformat") else str(row["timestamp"]),
+                    actor=row["actor"],
+                    action=row["action"],
+                    payload=payload,
+                    prev_hash=row["prev_hash"],
+                    current_hash=row["current_hash"]
+                ))
+            expected_prev = chain[0].prev_hash
+        else:
+            chain = self.get_chain()
+            if not chain:
+                return True
+            expected_prev = self.GENESIS_HASH
 
-        expected_prev = self.GENESIS_HASH
         for idx, rec in enumerate(chain):
             # 1. Verify link to previous block
             if rec.prev_hash != expected_prev:
@@ -254,9 +283,15 @@ class PostgresAuditAdapter(IAuditLedgerRepository, IAuditLogger):
 
         return True
 
-    def verify_chain(self) -> bool:
-        """Alias for verify_integrity implementing IAuditLogger port."""
-        return self.verify_integrity()
+    def verify_chain(self, window: int = 50) -> bool:
+        """Alias for verify_integrity implementing IAuditLogger port with 10s TTL cache and 50-block sliding window."""
+        now = time.time()
+        if now - getattr(self, "_last_verify_time", 0.0) < 10.0:
+            return getattr(self, "_last_verify_result", True)
+        res = self.verify_integrity(window=window)
+        self._last_verify_time = now
+        self._last_verify_result = res
+        return res
 
     @property
     def ledger(self) -> List[AuditRecord]:
