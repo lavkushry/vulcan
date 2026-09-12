@@ -116,6 +116,14 @@ def test_token_consumption_prevents_double_use():
     from app.agentos.schemas import ExecutionCapabilityToken
     from datetime import timedelta
     repo = PostgresAgentWorkflowRepository(db_url=None)
+    ctx = WorkflowContext(
+        workflow_id="wf-consume",
+        correlation_id="corr-consume",
+        requester_id="op",
+        original_request="test",
+        environment="PROD",
+    )
+    repo.save_workflow(ctx)
     token = ExecutionCapabilityToken(
         token_id="cap-consume-test",
         workflow_id="wf-consume",

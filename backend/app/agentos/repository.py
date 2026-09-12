@@ -330,6 +330,29 @@ class PostgresAgentWorkflowRepository:
                 import psycopg
                 with psycopg.connect(self.db_url, autocommit=True) as conn:
                     with conn.cursor() as cur:
+                        # Ensure parent workflow row exists to satisfy foreign key constraint
+                        cur.execute(
+                            """
+                            INSERT INTO agent_workflows (
+                                workflow_id, requester_id, environment, state, original_request, version,
+                                normalized_intent, desired_state, risk_classification, assumptions,
+                                unresolved_questions, discovered_assets, provenance, automation_plan,
+                                generated_artifacts, required_resources, resolved_resources, secret_references,
+                                validation_results, security_findings, test_results, critic_findings,
+                                policy_decision, approval_records, execution_plan, execution_result,
+                                postcondition_verification, rollback_state, curation_state, eval_result
+                            ) VALUES (
+                                %s, 'system', %s, 'RECEIVED', 'Capability Token Parent', 1,
+                                '{}', '{}', '{}', '[]',
+                                '[]', '[]', '[]', '{}',
+                                '[]', '[]', '{}', '{}',
+                                '[]', '[]', '[]', '[]',
+                                '{}', '[]', '{}', '{}',
+                                '{}', '{}', '{}', '{}'
+                            ) ON CONFLICT (workflow_id) DO NOTHING;
+                            """,
+                            (token.workflow_id, token.environment if token.environment in ("PROD", "STAGE", "DEV") else "PROD")
+                        )
                         cur.execute(
                             """
                             INSERT INTO execution_authorizations (

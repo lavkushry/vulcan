@@ -285,6 +285,14 @@ class TestReplayPrevention:
         """Atomic consumption via repository: second attempt returns None."""
         from app.agentos.schemas import ExecutionCapabilityToken
         repo = PostgresAgentWorkflowRepository(db_url=None)
+        ctx = WorkflowContext(
+            workflow_id="wf-replay",
+            correlation_id="corr-replay",
+            requester_id="op",
+            original_request="test",
+            environment="PROD",
+        )
+        repo.save_workflow(ctx)
         token = ExecutionCapabilityToken(
             token_id="cap-replay-test",
             workflow_id="wf-replay",
