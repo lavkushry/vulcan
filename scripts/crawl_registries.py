@@ -19,6 +19,7 @@ from typing import Any, Dict, List, Optional
 # Add backend directory to sys.path
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE_DIR / "backend"))
+sys.path.insert(0, str(BASE_DIR))
 
 from app.adapters.embedding_providers import get_embedding_provider
 from app.adapters.postgres_catalog_repository import compute_hash_embedding
