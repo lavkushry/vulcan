@@ -81,8 +81,11 @@ vulcan-control-plane/
 
 ## Verification & Test Results
 
-- **Backend Unit Tests**: **60/60 passing** in 1.834s (`PYTHONPATH=backend backend/.venv/bin/python3 -m unittest discover backend/tests`).
-- **Frontend Production Build**: **15 static routes compiled cleanly** with zero TypeScript errors (`npm run build`).
+- **Backend Unit Tests**: **227 passed, 7 skipped (100% green across 24 suites)** in ~6.8s (`backend/.venv/bin/pytest backend/tests/`).
+- **Browser E2E Suite**: **16/16 passing (100% green across 6 suites)** with zero unhandled console errors and full WCAG accessibility compliance via Playwright Chromium.
+- **500-Scenario Golden Evaluation Gate (`CHAT-20`)**: 9/9 regression metrics passing (100% Adversarial Refusal, 100% Slot F1, 84.0% Live / 82.0% Fake Top-1 routing).
+- **Master Architecture Register**: **122/127 items implemented (96.1%)** across all 5 debate tracks ([`docs/MASTER_OPPORTUNITY_REGISTER.md`](docs/MASTER_OPPORTUNITY_REGISTER.md)).
+- **Frontend Production Build**: **16 static routes compiled cleanly** with zero TypeScript errors (`npm run build`).
 - **All Routes Return HTTP 200 OK**: Verified live on port 3000.
 - **Git Repository**: Pushed to `origin/main` at `https://github.com/lavkushry/vulcan.git`.
 
