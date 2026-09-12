@@ -237,3 +237,48 @@ class IEmbeddingProvider(abc.ABC):
         return (max_dense < min_no_sparse and max_sparse <= 0.0) or (max_dense < min_with_sparse and max_sparse <= sparse_cutoff)
 
 
+class JobQueueMessage(BaseModel):
+    """Represents a job dispatch payload enqueued on the message broker."""
+    message_id: str
+    job_id: str
+    correlation_id: str
+    enqueued_at: datetime
+    priority: int = 0
+    retry_count: int = 0
+    payload: Optional[Dict[str, Any]] = None
+
+
+class IJobQueue(abc.ABC):
+    """Port for decoupled, durable job dispatch queue (e.g. Redis Streams / in-memory)."""
+
+    @abc.abstractmethod
+    def enqueue(self, job_id: str, correlation_id: str, priority: int = 0, payload: Optional[Dict[str, Any]] = None) -> str:
+        """Enqueues a job for execution. Returns unique message ID."""
+        pass
+
+    @abc.abstractmethod
+    def dequeue(self, worker_id: str, timeout_seconds: float = 2.0) -> Optional[JobQueueMessage]:
+        """Dequeues the next available job message for the specified worker consumer."""
+        pass
+
+    @abc.abstractmethod
+    def ack(self, message_id: str) -> bool:
+        """Acknowledges successful processing and dequeues message from consumer group."""
+        pass
+
+    @abc.abstractmethod
+    def nack(self, message_id: str, requeue: bool = True) -> bool:
+        """Negatively acknowledges processing failure."""
+        pass
+
+    @abc.abstractmethod
+    def requeue_stale(self, min_idle_ms: int = 60000, worker_id: str = "recovery_reaper") -> List[JobQueueMessage]:
+        """Reclaims pending messages from dead or crashed workers."""
+        pass
+
+    @abc.abstractmethod
+    def queue_depth(self) -> int:
+        """Returns total count of pending and unacknowledged messages."""
+        pass
+
+

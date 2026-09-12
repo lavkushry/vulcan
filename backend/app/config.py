@@ -162,6 +162,35 @@ class AppContainer:
             ttl_seconds=int(os.getenv("VULCAN_CHAT_SESSION_TTL", "7200"))
         )
 
+        # 9. Decoupled Job Queue & Worker Fleet (BKND-18)
+        from app.adapters.redis_queue_adapter import RedisJobQueue, InMemoryJobQueue
+        from app.workers.execution_worker import ExecutionWorkerFleet
+        from app.api.websockets import ws_hub
+
+        if redis_client:
+            try:
+                self.job_queue = RedisJobQueue(redis_client=redis_client)
+                logger.info("Initialized RedisJobQueue (stream: vulcan:jobs:dispatch)")
+            except Exception as e:
+                logger.warning("Could not initialize RedisJobQueue: %s. Falling back to InMemoryJobQueue.", e)
+                self.job_queue = InMemoryJobQueue()
+        else:
+            self.job_queue = InMemoryJobQueue()
+            logger.info("Initialized InMemoryJobQueue.")
+
+        self.embedded_worker = os.getenv("VULCAN_EMBEDDED_WORKER", "true").lower() in ("1", "true", "yes")
+        worker_concurrency = int(os.getenv("VULCAN_WORKER_CONCURRENCY", "10" if self.embedded_worker else "75"))
+        self.worker_fleet = ExecutionWorkerFleet(
+            job_queue=self.job_queue,
+            container=self,
+            ws_hub=ws_hub,
+            concurrency=worker_concurrency,
+            fleet_name="vulcan-fleet"
+        )
+        if self.embedded_worker:
+            self.worker_fleet.start()
+            logger.info("Started embedded ExecutionWorkerFleet with concurrency=%d", worker_concurrency)
+
     def _detect_redis(self) -> list:
         """Attempt to connect to Redis. Returns node list or empty list."""
         try:

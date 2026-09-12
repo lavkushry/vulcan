@@ -389,8 +389,8 @@ def dispatch_task(req: DispatchTaskRequest):
     if not catalog_item:
         raise HTTPException(status_code=404, detail=f"Catalog item '{req.catalog_identifier}' not found.")
 
-    job_id = f"task-{uuid.uuid4().hex[:6]}"
-    correlation_id = f"EXEC-{uuid.uuid4().hex[:4].upper()}"
+    job_id = f"task-{uuid.uuid4().hex[:8]}"
+    correlation_id = f"EXEC-{uuid.uuid4().hex[:8].upper()}"
 
     try:
         job = ExecutionJob(
@@ -425,55 +425,24 @@ def dispatch_task(req: DispatchTaskRequest):
     # Immediate execution path
     job.parse()
     job.transition_to(JobStatus.QUEUED, "Dispatched from automation hub")
-    job.transition_to(JobStatus.LOCKED, "Distributed lock acquired")
-    job.transition_to(JobStatus.RUNNING, "Execution initiated")
-    job.worker_pid = os.getpid()
     job.dispatched_by = req.requester_id or "console.operator"
     container.jobs[correlation_id] = job
     container.job_repo.save(job)
 
-    def run_simulation():
-        import time
-        engine_name = catalog_item.engine.value.upper()
-        ws_hub.emit_log(correlation_id, f"\033[1;36m[PROJECT VULCAN CONTROL PLANE]\033[0m Initializing runtime sandbox for {catalog_item.identifier}...")
-        time.sleep(0.3)
-        ws_hub.emit_log(correlation_id, f"\033[1;34m[PAM CYBERARK]\033[0m Bound ephemeral session credentials for {req.target_resource_id}.")
-        time.sleep(0.3)
-        ws_hub.emit_log(correlation_id, f"\033[1;32m[AUDIT LEDGER]\033[0m Synchronous pre-run cryptographic commit hash: {container.audit_logger.get_last_hash()[:12]}...")
-        time.sleep(0.4)
+    # Uncle Bob Invariant: Synchronous write-before-execute audit commit
+    container.audit_logger.record(
+        job,
+        "EXECUTION_TRIGGERED",
+        {"actor": job.dispatched_by, "target": job.target_resource_id},
+        actor=job.dispatched_by
+    )
 
-        if catalog_item.engine == ExecutionEngineType.ANSIBLE:
-            ws_hub.emit_log(correlation_id, f"PLAY [{catalog_item.name}] ****************************************")
-            time.sleep(0.4)
-            ws_hub.emit_log(correlation_id, f"TASK [Gathering Facts] *********************************************************")
-            ws_hub.emit_log(correlation_id, f"ok: [{req.target_resource_id}]")
-            time.sleep(0.5)
-            ws_hub.emit_log(correlation_id, f"TASK [execute_playbook_tasks : Verify environment state] ***********************")
-            ws_hub.emit_log(correlation_id, f"ok: [{req.target_resource_id}] => {{\"status\": \"READY\", \"env\": \"{req.environment}\"}}")
-            time.sleep(0.6)
-            ws_hub.emit_log(correlation_id, f"TASK [execute_playbook_tasks : Apply configurations] ***************************")
-            ws_hub.emit_log(correlation_id, f"changed: [{req.target_resource_id}] => {{\"params\": {req.parameters}, \"state\": \"APPLIED\"}}")
-            time.sleep(0.5)
-            ws_hub.emit_log(correlation_id, f"PLAY RECAP *********************************************************************")
-            ws_hub.emit_log(correlation_id, f"{req.target_resource_id} : ok=3    changed=1    unreachable=0    failed=0")
-        else:
-            ws_hub.emit_log(correlation_id, f"\033[1;35m[TERRAFORM INIT]\033[0m Initializing provider plugins (AWS / Azure / GCP)...")
-            time.sleep(0.4)
-            ws_hub.emit_log(correlation_id, f"\033[1;35m[TERRAFORM PLAN]\033[0m Plan: 1 to add, 0 to change, 0 to destroy.")
-            time.sleep(0.6)
-            ws_hub.emit_log(correlation_id, f"\033[1;35m[TERRAFORM APPLY]\033[0m Applying configuration to {req.target_resource_id}...")
-            time.sleep(0.7)
-            ws_hub.emit_log(correlation_id, f"\033[1;32m[TERRAFORM SUCCESS]\033[0m Apply complete! Resources: 1 added, 0 changed, 0 destroyed.")
-
-        ws_hub.emit_log(correlation_id, f"\033[1;32m[POST-FLIGHT VERIFICATION]\033[0m Health probes passed with 0% error rate.")
-        job.transition_to(JobStatus.VERIFYING, "Verifying health probes")
-        job.transition_to(JobStatus.SUCCESS, "Completed execution")
-        job.completed_at = datetime.now(timezone.utc)
-        container.job_repo.save(job)
-        ws_hub.emit_log(correlation_id, f"\033[1;32m[COMPLETE]\033[0m Task {correlation_id} finished successfully with exit code 0.")
-
-    thread = threading.Thread(target=run_simulation, daemon=True)
-    thread.start()
+    msg_id = container.job_queue.enqueue(
+        job_id=job.id,
+        correlation_id=job.correlation_id,
+        priority=catalog_item.risk_tier.value if hasattr(catalog_item, "risk_tier") else 0,
+        payload={"actor": job.dispatched_by, "target": job.target_resource_id}
+    )
 
     return {
         "job_id": job.id,
@@ -481,6 +450,7 @@ def dispatch_task(req: DispatchTaskRequest):
         "status": job.status.value,
         "target_resource": job.target_resource_id,
         "requires_approval": False,
+        "message_id": msg_id,
         "message": f"Task {job.correlation_id} dispatched and executing live."
     }
 
@@ -1127,6 +1097,8 @@ def trigger_execution(correlation_id: str, request: Request):
     job.dispatched_by = actor
     job.worker_pid = os.getpid()
     container.job_repo.save(job)
+    if hasattr(container, "jobs") and isinstance(container.jobs, dict):
+        container.jobs[job.correlation_id] = job
 
     # Synchronous write-before-execute audit record (Uncle Bob invariant)
     container.audit_logger.record(
@@ -1136,40 +1108,19 @@ def trigger_execution(correlation_id: str, request: Request):
         actor=actor
     )
 
-    def _status_callback(corr_id: str, status: str, message: str):
-        ws_hub.publish(corr_id, "status", {"status": status, "message": message})
-
-    runner = container.create_runner(
-        log_event_stream=ws_hub.emit_log,
-        status_event_stream=_status_callback
+    msg_id = container.job_queue.enqueue(
+        job_id=job.id,
+        correlation_id=job.correlation_id,
+        priority=job.catalog_item.risk_tier.value if hasattr(job.catalog_item, "risk_tier") else 0,
+        payload={"actor": actor, "target": job.target_resource_id}
     )
 
-    def run_worker():
-        try:
-            runner.run(job)
-            container.job_repo.save(job)
-            ws_hub.publish(job.correlation_id, "status", {"status": job.status.value, "message": "Execution complete"})
-        except Exception as e:
-            if job.status not in (JobStatus.FAILED, JobStatus.REVERTED, JobStatus.DEGRADED):
-                job.transition_to(JobStatus.FAILED, str(e))
-            job.completed_at = datetime.now(timezone.utc)
-            job.error_message = str(e)
-            container.job_repo.save(job)
-            ws_hub.emit_log(job.correlation_id, f"\033[1;31m[EXECUTION ERROR]\033[0m {str(e)}", "stderr")
-            ws_hub.publish(job.correlation_id, "status", {"status": job.status.value, "message": str(e)})
-            try:
-                diag = container.diagnostic_engine.diagnose(str(e), job.catalog_item.identifier, exit_code=job.exit_code or 1)
-                ws_hub.publish(job.correlation_id, "diagnostic", diag.to_dict())
-                job.diagnostic = diag.root_cause
-                job.diagnostic_details = diag.to_dict()
-                container.job_repo.save(job)
-            except Exception:
-                pass
-
-    thread = threading.Thread(target=run_worker, daemon=True)
-    thread.start()
-
-    return {"status": "EXECUTION_DISPATCHED", "correlation_id": job.correlation_id}
+    return {
+        "status": "EXECUTION_DISPATCHED",
+        "correlation_id": job.correlation_id,
+        "message_id": msg_id,
+        "queue_depth": container.job_queue.queue_depth()
+    }
 
 
 @router.post("/jobs/{correlation_id}/diagnose")

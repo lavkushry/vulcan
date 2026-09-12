@@ -48,6 +48,8 @@ async def lifespan(app: FastAPI):
     yield
 
     # Clean shutdown
+    if hasattr(container, "worker_fleet") and container.worker_fleet:
+        container.worker_fleet.stop(timeout_seconds=2.0)
     if hasattr(container, "approval_sweeper") and container.approval_sweeper:
         await container.approval_sweeper.stop()
     ws_hub.stop()

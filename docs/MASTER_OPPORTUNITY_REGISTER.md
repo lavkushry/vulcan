@@ -121,7 +121,7 @@ The Master Opportunity Register unifies **127 architectural opportunities** mine
 | **BKND-15** | Lock Telemetry in Job Models | UI guessing lock status via setInterval | Jordan Walke | P2 | Phase 4 | 🟢 Implemented | `backend/app/domain/entities.py` |
 | **BKND-16** | Fail-Closed ServiceNow Gate | Synthetic governance illusion in test runs | Karpathy | P0 | Phase 2 | 🟢 Implemented | `backend/app/adapters/servicenow_adapter.py` |
 | **BKND-17** | Kill routes.py Simulation Loop | Bypassing BaseJobRunner safety template | Uncle Bob | P0 | Phase 1 | 🟢 Implemented | `backend/app/api/routes.py` |
-| **BKND-18** | Decoupled 75-Runner Fleet | Unbounded thread spawn in API process | Alex Xu | P0 | Phase 2 | 🟡 In Progress (Tested 75 concurrent operators; physical execution fleet decoupling pending) | `scripts/run_load_test.py` |
+| **BKND-18** | Decoupled 75-Runner Fleet | Unbounded thread spawn in API process | Alex Xu | P0 | Phase 2 | 🟢 Implemented (Decoupled Redis Streams queue + 75-runner worker fleet with in-memory fallback) | `backend/app/workers/execution_worker.py` |
 | **BKND-19** | CyberArk PAM RAM-Only Secrets | Hardcoded plaintext credentials in memory | Uncle Bob | P1 | Phase 2 | 🟡 In Progress (Simulated adapter active in reality matrix; live CCP integration pending) | `backend/app/adapters/cyberark_adapter.py` |
 
 | **BKND-20** | Automated Rollback Execution | Orphaned degraded states after failure | Uncle Bob | P1 | Phase 1 | 🟢 Implemented | `backend/app/use_cases/runner.py` |
