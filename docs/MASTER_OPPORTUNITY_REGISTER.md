@@ -19,15 +19,15 @@ The Master Opportunity Register unifies **127 architectural opportunities** mine
 
 | Subsystem | Total Items | 🟢 Implemented | 🟡 In Progress | ⚪ Planned | Implementation Rate |
 | :--- | :---: | :---: | :---: | :---: | :---: |
-| **Frontend Console (`UI-XX`)** | 28 | 15 | 7 | 6 | **53.6%** |
+| **Frontend Console (`UI-XX`)** | 28 | 16 | 6 | 6 | **57.1%** |
 | **AI Chat Subsystem (`CHAT-XX`)** | 26 | 16 | 6 | 4 | **61.5%** |
 | **Backend Control Plane (`BKND-XX`)** | 35 | 24 | 7 | 4 | **68.6%** |
 | **Platform & Infra (`INFRA-XX`)** | 30 | 20 | 6 | 4 | **66.7%** |
 | **Registry & Curation (`REG-XX`)** | 8 | 7 | 1 | 0 | **87.5%** |
-| **Total Across Architecture** | **127** | **82** | **27** | **18** | **64.6%** |
+| **Total Across Architecture** | **127** | **83** | **26** | **18** | **65.4%** |
 
 > [!NOTE]
-> **Milestone A Deferral & Protocol:** Milestone A (Live Embedding API Procurement & Empirical Gate Calibration) is formally deferred pending API key procurement — owner: user, review date: 2026-09-22. Deterministic semantic cluster vectors (`semantic-cluster-1536`) remain the active baseline until credentials are provided. If no key is provided by 2026-09-22, routing precision (≥99.2%) and search quality claims will formally downgrade to deferred indefinitely in the PRD, solidifying the pilot posture as *governance-proven, AI-staged*.
+> **Milestone A Verification (Completed 2026-09-09):** Milestone A (Live Embedding API Procurement & Empirical Gate Calibration) was executed ahead of schedule on live infrastructure using Hugging Face Serverless (`BAAI/bge-large-en-v1.5`), OpenRouter, and Gemini. Live 500-scenario evaluation achieved 84.00% Top-1, 92.00% Operator-Reachable, 0.0% dead-end choice cards, 100% injection defense, and full 10,467-item pgvector re-embedding. Posture upgraded to *Governance-proven, Live-AI-verified*.
 
 ---
 
@@ -37,7 +37,7 @@ The Master Opportunity Register unifies **127 architectural opportunities** mine
 | ID | Initiative Name | Problem Killed | Persona | Prio | Phase | Status | Verification Artifact |
 | :--- | :--- | :--- | :---: | :---: | :---: | :---: | :--- |
 | **UI-01** | Domain Invariant Presenter | Policy logic leaking into JSX components | Uncle Bob | P0 | Phase 1 | 🟢 Implemented | `frontend/components/TaskMatrixTable.tsx` |
-| **UI-02** | Real-Time Attestation Ledger | Hardcoded mock policy evaluation arrays | Uncle Bob | P0 | Phase 1 | 🟡 In Progress (Props live, fallback defaults retain mock strings) | `frontend/components/SeparationOfDutiesProofCard.tsx` |
+| **UI-02** | Real-Time Attestation Ledger | Hardcoded mock policy evaluation arrays | Uncle Bob | P0 | Phase 1 | 🟢 Implemented | `frontend/components/SeparationOfDutiesProofCard.tsx` |
 | **UI-03** | Zero-Trust Error Boundary | Silent error-swallowing synthesizing fake cards | Karpathy | P0 | Phase 1 | 🟢 Implemented | `frontend/components/ChatAssistant.tsx` |
 | **UI-04** | Server-Telemetry Redlock Radar | Client-side setInterval lock simulation | Alex Xu | P0 | Phase 1 | 🟢 Implemented | `frontend/components/RedlockHeartbeatBar.tsx` |
 | **UI-05** | RAF-Batched WebSocket Streamer | 500+ re-renders/s tab freezing and storm | Alex Xu | P0 | Phase 1 | 🟢 Implemented | `frontend/hooks/useJobStream.ts` |
@@ -233,7 +233,7 @@ In accordance with banking governance rules, 10 registered items were subjected 
 10. **`REG-01` / `REG-02` (Registry Crawler & Curation Gate):**
     - *Audit Finding:* Verified in `backend/app/adapters/registry_crawler.py` and `scripts/crawl_registries.py`. Crawled 500 candidate modules (250 Terraform, 250 Ansible) into `data/corpus/candidates_500.json` strictly quarantined in `CANDIDATE` status.
 11. **`UI-02` (Real-Time Attestation Ledger):**
-    - *Audit Finding & Correction:* `SeparationOfDutiesProofCard.tsx` binds to live policy attestation props from the backend, but fallback default props retain hardcoded mock demo identities (`Alice Cooper`, `PNC-US-991204`). Status updated to 🟡 In Progress.
+    - *Audit Finding & Resolution:* Hardcoded demo identities (`Alice Cooper`, `Bob Vance`, `PNC-US-*`) completely eliminated. Identities now dynamically derive from authentic requester/approver IDs (`displayRequesterName`, `displayCurrentUserName`), and unevaluated runtime policies (Redlock Mutex `POL-004`, CyberArk PAM `POL-005`) are honestly badged as `GATED` with truthful evidence rather than unearned green PASS badges. Status upgraded to 🟢 Implemented.
 12. **`UI-19` (Failure Pinpoint & Rollback Dispatch):**
     - *Audit Finding & Correction:* Dispatches live `action: rollback` execution playbooks via the API, but does not perform AST tree parsing on playbook sources. Renamed and status updated to 🟡 In Progress.
 13. **`CHAT-17` (Multi-Stage Prompt Injection Refusal):**

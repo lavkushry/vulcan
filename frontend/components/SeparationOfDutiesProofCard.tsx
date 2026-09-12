@@ -33,11 +33,11 @@ export interface SeparationOfDutiesProofCardProps {
 
 export const SeparationOfDutiesProofCard: React.FC<SeparationOfDutiesProofCardProps> = ({
   requesterId,
-  requesterName = 'Alice Cooper',
-  requesterSso = 'PNC-US-991204',
+  requesterName,
+  requesterSso,
   currentUserId,
-  currentUserName = currentUserId === 'lead.bob' ? 'Bob Vance' : 'Alice Cooper',
-  currentUserSso = currentUserId === 'lead.bob' ? 'PNC-US-884102' : 'PNC-US-991204',
+  currentUserName,
+  currentUserSso,
   servicenowChg,
   circuitBreakerRemainingSeconds = 900,
   approvalRequestedAt,
@@ -48,6 +48,11 @@ export const SeparationOfDutiesProofCard: React.FC<SeparationOfDutiesProofCardPr
   onSwitchUser,
 }) => {
   const isSelfApproval = requesterId === currentUserId;
+
+  const displayRequesterName = requesterName || (requesterId ? `Operator (${requesterId})` : 'Operator');
+  const displayRequesterSso = requesterSso || (requesterId ? `SSO-${requesterId.toUpperCase()}` : 'SSO-ANON');
+  const displayCurrentUserName = currentUserName || (currentUserId ? `Approver (${currentUserId})` : 'Approver');
+  const displayCurrentUserSso = currentUserSso || (currentUserId ? `SSO-${currentUserId.toUpperCase()}` : 'SSO-ANON');
 
   const computeRemaining = () => {
     if (approvalRequestedAt) {
@@ -104,20 +109,20 @@ export const SeparationOfDutiesProofCard: React.FC<SeparationOfDutiesProofCardPr
     {
       code: 'POL-004',
       name: 'Target Redlock Mutex',
-      status: 'PASS',
-      evidence: 'Exclusive target resource lock lease verified',
+      status: 'GATED',
+      evidence: 'Exclusive target resource lock lease acquired upon approval dispatch',
     },
     {
       code: 'POL-005',
       name: 'Zero Plaintext Secrets',
-      status: 'PASS',
-      evidence: 'CyberArk PAM JIT credential lease bounded',
+      status: 'GATED',
+      evidence: 'CyberArk PAM JIT credential lease bounded at execution time',
     },
     {
       code: 'POL-006',
       name: 'Audit Hash Chain Anchor',
       status: 'PASS',
-      evidence: 'Write-before-execute SHA-256 Merkle block validated',
+      evidence: 'Write-before-execute SHA-256 Merkle block validated on creation',
     },
   ];
 
@@ -161,12 +166,12 @@ export const SeparationOfDutiesProofCard: React.FC<SeparationOfDutiesProofCardPr
             Maker (Requester)
           </span>
           <div className="flex items-center justify-between">
-            <span className="text-slate-200 font-bold">{requesterName}</span>
+            <span className="text-slate-200 font-bold">{displayRequesterName}</span>
             <span className="px-1.5 py-0.5 rounded bg-cyan-950/40 text-cyan-300 border border-cyan-500/30 text-[10px]">
               {requesterId}
             </span>
           </div>
-          <span className="text-slate-400 text-[11px]">SAML SSO: {requesterSso}</span>
+          <span className="text-slate-400 text-[11px]">SAML SSO: {displayRequesterSso}</span>
           {servicenowChg && (
             <span className="text-slate-500 text-[10px]">Ticket: {servicenowChg}</span>
           )}
@@ -178,19 +183,19 @@ export const SeparationOfDutiesProofCard: React.FC<SeparationOfDutiesProofCardPr
             Checker (Approving Lead)
           </span>
           <div className="flex items-center justify-between">
-            <span className="text-slate-200 font-bold">{currentUserName}</span>
+            <span className="text-slate-200 font-bold">{displayCurrentUserName}</span>
             <span className="px-1.5 py-0.5 rounded bg-emerald-950/40 text-emerald-300 border border-emerald-500/30 text-[10px]">
               {currentUserId}
             </span>
           </div>
-          <span className="text-slate-400 text-[11px]">SAML SSO: {currentUserSso}</span>
+          <span className="text-slate-400 text-[11px]">SAML SSO: {displayCurrentUserSso}</span>
           {onSwitchUser && (
             <button
               type="button"
-              onClick={() => onSwitchUser(isSelfApproval ? 'lead.bob' : 'eng.alice')}
+              onClick={() => onSwitchUser(isSelfApproval ? 'approver.lead' : requesterId)}
               className="text-[10px] text-cyan-400 hover:text-cyan-300 text-left underline flex items-center gap-1 mt-0.5"
             >
-              <span>{isSelfApproval ? 'Switch to Bob (Approving Lead)' : 'Switch back to Alice'}</span>
+              <span>{isSelfApproval ? 'Switch to Approving Lead' : `Switch to Requester (${requesterId})`}</span>
               <ArrowRight size={10} />
             </button>
           )}
