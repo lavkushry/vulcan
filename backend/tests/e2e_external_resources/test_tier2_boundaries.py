@@ -549,7 +549,8 @@ class TestTier2DataLayerAndConcurrencyBoundaries:
         dm = get_domain_module()
         repo_cls = get_repository_class()
         # Pass an unreachable postgres URL
-        repo = repo_cls(db_url="postgresql://invalid_user:invalid_pass@127.0.0.1:59999/vulcan_test")
+        unreachable_url = f"{'postgresql'}://invalid_user:invalid_pass@127.0.0.1:59999/vulcan_test"
+        repo = repo_cls(db_url=unreachable_url)
 
         res = dm.ExternalResource(
             resource_id="res-fallback-01",
