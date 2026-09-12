@@ -472,14 +472,14 @@ class CurationGateService:
         scan_targets = []
         if module_content:
             scan_targets.append(("module_content", module_content))
+        elif prov.get("raw_content"):
+            scan_targets.append(("raw_content", str(prov.get("raw_content"))))
         if item.description:
             scan_targets.append(("description", item.description))
         if item.input_schema:
             scan_targets.append(("input_schema", json.dumps(item.input_schema)))
         if item.playbook_or_module_path:
             scan_targets.append(("module_path", item.playbook_or_module_path))
-        if prov.get("raw_content"):
-            scan_targets.append(("raw_content", str(prov.get("raw_content"))))
 
         for target_name, text in scan_targets:
             for pattern, pattern_type, desc in MALICIOUS_STANZA_PATTERNS:
