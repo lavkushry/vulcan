@@ -30,7 +30,7 @@ class PostgresAgentWorkflowRepository:
     Supports PostgreSQL 16 with in-memory / SQLite fallback for offline testing.
     """
 
-    def __init__(self, db_url: Optional[str] = None):
+    def __init__(self, db_url: Optional[str] = None, production_mode: Optional[bool] = None):
         self.db_url = db_url or os.getenv("POSTGRES_URL") or os.getenv("DATABASE_URL")
         self._lock = threading.RLock()
         self._workflows: Dict[str, WorkflowContext] = {}
@@ -42,7 +42,10 @@ class PostgresAgentWorkflowRepository:
 
         self._seed_default_agent_versions()
 
-        self._production_mode = os.getenv("AGENTOS_MODE", "").lower() == "production"
+        if production_mode is not None:
+            self._production_mode = production_mode
+        else:
+            self._production_mode = os.getenv("AGENTOS_MODE", "").lower() == "production"
 
         if self.db_url and (self.db_url.startswith("postgresql://") or self.db_url.startswith("postgres://")):
             try:
@@ -411,3 +414,8 @@ class PostgresAgentWorkflowRepository:
     def list_eval_runs(self, limit: int = 50) -> List[Dict[str, Any]]:
         with self._lock:
             return copy.deepcopy(self._eval_runs[-limit:])
+
+
+# Alias for backwards compatibility
+AgentRepository = PostgresAgentWorkflowRepository
+

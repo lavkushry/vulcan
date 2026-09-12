@@ -99,6 +99,19 @@ class VerifierAgent(BaseAgent):
             probes.append(probe)
 
         all_passed = bool(probes) and all(p.passed for p in probes)
+        is_mode_prod = os.environ.get("AGENTOS_MODE", "").lower() == "production"
+        if is_mode_prod and getattr(self._probe_runner, "is_simulation", False):
+            all_passed = False
+            return VerifierOutput(
+                workflow_id=ctx.workflow_id,
+                all_passed=False,
+                probes=probes,
+                actual_state_matches_desired=False,
+                proposed_next_state=WorkflowState.VERIFY_FAILED.value,
+                confidence=0.0,
+                rationale="Simulated verification cannot generate a production SUCCESS; real probe runner required.",
+            )
+
         next_state = WorkflowState.SUCCESS.value if all_passed else WorkflowState.VERIFY_FAILED.value
 
         return VerifierOutput(

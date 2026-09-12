@@ -50,9 +50,9 @@ Project Vulcan evolves from an enterprise automation control plane into a high-a
 
 ---
 
-## 3. Section 59 End-to-End Acceptance Scenario Verification Record
+## 3. Section 59 Simulated Canonical Orchestration Acceptance Test Record
 
-**Specification Requirement:** Section 59 ("End-to-End Acceptance Scenario — The Acid Test")
+**Specification Requirement:** Section 59 ("Simulated Canonical Orchestration Acceptance Test")
 **Test Suite:** `backend/tests/agentos/test_e2e_acceptance_scenario.py`
 **Prompt Tested:**
 > *"Build and deploy a hardened PostgreSQL 16 production cluster on three RHEL 9 nodes with 500GB storage, Datadog monitoring, S3 backups, ServiceNow change control, and CyberArk credentials."*

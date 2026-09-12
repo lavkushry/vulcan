@@ -25,6 +25,12 @@ class IAgentRuntime(abc.ABC):
 
     @property
     @abc.abstractmethod
+    def is_simulation(self) -> bool:
+        """True if runtime uses simulated/in-memory agent execution."""
+        pass
+
+    @property
+    @abc.abstractmethod
     def runtime_name(self) -> str:
         pass
 
@@ -45,6 +51,10 @@ class DeterministicAgentRuntime(IAgentRuntime):
 
     @property
     def is_deterministic(self) -> bool:
+        return True
+
+    @property
+    def is_simulation(self) -> bool:
         return True
 
     @property
@@ -73,6 +83,10 @@ class FoundryAgentRuntime(IAgentRuntime):
 
     @property
     def is_deterministic(self) -> bool:
+        return False
+
+    @property
+    def is_simulation(self) -> bool:
         return False
 
     @property

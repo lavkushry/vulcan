@@ -95,12 +95,14 @@ def test_simulation_policy_engine_auto_approves_low_risk_dev():
 def test_deterministic_runtime_is_deterministic():
     runtime = DeterministicAgentRuntime()
     assert runtime.is_deterministic is True
+    assert runtime.is_simulation is True
     assert runtime.runtime_name == "deterministic_python"
 
 
 def test_foundry_runtime_is_not_deterministic():
     runtime = FoundryAgentRuntime()
     assert runtime.is_deterministic is False
+    assert runtime.is_simulation is False
     assert runtime.runtime_name == "foundry_llm"
 
 
