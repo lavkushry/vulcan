@@ -19,12 +19,12 @@ The Master Opportunity Register unifies **127 architectural opportunities** mine
 
 | Subsystem | Total Items | 🟢 Implemented | 🟡 In Progress | ⚪ Planned | Implementation Rate |
 | :--- | :---: | :---: | :---: | :---: | :---: |
-| **Frontend Console (`UI-XX`)** | 28 | 24 | 0 | 4 | **85.7%** |
+| **Frontend Console (`UI-XX`)** | 28 | 28 | 0 | 0 | **100.0%** |
 | **AI Chat Subsystem (`CHAT-XX`)** | 26 | 19 | 4 | 3 | **73.1%** |
 | **Backend Control Plane (`BKND-XX`)** | 35 | 33 | 2 | 0 | **94.3%** |
 | **Platform & Infra (`INFRA-XX`)** | 30 | 30 | 0 | 0 | **100.0%** |
 | **Registry & Curation (`REG-XX`)** | 8 | 7 | 0 | 1 | **87.5%** |
-| **Total Across Architecture** | **127** | **113** | **6** | **8** | **89.0%** |
+| **Total Across Architecture** | **127** | **117** | **6** | **4** | **92.1%** |
 
 > [!NOTE]
 > **Milestone A Verification (Completed 2026-09-09):** Milestone A (Live Embedding API Procurement & Empirical Gate Calibration) was executed ahead of schedule on live infrastructure using Hugging Face Serverless (`BAAI/bge-large-en-v1.5`), OpenRouter, and Gemini. Live 500-scenario evaluation achieved 84.00% Top-1, 92.00% Operator-Reachable, 0.0% dead-end choice cards, 100% injection defense, and full 10,467-item pgvector re-embedding. Posture upgraded to *Governance-proven, Live-AI-verified*.
@@ -49,7 +49,7 @@ The Master Opportunity Register unifies **127 architectural opportunities** mine
 | **UI-11** | Adversarial Refusal Cockpit | Generic or silent errors on injection refusal | Karpathy | P2 | Phase 3 | 🟢 Implemented | `frontend/components/ChatAssistant.tsx` |
 | **UI-12** | Maker-Checker Cockpit Deck | Ambiguous approval surfaces & self-sign-off | Uncle Bob | P0 | Phase 1 | 🟢 Implemented | `frontend/components/MakerCheckerDeck.tsx` |
 | **UI-13** | Server-Sync Circuit Breaker | Client timer drift causing 408 surprise errors | Alex Xu | P0 | Phase 1 | 🟢 Implemented | `frontend/components/SeparationOfDutiesProofCard.tsx` |
-| **UI-14** | Topology Blast Radius Drawer | Approvers unaware of downstream collateral | Karpathy | P1 | Phase 2 | ⚪ Planned | `frontend/components/JobDetail.tsx` |
+| **UI-14** | Topology Blast Radius Drawer | Approvers unaware of downstream collateral | Karpathy | P1 | Phase 2 | 🟢 Implemented (Slide-out drawer visualizing primary node, downstream VIPs/microservices, active traffic rates, and automated rollback playbook guarantee) | `frontend/components/BlastRadiusDrawer.tsx`, `frontend/components/JobDetail.tsx`, `frontend/components/SeparationOfDutiesProofCard.tsx`, `backend/app/api/routes.py` |
 | **UI-15** | Merkle Audit Chain UI Verifier | Unverifiable historical job audit ledger | Uncle Bob | P2 | Phase 3 | 🟢 Implemented (Interactive cryptographic verification pill, MerkleAuditModal with SHA-256 block chain inspection, and 1-click RFC-8785 WORM receipt download) | `frontend/components/MerkleAuditModal.tsx`, `frontend/components/JobDetail.tsx`, `backend/app/api/routes.py` |
 | **UI-16** | Resizable Dual-Pane Splitter | Rigid 50/50 split crowding small laptops | Jordan Walke | P2 | Phase 3 | 🟢 Implemented | `frontend/components/ResizableDualPane.tsx` |
 | **UI-17** | Linear-Grade Keyboard Hotkeys | Slow mouse-bound navigation in high-stress SRE | Jordan Walke | P1 | Phase 2 | 🟢 Implemented | `frontend/components/UniversalCommandPalette.tsx` |
@@ -58,11 +58,11 @@ The Master Opportunity Register unifies **127 architectural opportunities** mine
 | **UI-20** | Fuzzy Universal Command Palette | Static 4-item mock palette | Jordan Walke | P1 | Phase 2 | 🟢 Implemented | `frontend/components/UniversalCommandPalette.tsx` |
 | **UI-21** | Virtualized Task Table Engine | DOM bloat when rendering 500+ tasks | Alex Xu | P1 | Phase 2 | 🟢 Implemented | `frontend/components/TaskMatrixTable.tsx`, `lib/useVirtualWindow.ts` |
 | **UI-22** | Pruning Dead Prototype Code | 100KB orphaned prototype components | Uncle Bob | P1 | Phase 2 | 🟢 Implemented | Clean repository checkout |
-| **UI-23** | Monaco HCL/YAML Diff Inspector | Missing raw declarative code inspect before run | Jordan Walke | P2 | Phase 3 | ⚪ Planned | `frontend/components/MonacoDiffModal.tsx` |
+| **UI-23** | Monaco HCL/YAML Diff Inspector | Missing raw declarative code inspect before run | Jordan Walke | P2 | Phase 3 | 🟢 Implemented (Side-by-side & unified diff viewer rendering synthesized execution plan vs git HEAD with syntax tokens and line numbers) | `frontend/components/MonacoDiffModal.tsx`, `frontend/components/JobDetail.tsx`, `backend/app/api/routes.py` |
 | **UI-24** | High-Contrast A11y Theme Engine | Focus traps and dark-mode contrast failures | Jordan Walke | P1 | Phase 2 | 🟢 Implemented | `frontend/components/Navbar.tsx` |
-| **UI-25** | Multi-Cluster Topology Radar | Inability to visualize multi-datacenter blast radius | Alex Xu | P2 | Phase 3 | ⚪ Planned | `frontend/components/ClusterMapModal.tsx` |
+| **UI-25** | Multi-Cluster Topology Radar | Inability to visualize multi-datacenter blast radius | Alex Xu | P2 | Phase 3 | 🟢 Implemented (Multi-cluster consensus radar visualizing Ashburn, Oregon, and Dublin nodes, runner fleet utilization, and inter-datacenter latencies) | `frontend/components/ClusterMapModal.tsx`, `frontend/components/layout/Header.tsx`, `frontend/components/JobDetail.tsx`, `backend/app/api/routes.py` |
 | **UI-26** | Responsive Fallback Viewports | Tablet/mobile layout breakdown during on-call triage | Jordan Walke | P2 | Phase 3 | 🟢 Implemented | `frontend/app/layout.tsx` |
-| **UI-27** | Dual-Pane Split-Screen Replay | Comparing historical run stdout against live stream | Jordan Walke | P2 | Phase 3 | ⚪ Planned | `frontend/components/DualTerminalReplay.tsx` |
+| **UI-27** | Dual-Pane Split-Screen Replay | Comparing historical run stdout against live stream | Jordan Walke | P2 | Phase 3 | 🟢 Implemented (Split-screen terminal comparing golden baseline execution against live stdout with synchronized scroll and deviation highlighting) | `frontend/components/DualTerminalReplay.tsx`, `frontend/components/JobDetail.tsx` |
 | **UI-28** | Exportable Incident Packet | Manual copy-paste of execution logs and Merkle root | Uncle Bob | P1 | Phase 2 | 🟢 Implemented | `frontend/components/SeparationOfDutiesProofCard.tsx` |
 
 ---

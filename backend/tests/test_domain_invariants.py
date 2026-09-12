@@ -1133,6 +1133,50 @@ class TestVulcanCleanArchitectureSuite(unittest.TestCase):
             container.jobs.pop(job.correlation_id, None)
             container.jobs.pop(job.id, None)
 
+    def test_topology_blast_radius_diff_and_clusters_endpoints(self):
+        """UI-14, UI-23, UI-25: Blast radius graph, declarative code diff, and cluster radar."""
+        from app.api.routes import get_job_blast_radius, get_job_declarative_diff, get_cluster_topology
+        from app.config import container
+
+        job = ExecutionJob(
+            job_id="job-topology-test-1",
+            correlation_id="EXEC-TOPO-TEST",
+            catalog_item=self.catalog_item,
+            requester_id="eng.alice",
+            target_resource_id="f5-edge-vip-01",
+            parameters=self.valid_params,
+            servicenow_chg="CHG-00892"
+        )
+        container.jobs[job.correlation_id] = job
+        container.jobs[job.id] = job
+
+        try:
+            # 1. UI-14: Blast Radius endpoint
+            blast = get_job_blast_radius("EXEC-TOPO-TEST")
+            self.assertEqual(blast["correlation_id"], "EXEC-TOPO-TEST")
+            self.assertEqual(blast["target_resource"], "f5-edge-vip-01")
+            self.assertEqual(blast["primary_node"]["cluster"], "us-east-1a-edge")
+            self.assertTrue(len(blast["downstream_dependencies"]) >= 3)
+            self.assertTrue(blast["rollback_guarantee"]["registered"])
+            self.assertEqual(blast["rollback_guarantee"]["verification_status"], "VERIFIED")
+
+            # 2. UI-23: Declarative Diff endpoint
+            diff = get_job_declarative_diff("EXEC-TOPO-TEST")
+            self.assertEqual(diff["correlation_id"], "EXEC-TOPO-TEST")
+            self.assertEqual(diff["engine"], "ansible")
+            self.assertIn("diff_unified", diff)
+            self.assertIn("Synthesized Execution Plan", diff["synthesized_code"])
+
+            # 3. UI-25: Cluster topology endpoint
+            clusters = get_cluster_topology()
+            self.assertEqual(len(clusters["clusters"]), 3)
+            self.assertEqual(clusters["clusters"][0]["region"], "us-east-1")
+            self.assertEqual(clusters["global_consensus"]["quorum_protocol"], "REDLOCK_5_NODE_RAFT")
+        finally:
+            container.jobs.pop(job.correlation_id, None)
+            container.jobs.pop(job.id, None)
+
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

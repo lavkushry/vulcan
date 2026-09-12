@@ -1,10 +1,11 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Search, Users, Activity, Shield, Database, Command, Bell, CheckCircle2 } from 'lucide-react';
+import { Search, Users, Activity, Shield, Database, Command, Bell, CheckCircle2, Globe2 } from 'lucide-react';
 import { DEMO_USERS, api } from '@/lib/api';
 import { useRouter } from 'next/navigation';
 import { getApiBaseUrl } from '@/lib/env';
+import ClusterMapModal from '../ClusterMapModal';
 
 interface HeaderProps {
   currentUser: string;
@@ -24,6 +25,7 @@ export function Header({ currentUser, onUserChange, onOpenCommandPalette }: Head
   const router = useRouter();
   const [health, setHealth] = useState<HealthData | null>(null);
   const [pendingCount, setPendingCount] = useState(0);
+  const [isClusterMapOpen, setIsClusterMapOpen] = useState(false);
 
   useEffect(() => {
     const BASE = getApiBaseUrl();
@@ -107,6 +109,17 @@ export function Header({ currentUser, onUserChange, onOpenCommandPalette }: Head
                   {health.audit_chain_valid ? 'VALID' : 'BROKEN'}
                 </span>
               </div>
+              <button
+                type="button"
+                onClick={() => setIsClusterMapOpen(true)}
+                title="Inspect multi-datacenter cluster topology & Redlock consensus (UI-25)"
+                className="flex items-center gap-1.5 text-slate-400 hover:text-cyan-300 transition-colors cursor-pointer"
+                data-testid="header-cluster-radar-btn"
+              >
+                <Globe2 size={11} className="text-cyan-400" />
+                <span className="text-slate-500">CLUSTERS</span>
+                <span className="text-cyan-400">3</span>
+              </button>
             </>
           )}
         </div>
@@ -154,6 +167,12 @@ export function Header({ currentUser, onUserChange, onOpenCommandPalette }: Head
           </select>
         </div>
       </div>
+
+      {/* Multi-Cluster Topology Radar Modal (UI-25) */}
+      <ClusterMapModal
+        isOpen={isClusterMapOpen}
+        onClose={() => setIsClusterMapOpen(false)}
+      />
     </header>
   );
 }

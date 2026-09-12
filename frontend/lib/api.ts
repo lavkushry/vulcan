@@ -101,6 +101,15 @@ export const api = {
       }),
     deleteChatSession: (sessionId: string) =>
       req<{ status: string; session_id: string; deleted: boolean }>("DELETE", `/api/v1/chat/sessions/${encodeURIComponent(sessionId)}`),
+    // Topology-Aware Blast Radius & Affected Node Graph (UI-14)
+    getJobBlastRadius: (correlationId: string) =>
+      req<import("./types").BlastRadiusData>("GET", `/api/v1/jobs/${encodeURIComponent(correlationId)}/blast-radius`),
+    // Dual-Mode Monaco HCL/YAML Code Diff Inspector (UI-23)
+    getJobDiff: (correlationId: string) =>
+      req<import("./types").DeclarativeCodeDiff>("GET", `/api/v1/jobs/${encodeURIComponent(correlationId)}/diff`),
+    // Multi-Cluster Topology Radar (UI-25)
+    getClusterTopology: () =>
+      req<import("./types").ClusterTopology>("GET", "/api/v1/clusters"),
   };
 
 // Enterprise Banking Personas & RBAC Mapping

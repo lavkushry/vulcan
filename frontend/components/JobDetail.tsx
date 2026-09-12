@@ -9,10 +9,14 @@ import { STATUS_STYLE } from "@/lib/types";
 import type { Job } from "@/lib/types";
 import { timeAgo } from "@/lib/util";
 import { useVulcan } from "@/lib/context";
-import { AlertCircle, RefreshCw, ShieldCheck, Database } from "lucide-react";
+import { AlertCircle, RefreshCw, ShieldCheck, Database, Radio, FileCode, Globe2, Split } from "lucide-react";
 import ASTFailurePinpointCard from "./ASTFailurePinpointCard";
 import MerkleAuditModal from "./MerkleAuditModal";
 import S3MultipartSwarmGrid from "./S3MultipartSwarmGrid";
+import BlastRadiusDrawer from "./BlastRadiusDrawer";
+import MonacoDiffModal from "./MonacoDiffModal";
+import ClusterMapModal from "./ClusterMapModal";
+import DualTerminalReplay from "./DualTerminalReplay";
 
 const PROGRESSION_STEPS = [
   "SUBMITTED",
@@ -32,6 +36,10 @@ export function JobDetail({ job, currentUser, onChanged }: {
   const [error, setError] = useState<string | null>(null);
   const [isMerkleModalOpen, setIsMerkleModalOpen] = useState<boolean>(false);
   const [showS3Swarm, setShowS3Swarm] = useState<boolean>(false);
+  const [isBlastRadiusOpen, setIsBlastRadiusOpen] = useState<boolean>(false);
+  const [isDiffModalOpen, setIsDiffModalOpen] = useState<boolean>(false);
+  const [isClusterRadarOpen, setIsClusterRadarOpen] = useState<boolean>(false);
+  const [isDualReplayOpen, setIsDualReplayOpen] = useState<boolean>(false);
   const stream = useJobStream(job ? (job.correlation_id ?? job.id) : null);
 
   // Live status from the WebSocket beats the 2.5s poll.
@@ -110,6 +118,42 @@ export function JobDetail({ job, currentUser, onChanged }: {
         >
           <Database size={11} className={showS3Swarm ? "text-cyan-400" : "text-slate-500"} />
           <span>S3 Swarm</span>
+        </button>
+
+        {/* Topology Blast Radius Drawer Toggle (UI-14) */}
+        <button
+          type="button"
+          onClick={() => setIsBlastRadiusOpen(true)}
+          title="Inspect topology blast radius and downstream dependencies"
+          className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-cyan-950/40 text-cyan-300 border border-cyan-500/40 hover:bg-cyan-900/50 hover:border-cyan-400 transition-all cursor-pointer shadow-[0_0_8px_rgba(0,240,255,0.2)]"
+          data-testid="job-detail-blast-radius-btn"
+        >
+          <Radio size={11} className="text-cyan-400" />
+          <span>Blast Radius</span>
+        </button>
+
+        {/* Declarative Code Diff Toggle (UI-23) */}
+        <button
+          type="button"
+          onClick={() => setIsDiffModalOpen(true)}
+          title="Inspect declarative HCL/YAML code diff against git HEAD"
+          className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-900/60 text-slate-300 border border-slate-700 hover:border-slate-500 hover:text-slate-100 transition-all cursor-pointer"
+          data-testid="job-detail-diff-btn"
+        >
+          <FileCode size={11} className="text-slate-400" />
+          <span>Code Diff</span>
+        </button>
+
+        {/* Multi-Cluster Topology Radar (UI-25) */}
+        <button
+          type="button"
+          onClick={() => setIsClusterRadarOpen(true)}
+          title="View multi-cluster consensus and regional distribution"
+          className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-900/60 text-slate-300 border border-slate-700 hover:border-slate-500 hover:text-slate-100 transition-all cursor-pointer"
+          data-testid="job-detail-cluster-radar-btn"
+        >
+          <Globe2 size={11} className="text-slate-400" />
+          <span>Clusters</span>
         </button>
 
         <span className="ml-auto text-xs text-slate-500">
@@ -195,6 +239,8 @@ export function JobDetail({ job, currentUser, onChanged }: {
               onApprove={() => decide("approveJob")}
               onReject={() => decide("rejectJob")}
               onSwitchUser={(user) => setCurrentUser(user)}
+              onInspectBlastRadius={() => setIsBlastRadiusOpen(true)}
+              onInspectDiff={() => setIsDiffModalOpen(true)}
             />
             {error && <p className="text-xs font-mono text-rose-400">{error}</p>}
           </div>
@@ -215,9 +261,23 @@ export function JobDetail({ job, currentUser, onChanged }: {
               />
             )}
 
-            {/* Live Terminal */}
-            <div className="h-[52vh] min-h-[320px]">
-              <Terminal events={stream.events} live={stream.live} />
+            {/* Live Terminal & Dual-Pane Split Replay Bar (UI-27) */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-xs font-mono px-1">
+                <span className="text-slate-400 text-[11px]">TERMINAL STREAM · 60 FPS WEBGL BUFFER</span>
+                <button
+                  type="button"
+                  onClick={() => setIsDualReplayOpen(true)}
+                  className="flex items-center gap-1.5 px-2.5 py-0.5 rounded bg-slate-900 border border-slate-700 hover:border-cyan-500/50 text-[11px] text-slate-300 hover:text-cyan-300 font-semibold transition-colors cursor-pointer"
+                  data-testid="job-detail-split-replay-btn"
+                >
+                  <Split size={11} className="text-cyan-400" />
+                  <span>Dual Replay vs Baseline (UI-27)</span>
+                </button>
+              </div>
+              <div className="h-[52vh] min-h-[320px]">
+                <Terminal events={stream.events} live={stream.live} />
+              </div>
             </div>
           </>
         )}
@@ -235,6 +295,42 @@ export function JobDetail({ job, currentUser, onChanged }: {
         correlationId={job.correlation_id}
         isOpen={isMerkleModalOpen}
         onClose={() => setIsMerkleModalOpen(false)}
+      />
+
+      {/* Topology-Aware Blast Radius Drawer (UI-14) */}
+      <BlastRadiusDrawer
+        correlationId={job.correlation_id}
+        isOpen={isBlastRadiusOpen}
+        onClose={() => setIsBlastRadiusOpen(false)}
+        onOpenDiff={() => {
+          setIsBlastRadiusOpen(false);
+          setIsDiffModalOpen(true);
+        }}
+        onOpenClusterRadar={() => {
+          setIsBlastRadiusOpen(false);
+          setIsClusterRadarOpen(true);
+        }}
+      />
+
+      {/* Dual-Mode Monaco HCL/YAML Code Diff Inspector (UI-23) */}
+      <MonacoDiffModal
+        correlationId={job.correlation_id}
+        isOpen={isDiffModalOpen}
+        onClose={() => setIsDiffModalOpen(false)}
+      />
+
+      {/* Multi-Cluster Topology Radar (UI-25) */}
+      <ClusterMapModal
+        isOpen={isClusterRadarOpen}
+        onClose={() => setIsClusterRadarOpen(false)}
+      />
+
+      {/* Dual-Pane Split-Screen Terminal Replay (UI-27) */}
+      <DualTerminalReplay
+        currentEvents={stream.events}
+        currentCorrelationId={job.correlation_id}
+        isOpen={isDualReplayOpen}
+        onClose={() => setIsDualReplayOpen(false)}
       />
     </section>
   );

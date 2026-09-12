@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { ShieldCheck, Lock, Clock, CheckCircle2, AlertTriangle, ArrowRight } from 'lucide-react';
+import { ShieldCheck, Lock, Clock, CheckCircle2, AlertTriangle, ArrowRight, Radio, FileCode } from 'lucide-react';
 
 export interface PolicyProof {
   code: string;
@@ -29,6 +29,8 @@ export interface SeparationOfDutiesProofCardProps {
   onApprove: () => void;
   onReject: () => void;
   onSwitchUser?: (newUser: string) => void;
+  onInspectBlastRadius?: () => void;
+  onInspectDiff?: () => void;
 }
 
 export const SeparationOfDutiesProofCard: React.FC<SeparationOfDutiesProofCardProps> = ({
@@ -46,6 +48,8 @@ export const SeparationOfDutiesProofCard: React.FC<SeparationOfDutiesProofCardPr
   onApprove,
   onReject,
   onSwitchUser,
+  onInspectBlastRadius,
+  onInspectDiff,
 }) => {
   const isSelfApproval = requesterId === currentUserId;
 
@@ -287,6 +291,35 @@ export const SeparationOfDutiesProofCard: React.FC<SeparationOfDutiesProofCardPr
           <span>
             <strong>CIRCUIT BREAKER TRIGGERED:</strong> 15-minute approval window has expired. Automation state transitioned to <code className="text-rose-200 font-bold">TIMEOUT_DENIED</code>.
           </span>
+        </div>
+      )}
+
+      {/* Pre-Execution Inspection Links for Approver (UI-14, UI-23) */}
+      {(onInspectBlastRadius || onInspectDiff) && (
+        <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-800/80">
+          <span className="text-[10px] text-slate-500 font-semibold uppercase">Pre-Run Audit:</span>
+          {onInspectBlastRadius && (
+            <button
+              type="button"
+              onClick={onInspectBlastRadius}
+              className="px-2.5 py-1 rounded bg-cyan-950/40 hover:bg-cyan-900/50 text-cyan-300 border border-cyan-500/30 text-[11px] font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+              data-testid="approval-inspect-blast-radius-btn"
+            >
+              <Radio size={12} className="text-cyan-400" />
+              <span>Inspect Blast Radius &amp; Rollback Guarantee (UI-14)</span>
+            </button>
+          )}
+          {onInspectDiff && (
+            <button
+              type="button"
+              onClick={onInspectDiff}
+              className="px-2.5 py-1 rounded bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700 text-[11px] font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+              data-testid="approval-inspect-diff-btn"
+            >
+              <FileCode size={12} className="text-slate-400" />
+              <span>Inspect Code Diff (UI-23)</span>
+            </button>
+          )}
         </div>
       )}
 

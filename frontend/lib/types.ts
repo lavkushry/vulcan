@@ -239,3 +239,103 @@ export interface AppendTurnResponse {
     candidates: any[];
   } | null;
 }
+
+// Topology-Aware Blast Radius & Affected Node Graph (UI-14)
+export interface DownstreamDependency {
+  service: string;
+  role: string;
+  health: 'HEALTHY' | 'WARN' | 'DEGRADED';
+  traffic_rate: string;
+  tier: 'TIER-1' | 'TIER-2' | 'TIER-3';
+  failover_ready: boolean;
+}
+
+export interface PrimaryNodeInfo {
+  hostname: string;
+  ip_address: string;
+  role: string;
+  cluster: string;
+  datacenter: string;
+  redundancy_pair: string;
+  failover_state: string;
+}
+
+export interface RollbackGuarantee {
+  registered: boolean;
+  verification_status: 'VERIFIED' | 'MANUAL_REQUIRED';
+  playbook_identifier: string;
+  target_resource: string;
+  rto_estimate_seconds: number;
+  evidence: string;
+}
+
+export interface BlastRadiusData {
+  correlation_id: string;
+  job_id: string;
+  job_name: string;
+  playbook_identifier: string;
+  environment: 'PROD' | 'UAT' | 'DEV';
+  target_resource: string;
+  primary_node: PrimaryNodeInfo;
+  downstream_dependencies: DownstreamDependency[];
+  total_active_traffic: string;
+  ingress_bandwidth: string;
+  collateral_risk_tier: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  requires_maker_checker: boolean;
+  servicenow_chg?: string | null;
+  rollback_guarantee: RollbackGuarantee;
+  evaluated_at: string;
+}
+
+// Dual-Mode Monaco HCL/YAML Code Diff Inspector (UI-23)
+export interface DeclarativeCodeDiff {
+  correlation_id: string;
+  job_id: string;
+  playbook_identifier: string;
+  engine: 'ansible' | 'terraform' | string;
+  file_path: string;
+  git_head_sha: string;
+  git_branch: string;
+  synthesized_revision: string;
+  parameters: Record<string, any>;
+  base_code: string;
+  synthesized_code: string;
+  diff_unified: string;
+  generated_at: string;
+}
+
+// Multi-Cluster Topology Radar (UI-25)
+export interface ClusterNodeSummary {
+  id: string;
+  name: string;
+  region: string;
+  status: 'HEALTHY' | 'DEGRADED' | 'STANDBY';
+  role: 'PRIMARY_LEADER' | 'ACTIVE_REPLICA' | 'DISASTER_RECOVERY';
+  nodes_count: number;
+  active_runners: number;
+  runner_capacity: number;
+  latency_p95_ms: number;
+  redlock_quorum_node: string;
+  quorum_healthy: boolean;
+  datacenter_location: string;
+}
+
+export interface ClusterTopology {
+  clusters: ClusterNodeSummary[];
+  global_consensus: {
+    quorum_protocol: string;
+    active_nodes: number;
+    total_nodes: number;
+    status: string;
+    fencing_epoch: number;
+    watchdog_health: string;
+  };
+  cross_region_replication: {
+    mode: string;
+    rpo_measured_seconds: number;
+    rto_measured_seconds: number;
+    last_heartbeat: string;
+  };
+  queried_at: string;
+}
+
