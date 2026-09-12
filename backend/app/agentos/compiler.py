@@ -91,18 +91,19 @@ class AutomationCompiler:
     @classmethod
     def _render_ansible(cls, spec: AutomationSpecification) -> tuple[List[ArtifactFile], List[ArtifactFile], List[ArtifactFile]]:
         role_name = spec.goal.lower().replace(" ", "_")[:32].strip("_") or "vulcan_role"
+        safe_goal = spec.goal.replace('"', '\\"').replace("\n", " ")
 
         # 1. Main Playbook
         main_playbook = f"""---
 # Vulcan AgentOS Ultra Generated Playbook
-# Goal: {spec.goal}
+# Goal: {safe_goal}
 # Spec ID: {spec.spec_id}
-- name: Execute Governed Automation: {spec.goal}
+- name: "Execute Governed Automation: {safe_goal}"
   hosts: all
   become: true
   gather_facts: true
   tasks:
-    - name: Include {role_name} tasks
+    - name: "Include {role_name} tasks"
       ansible.builtin.include_role:
         name: {role_name}
 """
@@ -230,8 +231,8 @@ verifier:
 
         # Rollback Playbook
         rollback_content = f"""---
-# Rollback Playbook for {spec.goal}
-- name: Rollback {spec.goal}
+# Rollback Playbook for {safe_goal}
+- name: "Rollback: {safe_goal}"
   hosts: all
   become: true
   tasks:
@@ -242,7 +243,7 @@ verifier:
       ignore_errors: true
     - name: Emit rollback completion event
       ansible.builtin.debug:
-        msg: "Rollback completed for {spec.goal}"
+        msg: "Rollback completed for {safe_goal}"
 """
         rollback_files = [
             ArtifactFile(path="rollback.yml", content=rollback_content),

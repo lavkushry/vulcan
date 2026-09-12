@@ -45,54 +45,68 @@ class ValidatorAgent(BaseAgent):
         checks: List[ValidationCheck] = []
 
         all_files_content = ""
-        for art in artifacts:
-            for f in art.get("files", []):
-                all_files_content += f.get("content", "") + "\n"
-
-        # 1. Syntax Check
         syntax_ok = True
+        total_files = 0
+        yaml_files_checked = 0
+        yaml_errors: List[str] = []
+
         try:
             import yaml
-            for art in artifacts:
-                for f in art.get("files", []):
-                    content = f.get("content", "")
-                    if content.strip():
-                        yaml.safe_load(content)  # Will raise on invalid YAML
-            checks.append(
-                ValidationCheck(
-                    check_name="syntax_check",
-                    status=ValidationCheckStatus.PASS,
-                    details="YAML syntax validated via yaml.safe_load().",
-                )
-            )
-        except yaml.YAMLError as e:
+        except ImportError:
+            yaml = None
+
+        for art in artifacts:
+            for f in art.get("files", []):
+                total_files += 1
+                path = f.get("path", "")
+                content = f.get("content", "")
+                all_files_content += content + "\n"
+
+                # Only run YAML safe_load on YAML files (.yml, .yaml) or files with YAML doc separator that aren't markdown/json/tf
+                is_yaml = path.endswith((".yml", ".yaml")) or (content.strip().startswith("---") and not path.endswith((".md", ".json", ".tf", ".txt")))
+                if is_yaml and yaml and content.strip():
+                    try:
+                        yaml.safe_load(content)
+                        yaml_files_checked += 1
+                    except yaml.YAMLError as e:
+                        yaml_errors.append(f"{path}: {str(e)[:150]}")
+
+        # 1. Syntax Check
+        if total_files == 0 or not all_files_content.strip():
             syntax_ok = False
             checks.append(
                 ValidationCheck(
                     check_name="syntax_check",
                     status=ValidationCheckStatus.FAIL,
-                    details=f"YAML syntax error: {str(e)[:200]}",
+                    details="No automation artifact files provided for validation (fail-closed).",
                 )
             )
-        except Exception:
-            # Fallback for non-YAML content (e.g. HCL/Terraform)
-            if "terraform" in all_files_content.lower() or "---" in all_files_content:
-                checks.append(
-                    ValidationCheck(
-                        check_name="syntax_check",
-                        status=ValidationCheckStatus.PASS,
-                        details="Content appears to be valid structured automation (HCL/YAML detected).",
-                    )
+        elif yaml_errors:
+            syntax_ok = False
+            checks.append(
+                ValidationCheck(
+                    check_name="syntax_check",
+                    status=ValidationCheckStatus.FAIL,
+                    details=f"YAML syntax error: {'; '.join(yaml_errors)}",
                 )
-            else:
-                syntax_ok = False
-                checks.append(
-                    ValidationCheck(
-                        check_name="syntax_check",
-                        status=ValidationCheckStatus.FAIL,
-                        details="No recognizable automation format detected.",
-                    )
+            )
+        elif "terraform" in all_files_content.lower() or "---" in all_files_content or "playbook" in all_files_content or yaml_files_checked > 0:
+            checks.append(
+                ValidationCheck(
+                    check_name="syntax_check",
+                    status=ValidationCheckStatus.PASS,
+                    details=f"Structured automation syntax validated ({yaml_files_checked} YAML file(s) checked via yaml.safe_load).",
                 )
+            )
+        else:
+            syntax_ok = False
+            checks.append(
+                ValidationCheck(
+                    check_name="syntax_check",
+                    status=ValidationCheckStatus.FAIL,
+                    details="No recognizable automation format detected.",
+                )
+            )
 
         # 2. Secret Scan (No plaintext passwords, tokens, private keys)
         secret_patterns = [

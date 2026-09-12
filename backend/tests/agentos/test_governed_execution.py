@@ -47,11 +47,13 @@ def test_constrained_executor_enforces_artifact_sha_binding():
     files = {"playbook.yml": "---\n- name: test\n"}
     sha = hashlib.sha256("playbook.yml:---\n- name: test\n".encode()).hexdigest()
 
+    param_hash = hashlib.sha256(b"{}").hexdigest()
+
     token = ExecutionCapabilityToken(
         token_id="tok-01",
         workflow_id="wf-01",
         artifact_sha256=sha,
-        parameter_hash="hash-params",
+        parameter_hash=param_hash,
         target_resource_id="db-01.internal",
         environment="PROD",
         approval_id="appr-bob",
@@ -75,7 +77,7 @@ def test_constrained_executor_enforces_artifact_sha_binding():
         token_id="tok-02",
         workflow_id="wf-01",
         artifact_sha256=sha,
-        parameter_hash="hash-params",
+        parameter_hash=param_hash,
         target_resource_id="db-01.internal",
         environment="PROD",
         approval_id="appr-bob",
@@ -92,12 +94,13 @@ def test_constrained_executor_rejects_expired_token():
     executor = ConstrainedExecutor()
     files = {"playbook.yml": "---\n- name: test\n"}
     sha = hashlib.sha256("playbook.yml:---\n- name: test\n".encode()).hexdigest()
+    param_hash = hashlib.sha256(b"{}").hexdigest()
 
     expired_token = ExecutionCapabilityToken(
         token_id="tok-expired",
         workflow_id="wf-01",
         artifact_sha256=sha,
-        parameter_hash="hash-params",
+        parameter_hash=param_hash,
         target_resource_id="db-01.internal",
         environment="PROD",
         approval_id="appr-bob",

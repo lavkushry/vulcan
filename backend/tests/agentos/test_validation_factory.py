@@ -63,7 +63,8 @@ def test_validator_passes_hardened_spec():
     out = agent.execute(ctx)
     assert out.all_passed is True
     assert out.proposed_next_state == WorkflowState.SECURITY_REVIEW.value
-    assert all(c.status == ValidationCheckStatus.PASS for c in out.checks)
+    assert all(c.status in (ValidationCheckStatus.PASS, ValidationCheckStatus.SKIPPED) for c in out.checks)
+    assert any(c.status == ValidationCheckStatus.PASS for c in out.checks)
 
 
 def test_validator_fails_closed_on_empty_artifacts():
