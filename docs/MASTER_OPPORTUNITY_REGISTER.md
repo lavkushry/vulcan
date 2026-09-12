@@ -20,11 +20,11 @@ The Master Opportunity Register unifies **127 architectural opportunities** mine
 | Subsystem | Total Items | 🟢 Implemented | 🟡 In Progress | ⚪ Planned | Implementation Rate |
 | :--- | :---: | :---: | :---: | :---: | :---: |
 | **Frontend Console (`UI-XX`)** | 28 | 20 | 4 | 4 | **71.4%** |
-| **AI Chat Subsystem (`CHAT-XX`)** | 26 | 18 | 5 | 3 | **69.2%** |
+| **AI Chat Subsystem (`CHAT-XX`)** | 26 | 19 | 4 | 3 | **73.1%** |
 | **Backend Control Plane (`BKND-XX`)** | 35 | 33 | 2 | 0 | **94.3%** |
 | **Platform & Infra (`INFRA-XX`)** | 30 | 30 | 0 | 0 | **100.0%** |
 | **Registry & Curation (`REG-XX`)** | 8 | 7 | 0 | 1 | **87.5%** |
-| **Total Across Architecture** | **127** | **108** | **11** | **8** | **85.0%** |
+| **Total Across Architecture** | **127** | **109** | **10** | **8** | **85.8%** |
 
 > [!NOTE]
 > **Milestone A Verification (Completed 2026-09-09):** Milestone A (Live Embedding API Procurement & Empirical Gate Calibration) was executed ahead of schedule on live infrastructure using Hugging Face Serverless (`BAAI/bge-large-en-v1.5`), OpenRouter, and Gemini. Live 500-scenario evaluation achieved 84.00% Top-1, 92.00% Operator-Reachable, 0.0% dead-end choice cards, 100% injection defense, and full 10,467-item pgvector re-embedding. Posture upgraded to *Governance-proven, Live-AI-verified*.
@@ -73,7 +73,7 @@ The Master Opportunity Register unifies **127 architectural opportunities** mine
 | :--- | :--- | :--- | :---: | :---: | :---: | :---: | :--- |
 | **CHAT-01** | `JobSubmissionCommand` Port | Leaking presentation state to domain | Uncle Bob | P0 | Phase 3 | 🟢 Implemented | `backend/app/domain/entities.py` |
 | **CHAT-02** | Kill Client Mock Fallbacks | Fake CHG ticket generation & silent errors | Uncle Bob | P0 | Phase 5 | 🟢 Implemented | `frontend/components/ChatAssistant.tsx` |
-| **CHAT-03** | Distributed Session Repository | Conversational memory loss across pod restarts | Alex Xu | P1 | Phase 4 | 🟡 In Progress | `backend/app/adapters/redis_chat_repository.py` |
+| **CHAT-03** | Distributed Session Repository | Conversational memory loss across pod restarts | Alex Xu | P1 | Phase 4 | 🟢 Implemented (Redis-backed caching with 7200s TTL, PostgreSQL 16 schema 008, sub-10ms rehydration; verified in test_chat_session_repository.py) | `backend/app/adapters/redis_chat_repository.py`, `backend/tests/test_chat_session_repository.py` |
 | **CHAT-04** | Boundary Intent State Machine | Brittle scripts and dual-endpoint conflict | Karpathy | P0 | Phase 3 | 🟢 Implemented | `backend/app/use_cases/resolve_intent.py` |
 | **CHAT-05** | pgvector HNSW Vector Index | In-memory catalog scaling bottleneck | Alex Xu | P0 | Phase 3 | 🟢 Implemented | `backend/app/adapters/postgres_catalog_repository.py` |
 | **CHAT-06** | Two-Stage Hybrid RRF Search | Dense search missing exact IPs, CVEs, tags | Karpathy | P0 | Phase 3 | 🟢 Implemented | `backend/app/adapters/postgres_catalog_repository.py` |

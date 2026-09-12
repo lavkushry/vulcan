@@ -7,6 +7,7 @@ import abc
 from typing import Any, Dict, List, Optional
 
 from app.domain.entities import AuditRecord, CatalogItem, ExecutionJob, JobStatus
+from app.domain.chat_entities import ChatSession, ChatTurn
 
 
 class IJobRepository(abc.ABC):
@@ -120,3 +121,47 @@ class ICatalogRepository(abc.ABC):
     ) -> List[Any]:
         """Executes hybrid dense HNSW + sparse keyword search with RRF fusion and refusal gating."""
         pass
+
+
+class IChatSessionRepository(abc.ABC):
+    """
+    Abstract persistence port for multi-turn conversational sessions (CHAT-03).
+    Guarantees conversational continuity across pods, workers, and browser reloads.
+    """
+
+    @abc.abstractmethod
+    def create_session(
+        self,
+        user_id: str,
+        session_id: Optional[str] = None,
+        title: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> ChatSession:
+        """Creates and stores a new chat session."""
+        pass
+
+    @abc.abstractmethod
+    def get_session(self, session_id: str) -> Optional[ChatSession]:
+        """Retrieves a session with all its turns."""
+        pass
+
+    @abc.abstractmethod
+    def append_turn(self, session_id: str, turn: ChatTurn) -> ChatTurn:
+        """Appends a turn to a session and updates session state."""
+        pass
+
+    @abc.abstractmethod
+    def get_turns(self, session_id: str, limit: int = 50) -> List[ChatTurn]:
+        """Retrieves turns for a given session in chronological order."""
+        pass
+
+    @abc.abstractmethod
+    def list_sessions_for_user(self, user_id: str, limit: int = 20) -> List[ChatSession]:
+        """Lists recent chat sessions for an operator."""
+        pass
+
+    @abc.abstractmethod
+    def delete_session(self, session_id: str) -> bool:
+        """Deletes a chat session and its associated turns."""
+        pass
+

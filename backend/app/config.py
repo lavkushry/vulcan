@@ -23,6 +23,7 @@ from app.domain.entities import CatalogItem, ExecutionEngineType, RiskTier
 from app.use_cases.diagnose_failure import FailureDiagnosticEngine
 from app.use_cases.resolve_intent import IntentResolver
 from app.use_cases.runner import AnsibleJobRunner
+from app.adapters.redis_chat_repository import RedisChatSessionRepository
 
 logger = logging.getLogger("vulcan.config")
 
@@ -154,6 +155,12 @@ class AppContainer:
             servicenow_gateway=self.snow_gateway,
         )
         self.diagnostic_engine = FailureDiagnosticEngine()
+        redis_client = self.redis_nodes[0] if self.redis_nodes else None
+        self.chat_session_repo = RedisChatSessionRepository(
+            redis_client=redis_client,
+            db_url=self.database_url if self.persistence_backend == "postgres" else None,
+            ttl_seconds=int(os.getenv("VULCAN_CHAT_SESSION_TTL", "7200"))
+        )
 
     def _detect_redis(self) -> list:
         """Attempt to connect to Redis. Returns node list or empty list."""
