@@ -159,8 +159,8 @@ test.describe('Component Audits: UI-14, UI-23, UI-25, UI-27 Verification', () =>
     await page.goto('/chat');
     await expect(page).toHaveTitle(/Vulcan/i);
 
-    // Select the completed task (EXEC-ADA50A) from TaskMonitor
-    const successTask = page.locator('button:has-text("EXEC-ADA50A")').first();
+    // Select a task from TaskMonitor
+    const successTask = page.locator('button:has-text("EXEC-")').first();
     await expect(successTask).toBeVisible({ timeout: 20000 });
     await successTask.click();
 
