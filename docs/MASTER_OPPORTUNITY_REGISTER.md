@@ -20,11 +20,11 @@ The Master Opportunity Register unifies **127 architectural opportunities** mine
 | Subsystem | Total Items | 🟢 Implemented | 🟡 In Progress | ⚪ Planned | Implementation Rate |
 | :--- | :---: | :---: | :---: | :---: | :---: |
 | **Frontend Console (`UI-XX`)** | 28 | 28 | 0 | 0 | **100.0%** |
-| **AI Chat Subsystem (`CHAT-XX`)** | 26 | 19 | 4 | 3 | **73.1%** |
+| **AI Chat Subsystem (`CHAT-XX`)** | 26 | 23 | 2 | 1 | **88.5%** |
 | **Backend Control Plane (`BKND-XX`)** | 35 | 33 | 2 | 0 | **94.3%** |
 | **Platform & Infra (`INFRA-XX`)** | 30 | 30 | 0 | 0 | **100.0%** |
-| **Registry & Curation (`REG-XX`)** | 8 | 7 | 0 | 1 | **87.5%** |
-| **Total Across Architecture** | **127** | **117** | **6** | **4** | **92.1%** |
+| **Registry & Curation (`REG-XX`)** | 8 | 8 | 0 | 0 | **100.0%** |
+| **Total Across Architecture** | **127** | **122** | **4** | **1** | **96.1%** |
 
 > [!NOTE]
 > **Milestone A Verification (Completed 2026-09-09):** Milestone A (Live Embedding API Procurement & Empirical Gate Calibration) was executed ahead of schedule on live infrastructure using Hugging Face Serverless (`BAAI/bge-large-en-v1.5`), OpenRouter, and Gemini. Live 500-scenario evaluation achieved 84.00% Top-1, 92.00% Operator-Reachable, 0.0% dead-end choice cards, 100% injection defense, and full 10,467-item pgvector re-embedding. Posture upgraded to *Governance-proven, Live-AI-verified*.
@@ -85,15 +85,14 @@ The Master Opportunity Register unifies **127 architectural opportunities** mine
 | **CHAT-12** | Inline Slot Bento Tab-Flow Card | Clunky multi-turn prose for slot collection | Jordan Walke | P0 | Phase 5 | 🟢 Implemented | `frontend/components/ChatAssistant.tsx` |
 | **CHAT-13** | Working Memory Cap (2,500 Tok) | Context explosion and slow TTFT latency | Karpathy | P0 | Phase 3 | 🟢 Implemented | `backend/app/use_cases/resolve_intent.py` |
 | **CHAT-14** | ServiceNow CHG & CMDB Hydration | Manual typing of infrastructure parameters | Alex Xu | P1 | Phase 4 | 🟡 In Progress | `backend/app/adapters/servicenow_adapter.py` |
-| **CHAT-15** | Visual Provenance Conflict Alerts | Unchecked mismatch between prompt & CMDB | Uncle Bob | P1 | Phase 5 | 🟡 In Progress | `frontend/components/ChatAssistant.tsx` |
-| **CHAT-16** | Telemetry Failure Warning Banner| Generic errors without historical context | Jordan Walke | P2 | Phase 5 | ⚪ Planned | `frontend/components/ChatAssistant.tsx` |
+| **CHAT-15** | Visual Provenance Conflict Alerts | Unchecked mismatch between prompt & CMDB | Uncle Bob | P1 | Phase 5 | 🟢 Implemented (Visual provenance conflict banner comparing prompt vs CMDB topology with 1-click [Accept CMDB Truth] resolution pill) | `frontend/components/ChatAssistant.tsx` |
+| **CHAT-16** | Telemetry Failure Warning Banner| Generic errors without historical context | Jordan Walke | P2 | Phase 5 | 🟢 Implemented (Historical reliability alert surfacing 25% failure rates and downstream VIP degradation alerts prior to dispatch) | `frontend/components/ChatAssistant.tsx` |
 | **CHAT-17** | Multi-Stage Injection Refusal | Prompt jailbreaks and instruction override | Karpathy | P0 | Phase 3 | 🟡 In Progress (Stage 1 of 4: Regex active; classifier pending) | `backend/tests/test_ai_prompt_injection_golden.py` |
 | **CHAT-18** | OpenTelemetry Dynamic HUD | Static hardcoded metrics in frontend | Alex Xu | P1 | Phase 5 | 🟢 Implemented | `frontend/components/TokenomicsHUD.tsx` |
 | **CHAT-19** | Conversational Merkle Binding | Inability to audit conversational intent later | Uncle Bob | P0 | Phase 4 | 🟢 Implemented | `backend/app/adapters/crypto_audit_adapter.py` |
 | **CHAT-20** | 500-Scenario Golden Eval Gate | Silent regressions in intent routing & safety | Karpathy | P0 | Phase 3 | 🟢 Implemented | `evals/golden/scenarios.v2.jsonl`, `scripts/run_eval.py`, `docs/EVAL_BASELINE_FAKE.md`, `docs/EVAL_LABEL_AUDIT.md` |
-
-| **CHAT-21** | Zero-CLS Bento Streaming Render | UI freezing during conversational resolution | Jordan Walke | P1 | Phase 5 | 🟡 In Progress | `frontend/components/ChatAssistant.tsx` |
-| **CHAT-22** | SSE Transport over HTTP/2 | WebSocket drops across corporate proxies | Alex Xu | P1 | Phase 4 | ⚪ Planned | `backend/app/api/routes.py` |
+| **CHAT-21** | Zero-CLS Bento Streaming Render | UI freezing during conversational resolution | Jordan Walke | P1 | Phase 5 | 🟢 Implemented (Zero-CLS streaming skeleton container matching bento launch card geometry to eliminate layout shifts) | `frontend/components/ChatAssistant.tsx` |
+| **CHAT-22** | SSE Transport over HTTP/2 | WebSocket drops across corporate proxies | Alex Xu | P1 | Phase 4 | 🟢 Implemented (Server-Sent Events streaming transport GET /api/v1/intent/stream over HTTP/2 with thinking, analyzing, validating, and resolution frames) | `backend/app/api/routes.py`, `backend/tests/test_api_endpoints.py` |
 | **CHAT-23** | Cryptographic Stream Sentinel | Half-completed submissions on dropped streams | Uncle Bob | P0 | Phase 5 | 🟢 Implemented | `backend/app/api/websockets.py` |
 | **CHAT-24** | Keyboard-First Intent Navigation| Friction from mandatory mouse clicks in chat | Jordan Walke | P1 | Phase 5 | 🟢 Implemented | `frontend/components/ChatAssistant.tsx` |
 | **CHAT-25** | Multi-Turn Context Compactor | Context explosion and slow TTFT on 10+ turns | Karpathy | P1 | Phase 3 | 🟢 Implemented | `backend/app/use_cases/resolve_intent.py` |
@@ -191,7 +190,7 @@ The Master Opportunity Register unifies **127 architectural opportunities** mine
 | **REG-03**| Typed Schema Transformer | Parameter guesswork on untyped HCL | Karpathy | P0 | Phase 1 | 🟢 Implemented | `backend/app/adapters/terraform_ingestion.py` |
 | **REG-04**| Security & Static Scans | Candidates containing malicious playbooks | Platform Lead | P1 | Phase 2 | 🟢 Implemented (Automated static security scanner detecting RCE curl|bash, reverse shells, root deletion, hardcoded keys with fail-closed gate; verified in test_curation_gate.py) | `backend/app/adapters/registry_crawler.py`, `backend/tests/test_curation_gate.py` |
 | **REG-05**| Composite Stack Artifacts | Runtime LLM authoring of multi-tier infra | Uncle Bob | P0 | Phase 1 | 🟢 Implemented | `backend/app/adapters/stack_composer.py` |
-| **REG-06**| Upstream Drift Monitor | Stale packages and unpatched upstream CVEs | Platform Lead | P2 | Phase 6 | ⚪ Planned | `scripts/crawl_registries.py` |
+| **REG-06**| Upstream Drift Monitor | Stale packages and unpatched upstream CVEs | Platform Lead | P2 | Phase 6 | 🟢 Implemented (Upstream Freshness & Semantic Drift Monitor scanning semver bumps and CVE advisories with fail-closed auto-upgrade prevention) | `scripts/crawl_registries.py`, `backend/app/adapters/registry_crawler.py`, `backend/tests/test_curation_gate.py` |
 | **REG-07**| License Policy & BUSL Gate | Accidental use of non-compliant licenses | Platform Lead | P0 | Phase 1 | 🟢 Implemented | `backend/app/adapters/registry_crawler.py` |
 | **REG-08**| Curation Deck Console UI | CLI-only candidate triage and approvals | Jordan Walke | P0 | Phase 5 | 🟢 Implemented | `frontend/app/matrix/page.tsx` |
 

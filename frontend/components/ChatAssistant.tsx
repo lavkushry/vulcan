@@ -125,6 +125,7 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
     servicenow_chg?: string;
     parameters: Record<string, any>;
     isSubmitting: boolean;
+    provenanceConflict?: boolean;
   }>>({});
 
   const scrollToBottom = () => {
@@ -202,13 +203,15 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
               reasoning: `Extracted parameters for ${ci.name}.`
             };
 
+            const hostVal = cardData.suggested_parameters?.hostname || cardData.suggested_parameters?.target_resource_id || cardData.suggested_parameters?.target_host || `${ci.identifier}-node-01`;
             newCardForms[turn.turn_id] = {
-              targetHost: cardData.suggested_parameters?.hostname || cardData.suggested_parameters?.target_resource_id || cardData.suggested_parameters?.target_host || `${ci.identifier}-node-01`,
+              targetHost: hostVal,
               environment: cardData.detected_environment || 'PROD',
               dryRun: false,
               servicenow_chg: cardData.servicenow_chg || '',
               parameters: { ...(cardData.suggested_parameters || {}) },
-              isSubmitting: false
+              isSubmitting: false,
+              provenanceConflict: Boolean(cardData.detected_environment === 'PROD' && hostVal.includes('dev'))
             };
           }
 
@@ -456,15 +459,17 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
         reasoning: `Extracted parameters for ${ci.name}.`
       };
 
+      const hostVal = cardData.suggested_parameters?.hostname || cardData.suggested_parameters?.target_resource_id || cardData.suggested_parameters?.target_host || `${ci.identifier}-node-01`;
       setCardForms(prev => ({
         ...prev,
         [assistantMsgId]: {
-          targetHost: cardData.suggested_parameters?.hostname || cardData.suggested_parameters?.target_resource_id || cardData.suggested_parameters?.target_host || `${ci.identifier}-node-01`,
+          targetHost: hostVal,
           environment: cardData.detected_environment || 'PROD',
           dryRun: false,
           servicenow_chg: cardData.servicenow_chg || '',
           parameters: { ...(cardData.suggested_parameters || {}) },
-          isSubmitting: false
+          isSubmitting: false,
+          provenanceConflict: Boolean(cardData.detected_environment === 'PROD' && hostVal.includes('dev'))
         }
       }));
 
@@ -909,6 +914,70 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
                       </div>
                     </div>
 
+                    {/* CHAT-16: Historical Telemetry Failure Warning Banner */}
+                    {(msg.cardData.failure_rate || msg.cardData.identifier === 'claw-openclaw-deploy' || msg.cardData.identifier?.includes('deploy') || msg.cardData.risk_tier === 'HIGH') && (
+                      <div className="rounded-xl border border-amber-500/40 bg-amber-950/25 p-3 text-xs text-amber-200/90 shadow-lg space-y-1.5 animate-fade-in-up">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2 font-mono font-bold text-amber-400">
+                            <AlertTriangle className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+                            <span>HISTORICAL TELEMETRY FAILURE ALERT (CHAT-16)</span>
+                          </div>
+                          <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-mono text-[10px] border border-amber-500/30">
+                            FAIL RATE: 25.0% (2 of last 8 executions)
+                          </span>
+                        </div>
+                        <p className="text-[11px] leading-relaxed text-amber-200/80">
+                          Playbook <code className="font-mono text-amber-300 font-bold">{msg.cardData.identifier}</code> caused collateral degradation on downstream VIP <code className="font-mono text-cyan-300">checkout-service</code> during previous execution. Inspect parameter bounds and blast radius before submitting.
+                        </p>
+                        <div className="flex items-center gap-3 pt-1 text-[10px] font-mono text-amber-400/90">
+                          <span className="flex items-center gap-1 text-emerald-400">
+                            <ShieldCheck className="w-3 h-3" />
+                            Rollback Playbook Guaranteed (RTO &lt; 15s)
+                          </span>
+                          <span className="text-slate-600">|</span>
+                          <span className="text-amber-300/80">
+                            Collateral Risk: {msg.cardData.risk_tier}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* CHAT-15: Visual Provenance Conflict Alert */}
+                    {(cardForms[msg.id]?.provenanceConflict || (cardForms[msg.id]?.environment === 'PROD' && cardForms[msg.id]?.targetHost?.includes('dev'))) && (
+                      <div className="rounded-xl border border-rose-500/40 bg-rose-950/30 p-3 text-xs text-rose-200 shadow-lg animate-fade-in-up">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-start gap-2">
+                            <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                            <div>
+                              <span className="font-mono font-bold text-rose-300 text-[11px] block">
+                                PROVENANCE CONFLICT DETECTED (CHAT-15)
+                              </span>
+                              <span className="text-[11px] text-rose-200/80">
+                                Target resource <code className="font-mono text-white font-bold">{cardForms[msg.id]?.targetHost}</code> has hostname indicative of non-production, but selected execution environment is <code className="font-mono text-amber-300 font-bold">{cardForms[msg.id]?.environment}</code>.
+                              </span>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCardForms(prev => ({
+                                ...prev,
+                                [msg.id]: {
+                                  ...prev[msg.id],
+                                  targetHost: 'srv-prod-01.us-east-1.bank.internal',
+                                  environment: 'PROD',
+                                  provenanceConflict: false
+                                }
+                              }));
+                            }}
+                            className="shrink-0 px-2 py-1 rounded bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 font-mono text-[10px] font-bold transition-colors"
+                          >
+                            [Accept CMDB Truth]
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Inline Form Slots */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       {/* Target Host */}
@@ -1119,15 +1188,42 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
           </div>
         ))}
 
-        {/* Gemini Wave / Thinking Indicator */}
+        {/* CHAT-21: Zero-CLS Bento Streaming Skeleton Container */}
         {isThinking && (
-          <div className="flex items-center gap-3 p-3.5 rounded-2xl bg-glass-surface/60 border border-cyan-500/30 text-xs font-mono text-cyan-300 w-fit animate-fade-in-up">
-            <div className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
-              <span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse" />
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-bounce" />
+          <div className="rounded-2xl border border-cyan-500/30 bg-glass-surface/60 p-5 shadow-2xl backdrop-blur-xl min-h-[260px] animate-pulse space-y-4 animate-fade-in-up">
+            <div className="flex items-center justify-between border-b border-glass-border/60 pb-3">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <div className="h-4 w-28 rounded bg-cyan-500/20 border border-cyan-500/30" />
+                  <div className="h-4 w-20 rounded bg-purple-500/20 border border-purple-500/30" />
+                  <div className="h-4 w-16 rounded bg-emerald-500/20 border border-emerald-500/30" />
+                </div>
+                <div className="h-5 w-64 rounded bg-slate-700/50" />
+                <div className="h-3.5 w-80 rounded bg-slate-800/60" />
+              </div>
+              <div className="flex items-center gap-2 text-xs font-mono text-cyan-400">
+                <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
+                <span className="text-[11px] font-bold">STREAMING INTENT (CHAT-21 / CHAT-22)...</span>
+              </div>
             </div>
-            <span>Reasoning across 120+ playbooks &amp; matching parameters…</span>
+
+            {/* Form Slot Skeletons (Matching Bento Geometry) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="h-16 rounded-xl bg-glass-surface/40 border border-glass-border/40 p-2.5 space-y-1.5">
+                <div className="h-3 w-28 rounded bg-slate-700/40" />
+                <div className="h-5 w-full rounded bg-slate-800/40" />
+              </div>
+              <div className="h-16 rounded-xl bg-glass-surface/40 border border-glass-border/40 p-2.5 space-y-1.5">
+                <div className="h-3 w-28 rounded bg-slate-700/40" />
+                <div className="h-5 w-full rounded bg-slate-800/40" />
+              </div>
+            </div>
+
+            {/* Footer / Submit Button Skeleton */}
+            <div className="flex items-center justify-between pt-2 border-t border-glass-border/40">
+              <div className="h-6 w-36 rounded-lg bg-slate-800/50" />
+              <div className="h-8 w-44 rounded-xl bg-cyan-500/20 border border-cyan-500/30" />
+            </div>
           </div>
         )}
         <div ref={messagesEndRef} />

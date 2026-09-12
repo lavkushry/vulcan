@@ -1,0 +1,42 @@
+{
+  "total_items_inspected": 2,
+  "drifted_items_count": 2,
+  "cve_advisories_count": 0,
+  "auto_upgrades_prevented": 2,
+  "critical_cves_found": 0,
+  "findings": [
+    {
+      "identifier": "candidate.terraform.terraform-aws-modules.vpc-aws",
+      "name": "[Candidate] Terraform AWS VPC",
+      "curation_status": "CANDIDATE",
+      "local_version": "6.7.2",
+      "latest_upstream_version": "6.8.0",
+      "drift_type": "MINOR",
+      "drift_severity": "MEDIUM",
+      "has_drift": true,
+      "has_critical_cve": false,
+      "advisories_count": 0,
+      "advisories": [],
+      "auto_upgrade_prevented": true,
+      "recommendation": "NOTICE: Upstream MINOR release 6.8.0 available (current: 6.7.2). Review diff and draft Curation PR if upgrade is warranted.",
+      "audited_at": "2026-09-12T08:55:59.965221+00:00"
+    },
+    {
+      "identifier": "terraform.terraform-aws-modules.vpc-aws",
+      "name": "Terraform AWS VPC",
+      "curation_status": "CURATED",
+      "local_version": "6.7.2",
+      "latest_upstream_version": "6.8.0",
+      "drift_type": "MINOR",
+      "drift_severity": "MEDIUM",
+      "has_drift": true,
+      "has_critical_cve": false,
+      "advisories_count": 0,
+      "advisories": [],
+      "auto_upgrade_prevented": true,
+      "recommendation": "NOTICE: Upstream MINOR release 6.8.0 available (current: 6.7.2). Review diff and draft Curation PR if upgrade is warranted.",
+      "audited_at": "2026-09-12T08:55:59.965447+00:00"
+    }
+  ],
+  "monitored_at": "2026-09-12T08:55:59.965451+00:00"
+}

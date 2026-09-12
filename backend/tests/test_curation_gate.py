@@ -386,3 +386,75 @@ class TestCurationRestApi:
             assert res.catalog_item.id != candidate_item.id, "Quarantine leak: CANDIDATE item was resolved by resolve()!"
             assert res.catalog_item.curation_status == CurationStatus.CURATED
 
+
+class TestUpstreamDriftMonitor:
+    """REG-06: Upstream Freshness & Semantic Drift Monitor Tests."""
+
+    def test_semver_comparison_matrix(self):
+        from app.adapters.registry_crawler import UpstreamDriftMonitor
+        assert UpstreamDriftMonitor.compare_semver("1.0.0", "1.0.1") == "PATCH"
+        assert UpstreamDriftMonitor.compare_semver("1.0.0", "1.2.0") == "MINOR"
+        assert UpstreamDriftMonitor.compare_semver("1.0.0", "2.0.0") == "MAJOR"
+        assert UpstreamDriftMonitor.compare_semver("1.4.0", "1.4.0") == "NONE"
+        assert UpstreamDriftMonitor.compare_semver("2.0.0", "1.9.9") == "NONE"
+        assert UpstreamDriftMonitor.compare_semver("v1.2.3", "v1.3.0") == "MINOR"
+
+    def test_drift_monitor_flags_cve_advisory(self, candidate_item):
+        """Asserts that an item with an affected version triggers a security advisory alert."""
+        from app.adapters.registry_crawler import UpstreamDriftMonitor
+        monitor = UpstreamDriftMonitor()
+
+        # Candidate vpc with version 5.8.0 (<6.0.0 has CVE-2025-3104)
+        item = CatalogItem(
+            id="cand-vpc-old",
+            identifier="candidate.terraform.terraform-aws-modules.vpc",
+            name="AWS VPC",
+            engine=ExecutionEngineType.TERRAFORM,
+            git_repo="https://github.com/terraform-aws-modules/terraform-aws-vpc",
+            git_commit_sha=None,
+            playbook_or_module_path="modules/vpc",
+            risk_tier=RiskTier.HIGH,
+            requires_maker_checker=True,
+            requires_chg=True,
+            input_schema={"type": "object"},
+            curation_status=CurationStatus.CANDIDATE,
+            provenance={
+                "source_registry": "terraform_registry",
+                "version": "5.8.0",
+                "latest_upstream_version": "6.2.0"
+            }
+        )
+
+        res = monitor.check_item_drift(item)
+        assert res["has_drift"] is True
+        assert res["drift_type"] == "MAJOR"
+        assert res["advisories_count"] >= 1
+        assert res["advisories"][0]["cve_id"] == "CVE-2025-3104"
+        assert res["advisories"][0]["severity"] == "HIGH"
+        assert "ACTION REQUIRED" in res["recommendation"]
+
+    def test_drift_monitor_strictly_prevents_auto_upgrade(self, candidate_item):
+        """Invariant: Drift monitor NEVER auto-upgrades production code or modifies commit SHA."""
+        from app.adapters.registry_crawler import UpstreamDriftMonitor
+        monitor = UpstreamDriftMonitor()
+
+        original_version = candidate_item.provenance.get("version")
+        original_sha = candidate_item.git_commit_sha
+
+        res = monitor.check_item_drift(candidate_item, simulated_upstream_version="7.0.0")
+
+        assert res["auto_upgrade_prevented"] is True
+        # Invariant: Item in-memory and state remained strictly untouched
+        assert candidate_item.provenance.get("version") == original_version
+        assert candidate_item.git_commit_sha == original_sha
+
+    def test_check_all_drift_summary(self, candidate_item):
+        """Asserts aggregated drift and CVE reporting across candidate items."""
+        from app.adapters.registry_crawler import UpstreamDriftMonitor
+        monitor = UpstreamDriftMonitor()
+
+        summary = monitor.check_all_drift(items=[candidate_item])
+        assert summary["total_items_inspected"] == 1
+        assert "findings" in summary
+        assert summary["auto_upgrades_prevented"] == summary["drifted_items_count"]
+

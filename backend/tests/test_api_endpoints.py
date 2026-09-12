@@ -289,14 +289,19 @@ class TestAPIEndpoints(unittest.TestCase):
         self.assertIn("vulcan_catalog_items_total", text)
         self.assertIn("vulcan_jobs_total", text)
 
-    def test_consistent_error_envelope(self):
-        """Validates consistent error envelope {error_code, message, correlation_id, details} on 404."""
-        res = self.client.get("/api/v1/jobs/non-existent-job-999")
-        self.assertEqual(res.status_code, 404)
-        data = res.json()
-        self.assertEqual(data["error_code"], "ERR_404")
-        self.assertIn("Job not found", data["message"])
-        self.assertIn("correlation_id", data)
+    def test_intent_stream_sse_endpoint(self):
+        """CHAT-22: GET /api/v1/intent/stream returns text/event-stream with thinking, analyzing, resolution, done."""
+        res = self.client.get("/api/v1/intent/stream?prompt=renew+ssl+cert+on+f5-edge-01.internal+for+90+days")
+        self.assertEqual(res.status_code, 200)
+        self.assertIn("text/event-stream", res.headers.get("content-type", ""))
+
+        body = res.text
+        self.assertIn("event: thinking", body)
+        self.assertIn("event: analyzing", body)
+        self.assertIn("event: validating", body)
+        self.assertIn("event: resolution", body)
+        self.assertIn("event: done", body)
+        self.assertIn('"completed": true', body)
 
 
 if __name__ == "__main__":

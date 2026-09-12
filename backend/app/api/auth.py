@@ -50,7 +50,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
 
         header = request.headers.get("authorization", "")
         token = header[7:].strip() if header.lower().startswith("bearer ") \
-            else request.headers.get("x-vulcan-api-key", "")
+            else (request.headers.get("x-vulcan-api-key", "") or request.query_params.get("token", ""))
         user_id = authenticate_token(token, self._tokens)
         if user_id is None:
             return JSONResponse(status_code=401, content={

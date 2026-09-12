@@ -22,7 +22,7 @@ sys.path.insert(0, str(BASE_DIR / "backend"))
 
 from app.adapters.embedding_providers import get_embedding_provider
 from app.adapters.postgres_catalog_repository import compute_hash_embedding
-from app.adapters.registry_crawler import RegistryCrawlerAgent
+from app.adapters.registry_crawler import RegistryCrawlerAgent, UpstreamDriftMonitor
 from app.domain.entities import CatalogItem, CurationStatus
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -99,7 +99,38 @@ async def main():
     parser.add_argument("--embedding-provider", type=str, default="semantic", help="Embedding provider: semantic, hash, openai, gemini")
     parser.add_argument("--seed-db", action="store_true", help="Seed results directly into PostgreSQL pgvector")
     parser.add_argument("--db-url", type=str, default=None, help="PostgreSQL connection string")
+    parser.add_argument("--check-drift", action="store_true", help="REG-06: Monitor upstream freshness and CVE advisories across candidate store")
     args = parser.parse_args()
+
+    if args.check_drift:
+        logger.info("Running REG-06 Upstream Freshness & Semantic Drift Monitor...")
+        monitor = UpstreamDriftMonitor()
+        report = monitor.check_all_drift()
+
+        print("\n" + "=" * 90)
+        print(" PROJECT VULCAN: REG-06 UPSTREAM FRESHNESS & CVE DRIFT REPORT")
+        print("=" * 90)
+        print(f"Total Inspected:          {report['total_items_inspected']}")
+        print(f"Drifted Items:            {report['drifted_items_count']}")
+        print(f"CVE Security Advisories:  {report['cve_advisories_count']}")
+        print(f"Critical CVEs:            {report['critical_cves_found']}")
+        print(f"Auto-Upgrades Prevented:  {report['auto_upgrades_prevented']} (Invariant: NEVER auto-upgrade)")
+        print("-" * 90)
+        print(f"{'Identifier':<42} {'Local':<8} {'Upstream':<10} {'Drift':<8} {'Advisories':<10}")
+        print("-" * 90)
+        for f in report["findings"][:20]:
+            cve_str = f"{f['advisories_count']} alert(s)" if f['advisories_count'] > 0 else "0"
+            print(f"{f['identifier']:<42} {f['local_version']:<8} {f['latest_upstream_version']:<10} {f['drift_type']:<8} {cve_str:<10}")
+        print("=" * 90)
+
+        # Write audit artifact
+        docs_dir = BASE_DIR / "docs"
+        docs_dir.mkdir(parents=True, exist_ok=True)
+        report_file = docs_dir / "UPSTREAM_DRIFT_REPORT.json"
+        with open(report_file, "w", encoding="utf-8") as rf:
+            json.dump(report, rf, indent=2)
+        logger.info("Saved complete upstream drift audit report to %s", report_file)
+        return
 
     provider = get_embedding_provider(args.embedding_provider)
     logger.info("Using embedding provider: %s (dimension=%d)", provider.provider_name, provider.dimension)
