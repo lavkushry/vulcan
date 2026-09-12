@@ -87,12 +87,12 @@ class RedisJobQueue(IJobQueue):
         logger.info("Enqueued job [%s / %s] to stream '%s' with msg_id [%s]", job_id, correlation_id, self.stream_name, msg_id)
         return msg_id
 
-    def dequeue(self, worker_id: str, timeout_seconds: float = 2.0) -> Optional[JobQueueMessage]:
+    def dequeue(self, worker_id: str, timeout_seconds: float = 1.0) -> Optional[JobQueueMessage]:
         """
         Reads next unassigned message for worker_id from consumer group.
         Blocks up to timeout_seconds.
         """
-        block_ms = int(timeout_seconds * 1000)
+        block_ms = max(50, int(timeout_seconds * 1000))
         try:
             response = self.redis.xreadgroup(
                 self.group_name,
@@ -102,6 +102,9 @@ class RedisJobQueue(IJobQueue):
                 block=block_ms
             )
         except Exception as e:
+            err_str = str(e).lower()
+            if "timeout" in err_str or "timed out" in err_str:
+                return None
             logger.warning("Error reading from Redis Stream '%s': %s", self.stream_name, e)
             return None
 

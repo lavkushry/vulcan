@@ -195,7 +195,7 @@ class AppContainer:
         """Attempt to connect to Redis. Returns node list or empty list."""
         try:
             import redis
-            r = redis.Redis.from_url(self.redis_url, socket_timeout=1)
+            r = redis.Redis.from_url(self.redis_url, socket_timeout=5, socket_connect_timeout=2)
             r.ping()
             logger.info(f"Redis detected at {self.redis_url}")
             return [r]
