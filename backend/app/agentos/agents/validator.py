@@ -51,23 +51,48 @@ class ValidatorAgent(BaseAgent):
 
         # 1. Syntax Check
         syntax_ok = True
-        if "playbook" in all_files_content or "---" in all_files_content or "terraform" in all_files_content:
+        try:
+            import yaml
+            for art in artifacts:
+                for f in art.get("files", []):
+                    content = f.get("content", "")
+                    if content.strip():
+                        yaml.safe_load(content)  # Will raise on invalid YAML
             checks.append(
                 ValidationCheck(
                     check_name="syntax_check",
                     status=ValidationCheckStatus.PASS,
-                    details="YAML/HCL syntax validated successfully.",
+                    details="YAML syntax validated via yaml.safe_load().",
                 )
             )
-        else:
+        except yaml.YAMLError as e:
             syntax_ok = False
             checks.append(
                 ValidationCheck(
                     check_name="syntax_check",
                     status=ValidationCheckStatus.FAIL,
-                    details="Syntax error or missing structured payload.",
+                    details=f"YAML syntax error: {str(e)[:200]}",
                 )
             )
+        except Exception:
+            # Fallback for non-YAML content (e.g. HCL/Terraform)
+            if "terraform" in all_files_content.lower() or "---" in all_files_content:
+                checks.append(
+                    ValidationCheck(
+                        check_name="syntax_check",
+                        status=ValidationCheckStatus.PASS,
+                        details="Content appears to be valid structured automation (HCL/YAML detected).",
+                    )
+                )
+            else:
+                syntax_ok = False
+                checks.append(
+                    ValidationCheck(
+                        check_name="syntax_check",
+                        status=ValidationCheckStatus.FAIL,
+                        details="No recognizable automation format detected.",
+                    )
+                )
 
         # 2. Secret Scan (No plaintext passwords, tokens, private keys)
         secret_patterns = [
@@ -123,8 +148,8 @@ class ValidatorAgent(BaseAgent):
         checks.append(
             ValidationCheck(
                 check_name="idempotency_verification",
-                status=ValidationCheckStatus.PASS,
-                details="Tasks use native Ansible/Terraform state-asserting declarations.",
+                status=ValidationCheckStatus.SKIPPED,
+                details="Idempotency check requires ansible --check mode or terraform plan. Not available in this environment.",
             )
         )
 
@@ -132,12 +157,13 @@ class ValidatorAgent(BaseAgent):
         checks.append(
             ValidationCheck(
                 check_name="molecule_sandbox_test",
-                status=ValidationCheckStatus.PASS,
-                details="Sandbox container converge completed with rc=0.",
+                status=ValidationCheckStatus.SKIPPED,
+                details="Molecule/sandbox testing requires container runtime. Not available in this environment.",
             )
         )
 
-        all_passed = bool(checks) and all(c.status == ValidationCheckStatus.PASS for c in checks)
+        non_skipped = [c for c in checks if c.status != ValidationCheckStatus.SKIPPED]
+        all_passed = bool(non_skipped) and all(c.status == ValidationCheckStatus.PASS for c in non_skipped)
         next_state = WorkflowState.SECURITY_REVIEW.value if all_passed else WorkflowState.VALIDATION_FAILED.value
 
         return ValidatorOutput(
@@ -145,9 +171,9 @@ class ValidatorAgent(BaseAgent):
             all_passed=all_passed,
             checks=checks,
             syntax_valid=syntax_ok,
-            lint_passed=True,
-            idempotency_verified=True,
-            sandbox_passed=True,
+            lint_passed=False,  # No real linter was run
+            idempotency_verified=False,  # SKIPPED, not verified
+            sandbox_passed=False,  # SKIPPED, not tested
             proposed_next_state=next_state,
             confidence=1.0 if all_passed else 0.20,
             rationale="All 5 preflight checks passed." if all_passed else "Preflight validation failed; workflow halted.",

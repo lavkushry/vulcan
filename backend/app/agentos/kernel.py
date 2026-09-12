@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 import hashlib
+import os
 import json
 import logging
 import uuid
@@ -45,6 +46,10 @@ from app.agentos.agents.curator import CuratorAgent
 from app.agentos.agents.eval import EvalAgent
 from app.ports.repositories import IExternalResourceRepository
 
+from app.agentos.policy_engine import IPolicyEngine, PolicyDecision, SimulationPolicyEngine
+from app.agentos.adapters.execution_adapter import IAgentOSExecutionAdapter, SimulationExecutionAdapter
+from app.agentos.adapters.foundry_adapter import IAgentRuntime, DeterministicAgentRuntime
+
 logger = logging.getLogger("vulcan.agentos_kernel")
 
 
@@ -59,9 +64,14 @@ class AgentOSKernel:
         self,
         repository: Optional[PostgresAgentWorkflowRepository] = None,
         external_resource_repo: Optional[IExternalResourceRepository] = None,
+        policy_engine: Optional[IPolicyEngine] = None,
+        execution_adapter: Optional[IAgentOSExecutionAdapter] = None,
+        agent_runtime: Optional[IAgentRuntime] = None,
     ):
         self.repository = repository or PostgresAgentWorkflowRepository()
         self.external_resource_repo = external_resource_repo
+        self.policy_engine = policy_engine or SimulationPolicyEngine()
+        self.agent_runtime = agent_runtime or DeterministicAgentRuntime()
 
         # Initialize Specialist Agents
         self.supervisor = SupervisorAgent()
@@ -77,7 +87,7 @@ class AgentOSKernel:
         self.test_agent = TestAgent()
         self.security_agent = SecurityAgent()
         self.critic_agent = CriticAgent()
-        self.executor = ConstrainedExecutor()
+        self.executor = ConstrainedExecutor(adapter=execution_adapter or SimulationExecutionAdapter())
         self.verifier_agent = VerifierAgent()
         self.rollback_agent = RollbackAgent()
         self.curator_agent = CuratorAgent()
@@ -336,20 +346,33 @@ class AgentOSKernel:
             )
 
         elif ctx.current_state == WorkflowState.POLICY_CHECK:
-            # Policy evaluation
-            risk = ctx.risk_classification.get("risk_tier", "MEDIUM")
-            req_mc = ctx.risk_classification.get("requires_maker_checker", True)
-            if req_mc or ctx.environment == "PROD":
+            # Policy evaluation via pluggable engine
+            decision = self.policy_engine.evaluate(ctx)
+            ctx.policy_decision = {
+                "decision": decision.decision,
+                "decision_id": decision.decision_id,
+                "reason": decision.reason,
+                "change_ticket": decision.change_ticket,
+                "in_maintenance_window": decision.in_maintenance_window,
+                "is_simulation": self.policy_engine.is_simulation,
+            }
+            if decision.decision == "REQUIRES_APPROVAL":
                 event = ctx.transition_to(
                     WorkflowState.WAITING_FOR_APPROVAL,
                     actor="policy_engine",
-                    reason="Production or High Risk requires explicit human Maker-Checker sign-off.",
+                    reason=decision.reason,
                 )
-            else:
+            elif decision.decision == "APPROVED":
                 event = ctx.transition_to(
                     WorkflowState.EXECUTION_READY,
                     actor="policy_engine",
-                    reason="Low risk non-prod policy check passed automatically.",
+                    reason=decision.reason,
+                )
+            else:  # DENIED
+                event = ctx.transition_to(
+                    WorkflowState.POLICY_DENIED,
+                    actor="policy_engine",
+                    reason=decision.reason,
                 )
 
         elif target_role == AgentRole.EXECUTOR:
@@ -371,10 +394,13 @@ class AgentOSKernel:
                 target_resource_id=target_id,
                 environment=ctx.environment,
                 approval_id="appr-auto" if not ctx.approval_records else ctx.approval_records[-1].get("approver_id", "appr-sys"),
-                policy_decision_id="pol-approved",
+                policy_decision_id=ctx.policy_decision.get("decision_id", "pol-unknown"),
                 allowed_action="EXECUTE",
                 expires_at=datetime.now(timezone.utc) + timedelta(minutes=30),
             )
+            hmac_key = os.environ.get("VULCAN_CAPABILITY_HMAC_KEY", "")
+            if hmac_key:
+                token.hmac_signature = ExecutionCapabilityToken.compute_hmac(token, hmac_key)
             self.repository.save_capability_token(token)
 
             # Files dict for executor (includes all compiled package files)
@@ -394,6 +420,7 @@ class AgentOSKernel:
                 artifact_files=files,
                 target_resource_id=target_id,
                 parameters=ctx.desired_state,
+                environment=ctx.environment,
             )
             ctx.execution_result = exec_res.model_dump()
             token.is_used = True

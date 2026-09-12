@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import hashlib
+import os
 import json
 import logging
 from typing import Any, Dict, Optional
@@ -51,8 +52,9 @@ class ConstrainedExecutor:
     Enforces that only immutable, cryptographically bound artifacts execute in production.
     """
 
-    def __init__(self, runner_name: str = "ansible_runner_constrained"):
+    def __init__(self, runner_name: str = "ansible_runner_constrained", adapter=None):
         self.runner_name = runner_name
+        self._adapter = adapter  # Optional IAgentOSExecutionAdapter
 
     def execute(
         self,
@@ -60,6 +62,8 @@ class ConstrainedExecutor:
         artifact_files: Dict[str, str],
         target_resource_id: str,
         parameters: Dict[str, Any],
+        environment: str = "PROD",
+        action: str = "EXECUTE",
     ) -> ExecutionResult:
         now = datetime.now(timezone.utc)
 
@@ -81,6 +85,18 @@ class ConstrainedExecutor:
                 f"Target mismatch: token bound to '{token.target_resource_id}', but requested '{target_resource_id}'."
             )
 
+        # 3b. Validate Environment Bound
+        if token.environment != environment:
+            raise CapabilityTokenViolationError(
+                f"Environment mismatch: token bound to '{token.environment}', but requested '{environment}'."
+            )
+
+        # 3c. Validate Allowed Action
+        if token.allowed_action != action:
+            raise CapabilityTokenViolationError(
+                f"Action mismatch: token allows '{token.allowed_action}', but requested '{action}'."
+            )
+
         # 3. Validate Artifact SHA256 matches Token
         combined = []
         for path in sorted(artifact_files.keys()):
@@ -92,6 +108,37 @@ class ConstrainedExecutor:
             raise CapabilityTokenViolationError(
                 f"Artifact SHA mismatch! Token expected '{token.artifact_sha256}', but payload computed '{computed_sha}'."
             )
+
+        # 5. Validate Parameter Hash
+        param_raw = json.dumps(parameters, sort_keys=True, default=str).encode("utf-8")
+        computed_param_hash = hashlib.sha256(param_raw).hexdigest()
+        if token.parameter_hash != computed_param_hash:
+            raise CapabilityTokenViolationError(
+                f"Parameter hash mismatch! Token expected '{token.parameter_hash}', but computed '{computed_param_hash}'."
+            )
+
+        # 6. Verify HMAC Signature
+        if token.hmac_signature:
+            hmac_key = os.environ.get("VULCAN_CAPABILITY_HMAC_KEY", "")
+            if hmac_key and not token.verify_hmac(hmac_key):
+                raise CapabilityTokenViolationError(
+                    f"HMAC signature verification failed for token '{token.token_id}'. Possible forgery."
+                )
+
+        # 7. Delegate to execution adapter
+        if self._adapter:
+            result = self._adapter.execute(
+                workflow_id=token.workflow_id,
+                token_id=token.token_id,
+                artifact_sha256=token.artifact_sha256,
+                artifact_files=artifact_files,
+                target_resource_id=target_resource_id,
+                parameters=parameters,
+                environment=environment,
+            )
+            token.is_used = True
+            token.used_at = result.completed_at
+            return result
 
         # 4. Deterministic Execution Simulation / Invocation
         started_at = datetime.now(timezone.utc)

@@ -42,9 +42,22 @@ class PostgresAgentWorkflowRepository:
 
         self._seed_default_agent_versions()
 
+        self._production_mode = os.getenv("AGENTOS_MODE", "").lower() == "production"
+
         if self.db_url and (self.db_url.startswith("postgresql://") or self.db_url.startswith("postgres://")):
-            self._ensure_schema()
-            self._hydrate_from_db()
+            try:
+                self._ensure_schema()
+                self._hydrate_from_db()
+            except Exception as e:
+                if self._production_mode:
+                    raise RuntimeError(
+                        f"AgentOS production mode requires PostgreSQL but connection failed: {e}"
+                    ) from e
+                logger.warning("PostgreSQL unavailable, falling back to in-memory: %s", e)
+        elif self._production_mode:
+            raise RuntimeError(
+                "AgentOS production mode requires POSTGRES_URL or DATABASE_URL to be set."
+            )
 
     def _seed_default_agent_versions(self) -> None:
         default_agents = [
@@ -97,26 +110,69 @@ class PostgresAgentWorkflowRepository:
             logger.warning("Could not apply Postgres schema for AgentOS (falling back to memory): %s", e)
 
     def _hydrate_from_db(self) -> None:
-        """Hydrates in-memory cache from PostgreSQL on startup."""
+        """Hydrates in-memory cache from PostgreSQL on startup with full context."""
         try:
             import psycopg
             with psycopg.connect(self.db_url) as conn:
                 with conn.cursor() as cur:
-                    cur.execute("SELECT workflow_id, correlation_id, requester_id, environment, current_state, version, original_request, created_at, updated_at FROM agent_workflows;")
+                    cur.execute(
+                        "SELECT workflow_id, correlation_id, requester_id, environment, "
+                        "current_state, version, original_request, "
+                        "normalized_intent, desired_state, risk_classification, "
+                        "assumptions, unresolved_questions, discovered_assets, "
+                        "provenance, automation_plan, generated_artifacts, "
+                        "required_resources, resolved_resources, secret_references, "
+                        "validation_results, security_findings, test_results, "
+                        "critic_findings, policy_decision, approval_records, "
+                        "execution_plan, execution_result, postcondition_verification, "
+                        "rollback_state, curation_state, eval_result, "
+                        "error_message, created_at, updated_at "
+                        "FROM agent_workflows;"
+                    )
+                    columns = [
+                        "workflow_id", "correlation_id", "requester_id", "environment",
+                        "current_state", "version", "original_request",
+                        "normalized_intent", "desired_state", "risk_classification",
+                        "assumptions", "unresolved_questions", "discovered_assets",
+                        "provenance", "automation_plan", "generated_artifacts",
+                        "required_resources", "resolved_resources", "secret_references",
+                        "validation_results", "security_findings", "test_results",
+                        "critic_findings", "policy_decision", "approval_records",
+                        "execution_plan", "execution_result", "postcondition_verification",
+                        "rollback_state", "curation_state", "eval_result",
+                        "error_message", "created_at", "updated_at",
+                    ]
                     for row in cur.fetchall():
-                        ctx = WorkflowContext(
-                            workflow_id=row[0],
-                            correlation_id=row[1],
-                            requester_id=row[2],
-                            environment=row[3],
-                            current_state=WorkflowState(row[4]),
-                            version=row[5],
-                            original_request=row[6],
-                            created_at=row[7],
-                            updated_at=row[8],
-                        )
+                        data = dict(zip(columns, row))
+                        # Parse JSONB strings back to dicts/lists
+                        json_fields = [
+                            "normalized_intent", "desired_state", "risk_classification",
+                            "assumptions", "unresolved_questions", "discovered_assets",
+                            "provenance", "automation_plan", "generated_artifacts",
+                            "required_resources", "resolved_resources", "secret_references",
+                            "validation_results", "security_findings", "test_results",
+                            "critic_findings", "policy_decision", "approval_records",
+                            "execution_plan", "execution_result", "postcondition_verification",
+                            "rollback_state", "curation_state", "eval_result",
+                        ]
+                        for field in json_fields:
+                            val = data.get(field)
+                            if isinstance(val, str):
+                                try:
+                                    data[field] = json.loads(val)
+                                except (json.JSONDecodeError, TypeError):
+                                    data[field] = {} if field not in (
+                                        "assumptions", "unresolved_questions", "discovered_assets",
+                                        "generated_artifacts", "required_resources", "secret_references",
+                                        "validation_results", "security_findings", "test_results",
+                                        "critic_findings", "approval_records",
+                                    ) else []
+                        ctx = WorkflowContext.from_dict(data)
                         self._workflows[ctx.workflow_id] = ctx
+                    logger.info("Hydrated %d workflows from PostgreSQL.", len(self._workflows))
         except Exception as e:
+            if self._production_mode:
+                raise
             logger.warning("Hydration from DB skipped: %s", e)
 
     # -------------------------------------------------------------------------
@@ -239,6 +295,8 @@ class PostgresAgentWorkflowRepository:
                         ),
                     )
         except Exception as e:
+            if self._production_mode:
+                raise RuntimeError(f"AgentOS production mode: PostgreSQL persistence failed: {e}") from e
             logger.warning("Postgres persist failed: %s", e)
 
     # -------------------------------------------------------------------------
@@ -267,6 +325,46 @@ class PostgresAgentWorkflowRepository:
         with self._lock:
             tok = self._tokens.get(token_id)
             return copy.deepcopy(tok) if tok else None
+
+    def consume_capability_token(self, token_id: str) -> Optional[ExecutionCapabilityToken]:
+        """Atomically consume a capability token. Returns the token if successfully consumed, None if already consumed/expired."""
+        with self._lock:
+            tok = self._tokens.get(token_id)
+            if not tok or tok.is_used:
+                return None
+            from datetime import datetime, timezone
+            if tok.expires_at < datetime.now(timezone.utc):
+                return None
+            tok.is_used = True
+            tok.used_at = datetime.now(timezone.utc)
+
+            # Persist to PostgreSQL if available
+            if self.db_url and (self.db_url.startswith("postgresql://") or self.db_url.startswith("postgres://")):
+                try:
+                    import psycopg
+                    with psycopg.connect(self.db_url, autocommit=True) as conn:
+                        with conn.cursor() as cur:
+                            cur.execute(
+                                "UPDATE execution_capabilities "
+                                "SET consumed_at = NOW() "
+                                "WHERE token_id = %s AND consumed_at IS NULL AND expires_at > NOW() "
+                                "RETURNING token_id;",
+                                (token_id,)
+                            )
+                            row = cur.fetchone()
+                            if not row:
+                                # Another worker already consumed it
+                                tok.is_used = False
+                                tok.used_at = None
+                                return None
+                except Exception as e:
+                    if self._production_mode:
+                        tok.is_used = False
+                        tok.used_at = None
+                        raise RuntimeError(f"Failed to atomically consume token in PostgreSQL: {e}") from e
+                    logger.warning("Token consumption PostgreSQL update failed: %s", e)
+
+            return copy.deepcopy(tok)
 
     # -------------------------------------------------------------------------
     # AGENT VERSIONS & EVALS

@@ -188,16 +188,20 @@ CREATE TABLE IF NOT EXISTS execution_authorizations (
     approval_id VARCHAR(128) NOT NULL,
     policy_decision_id VARCHAR(128) NOT NULL,
     allowed_action VARCHAR(64) NOT NULL DEFAULT 'EXECUTE',
+    hmac_signature VARCHAR(128) NOT NULL DEFAULT '',
     issued_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     expires_at TIMESTAMPTZ NOT NULL,
     is_used BOOLEAN NOT NULL DEFAULT FALSE,
     used_at TIMESTAMPTZ,
+    consumed_at TIMESTAMPTZ,
 
     CONSTRAINT chk_exec_auth_env CHECK (environment IN ('PROD', 'STAGE', 'DEV'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_exec_auth_wf ON execution_authorizations(workflow_id);
 CREATE INDEX IF NOT EXISTS idx_exec_auth_token ON execution_authorizations(token_id, is_used);
+-- Partial index for efficient atomic token consumption queries
+CREATE INDEX IF NOT EXISTS idx_exec_auth_unconsumed ON execution_authorizations(token_id) WHERE consumed_at IS NULL;
 
 -- 9. Verification Results
 CREATE TABLE IF NOT EXISTS verification_results (

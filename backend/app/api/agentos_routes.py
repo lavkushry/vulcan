@@ -24,7 +24,6 @@ router = APIRouter(prefix="/agentos", tags=["AgentOS Ultra"])
 
 class CreateWorkflowRequest(BaseModel):
     original_request: str = Field(..., min_length=3, description="Natural language infrastructure requirement")
-    requester_id: str = Field(default="operator@corp.internal", description="Requester identity")
     environment: str = Field(default="PROD", description="Target environment: PROD, STAGE, or DEV")
 
 
@@ -33,7 +32,6 @@ class SupplyInputRequest(BaseModel):
 
 
 class ApproveWorkflowRequest(BaseModel):
-    approver_id: str = Field(..., min_length=1, description="Approver identity (must differ from requester)")
     reason: str = Field(default="Approved for production execution", description="Business justification")
 
 
@@ -52,12 +50,16 @@ def _get_kernel(request: Request):
 @router.post("/workflows")
 def create_workflow(req: CreateWorkflowRequest, request: Request):
     """Creates and persists a new canonical WorkflowContext in RECEIVED state."""
+    requester_id = getattr(request.state, "user_id", None)
+    if not requester_id:
+        raise HTTPException(status_code=401, detail="Authentication required: no user_id in request state.")
+    
     kernel = _get_kernel(request)
     corr_id = getattr(request.state, "correlation_id", None)
     try:
         ctx = kernel.create_workflow(
             original_request=req.original_request,
-            requester_id=req.requester_id,
+            requester_id=requester_id,
             environment=req.environment,
             correlation_id=corr_id,
         )
@@ -151,6 +153,11 @@ def auto_run_workflow(workflow_id: str, request: Request, max_steps: int = Query
 @router.post("/workflows/{workflow_id}/input")
 def supply_input(workflow_id: str, req: SupplyInputRequest, request: Request):
     """Supplies operator inputs to a workflow paused in WAITING_FOR_INPUT."""
+    user_id = getattr(request.state, "user_id", None)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Authentication required: no user_id in request state.")
+    logger.info(f"Operator {user_id} supplying input for workflow {workflow_id}")
+    
     kernel = _get_kernel(request)
     try:
         ctx = kernel.supply_input(workflow_id, req.operator_input)
@@ -164,6 +171,11 @@ def supply_input(workflow_id: str, req: SupplyInputRequest, request: Request):
 @router.post("/workflows/{workflow_id}/resume")
 def resume_workflow(workflow_id: str, request: Request):
     """Resumes a workflow paused in WAITING_FOR_RESOURCE after external resource configuration."""
+    user_id = getattr(request.state, "user_id", None)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Authentication required: no user_id in request state.")
+    logger.info(f"Operator {user_id} resuming workflow {workflow_id}")
+    
     kernel = _get_kernel(request)
     try:
         ctx = kernel.resume_after_resource_config(workflow_id)
@@ -177,9 +189,13 @@ def resume_workflow(workflow_id: str, request: Request):
 @router.post("/workflows/{workflow_id}/approve")
 def approve_workflow(workflow_id: str, req: ApproveWorkflowRequest, request: Request):
     """Records human Maker-Checker approval and validates separation of duties."""
+    approver_id = getattr(request.state, "user_id", None)
+    if not approver_id:
+        raise HTTPException(status_code=401, detail="Authentication required: no user_id in request state.")
+        
     kernel = _get_kernel(request)
     try:
-        ctx = kernel.approve_workflow(workflow_id, approver_id=req.approver_id, reason=req.reason)
+        ctx = kernel.approve_workflow(workflow_id, approver_id=approver_id, reason=req.reason)
         return ctx.to_dict()
     except PermissionError as e:
         raise HTTPException(status_code=403, detail=str(e))
@@ -192,6 +208,11 @@ def approve_workflow(workflow_id: str, req: ApproveWorkflowRequest, request: Req
 @router.post("/workflows/{workflow_id}/rollback")
 def rollback_workflow(workflow_id: str, request: Request):
     """Triggers pre-validated automated rollback playbook."""
+    user_id = getattr(request.state, "user_id", None)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Authentication required: no user_id in request state.")
+    logger.info(f"Operator {user_id} triggering rollback for workflow {workflow_id}")
+    
     kernel = _get_kernel(request)
     try:
         ctx = kernel.trigger_rollback(workflow_id)

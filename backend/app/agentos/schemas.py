@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import enum
+import hashlib
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field, field_validator
 
@@ -291,6 +292,25 @@ class ExecutionCapabilityToken(BaseModel):
     expires_at: datetime
     is_used: bool = False
     used_at: Optional[datetime] = None
+    hmac_signature: str = ""
+
+    @classmethod
+    def compute_hmac(cls, token: "ExecutionCapabilityToken", key: str) -> str:
+        """Computes HMAC-SHA256 over critical token fields."""
+        import hmac as hmac_module
+        msg = "|".join([
+            token.token_id, token.workflow_id, token.artifact_sha256,
+            token.parameter_hash, token.target_resource_id, token.environment,
+            token.allowed_action, token.approval_id, token.policy_decision_id,
+            token.expires_at.isoformat(),
+        ]).encode("utf-8")
+        return hmac_module.new(key.encode("utf-8"), msg, hashlib.sha256).hexdigest()
+
+    def verify_hmac(self, key: str) -> bool:
+        """Verifies HMAC-SHA256 signature using constant-time comparison."""
+        import hmac as hmac_module
+        expected = self.compute_hmac(self, key)
+        return hmac_module.compare_digest(self.hmac_signature, expected)
 
 
 # 14. Verifier Output

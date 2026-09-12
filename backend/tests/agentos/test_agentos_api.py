@@ -18,7 +18,6 @@ def test_api_create_and_get_workflow(client):
         "/api/v1/agentos/workflows",
         json={
             "original_request": "Build PostgreSQL 16 cluster with Datadog",
-            "requester_id": "alice@corp.internal",
             "environment": "PROD",
         },
     )
@@ -26,7 +25,8 @@ def test_api_create_and_get_workflow(client):
     data = res.json()
     wf_id = data["workflow_id"]
     assert data["current_state"] == "RECEIVED"
-    assert data["requester_id"] == "alice@corp.internal"
+    # Identity now derived from server-side auth token map (vlc_test_alice -> eng.alice)
+    assert data["requester_id"] == "eng.alice"
 
     # Get workflow
     get_res = client.get(f"/api/v1/agentos/workflows/{wf_id}")
@@ -39,7 +39,6 @@ def test_api_step_and_auto_run(client):
         "/api/v1/agentos/workflows",
         json={
             "original_request": "Deploy PostgreSQL 16 on 3 RHEL 9 nodes",
-            "requester_id": "bob@corp.internal",
             "environment": "DEV",
         },
     )

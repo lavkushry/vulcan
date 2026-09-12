@@ -15,14 +15,45 @@ Only 100% passing postconditions can transition workflow to SUCCESS.
 """
 from __future__ import annotations
 
-from typing import List, Type
+from typing import List, Type, Dict, Optional, Any
+import abc
 from app.agentos.agents.base import BaseAgent
 from app.agentos.context import WorkflowContext, WorkflowState
 from app.agentos.schemas import AgentRole, BaseAgentOutput, VerificationProbe, VerifierOutput
 
 
+class IVerificationProbeRunner(abc.ABC):
+    """Abstract probe runner for postcondition verification."""
+    @property
+    @abc.abstractmethod
+    def is_simulation(self) -> bool:
+        pass
+
+    @abc.abstractmethod
+    def run_probe(self, probe_type: str, target: str, probe_config: Dict[str, Any]) -> VerificationProbe:
+        pass
+
+
+class SimulationProbeRunner(IVerificationProbeRunner):
+    """CI/testing probe runner. Returns simulated results clearly labeled."""
+    @property
+    def is_simulation(self) -> bool:
+        return True
+
+    def run_probe(self, probe_type: str, target: str, probe_config: Dict[str, Any]) -> VerificationProbe:
+        """Returns a simulated passing probe with simulation metadata."""
+        return VerificationProbe(
+            probe_id=f"sim-probe-{probe_type}",
+            target=target,
+            probe_type=probe_type,
+            passed=True,
+            latency_ms=1.0,
+            details={**probe_config, "simulation": True},
+        )
+
+
 class VerifierAgent(BaseAgent):
-    def __init__(self, version: str = "v1.0"):
+    def __init__(self, version: str = "v1.0", probe_runner: Optional[IVerificationProbeRunner] = None):
         super().__init__(
             role=AgentRole.VERIFIER,
             version=version,
@@ -30,6 +61,7 @@ class VerifierAgent(BaseAgent):
             model_name="gpt-4o",
             system_instructions="Execute read-only probes against actual target infrastructure to verify postconditions independently of runner exit codes.",
         )
+        self._probe_runner = probe_runner or SimulationProbeRunner()
 
     @property
     def output_schema(self) -> Type[BaseAgentOutput]:
@@ -39,79 +71,21 @@ class VerifierAgent(BaseAgent):
         target = ctx.execution_result.get("target_id", "db-cluster.internal")
         probes: List[VerificationProbe] = []
 
-        # Probe 1: Port Accessibility (5432)
-        probes.append(
-            VerificationProbe(
-                probe_id="probe-port-5432",
-                target=target,
-                probe_type="port_open",
-                passed=True,
-                latency_ms=1.4,
-                details={"port": 5432, "state": "LISTENING", "protocol": "tcp"},
-            )
-        )
-
-        # Probe 2: Service Active
-        probes.append(
-            VerificationProbe(
-                probe_id="probe-service-status",
-                target=target,
-                probe_type="service_status",
-                passed=True,
-                latency_ms=8.2,
-                details={"service": "postgresql-16", "substate": "running"},
-            )
-        )
-
-        # Probe 3: Storage Capacity (500GB)
-        probes.append(
-            VerificationProbe(
-                probe_id="probe-disk-storage",
-                target=target,
-                probe_type="disk_capacity",
-                passed=True,
-                latency_ms=3.1,
-                details={"mount": "/var/lib/pgsql", "total_gb": 500, "free_gb": 485},
-            )
-        )
-
-        # Probe 4: Database Query Synthetic Probe
-        probes.append(
-            VerificationProbe(
-                probe_id="probe-db-query",
-                target=target,
-                probe_type="db_query",
-                passed=True,
-                latency_ms=2.1,
-                details={"query": "SELECT version();", "result": "PostgreSQL 16.2 on x86_64-redhat-linux-gnu"},
-            )
-        )
-
-        # Probe 5: Datadog Telemetry Stream Active
+        # Define probe configs from desired state / spec
+        probe_configs = [
+            ("port_open", {"port": 5432, "protocol": "tcp"}),
+            ("service_status", {"service": "postgresql-16"}),
+            ("disk_capacity", {"mount": "/var/lib/pgsql", "min_gb": 500}),
+            ("db_query", {"query": "SELECT version();"}),
+        ]
         if "datadog" in ctx.original_request.lower():
-            probes.append(
-                VerificationProbe(
-                    probe_id="probe-datadog-stream",
-                    target=target,
-                    probe_type="telemetry_active",
-                    passed=True,
-                    latency_ms=15.0,
-                    details={"agent_status": "OK", "metrics_emitted": 42},
-                )
-            )
-
-        # Probe 6: S3 Backup Configuration Verified
+            probe_configs.append(("telemetry_active", {"agent": "datadog"}))
         if "s3" in ctx.original_request.lower():
-            probes.append(
-                VerificationProbe(
-                    probe_id="probe-s3-backup",
-                    target=target,
-                    probe_type="backup_accessible",
-                    passed=True,
-                    latency_ms=22.0,
-                    details={"s3_bucket": "vulcan-backups", "can_write": True},
-                )
-            )
+            probe_configs.append(("backup_accessible", {"bucket": "vulcan-backups"}))
+
+        for probe_type, config in probe_configs:
+            probe = self._probe_runner.run_probe(probe_type, target, config)
+            probes.append(probe)
 
         all_passed = bool(probes) and all(p.passed for p in probes)
         next_state = WorkflowState.SUCCESS.value if all_passed else WorkflowState.VERIFY_FAILED.value
@@ -123,5 +97,6 @@ class VerifierAgent(BaseAgent):
             actual_state_matches_desired=all_passed,
             proposed_next_state=next_state,
             confidence=1.0 if all_passed else 0.0,
-            rationale=f"All {len(probes)} independent postcondition verification probes passed." if all_passed else "Postcondition probes failed; actual state diverged from desired state.",
+            rationale=f"All {len(probes)} postcondition probes passed{' (SIMULATION)' if self._probe_runner.is_simulation else ''}."
+                if all_passed else "Postcondition probes failed; actual state diverged from desired state.",
         )
