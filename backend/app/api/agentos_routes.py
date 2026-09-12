@@ -47,12 +47,26 @@ def _get_kernel(request: Request):
     return default_container.agentos_kernel
 
 
+from app.adapters.policy_manager import policy_manager
+from app.domain.roles_and_policies import Permission
+
+def _enforce_permission(request: Request, permission: Permission):
+    user_id = getattr(request.state, "user_id", None)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Authentication required: no user_id in request state.")
+    if not policy_manager.check_user_permission(user_id, permission):
+        raise HTTPException(
+            status_code=403, 
+            detail=f"RBAC Policy Violation: User [{user_id}] lacks required permission [{permission.value}]."
+        )
+
+
+
 @router.post("/workflows")
 def create_workflow(req: CreateWorkflowRequest, request: Request):
     """Creates and persists a new canonical WorkflowContext in RECEIVED state."""
+    _enforce_permission(request, Permission.WORKFLOW_CREATE)
     requester_id = getattr(request.state, "user_id", None)
-    if not requester_id:
-        raise HTTPException(status_code=401, detail="Authentication required: no user_id in request state.")
     
     kernel = _get_kernel(request)
     corr_id = getattr(request.state, "correlation_id", None)
@@ -77,6 +91,7 @@ def list_workflows(
     state: Optional[str] = Query(default=None),
 ):
     """Lists AgentOS workflows with pagination and state filtering."""
+    _enforce_permission(request, Permission.WORKFLOW_READ_ALL)
     kernel = _get_kernel(request)
     workflows = kernel.repository.list_workflows(limit=limit, offset=offset, state=state)
     return [w.to_dict() for w in workflows]
@@ -85,6 +100,7 @@ def list_workflows(
 @router.get("/workflows/{workflow_id}")
 def get_workflow(workflow_id: str, request: Request):
     """Retrieves full WorkflowContext by workflow_id."""
+    _enforce_permission(request, Permission.WORKFLOW_READ_ALL)
     kernel = _get_kernel(request)
     ctx = kernel.repository.get_workflow(workflow_id)
     if not ctx:
@@ -95,6 +111,7 @@ def get_workflow(workflow_id: str, request: Request):
 @router.post("/workflows/{workflow_id}/step")
 def step_workflow(workflow_id: str, request: Request):
     """Advances workflow execution by one specialist agent step."""
+    _enforce_permission(request, Permission.WORKFLOW_ADVANCE)
     kernel = _get_kernel(request)
     try:
         ctx = kernel.step(workflow_id)
@@ -111,6 +128,7 @@ def step_workflow(workflow_id: str, request: Request):
 @router.post("/workflows/{workflow_id}/auto-run")
 def auto_run_workflow(workflow_id: str, request: Request, max_steps: int = Query(default=15, ge=1, le=50)):
     """Automatically advances workflow until it pauses (WAITING_*) or completes."""
+    _enforce_permission(request, Permission.WORKFLOW_ADVANCE)
     kernel = _get_kernel(request)
     ctx = kernel.repository.get_workflow(workflow_id)
     if not ctx:
@@ -153,9 +171,8 @@ def auto_run_workflow(workflow_id: str, request: Request, max_steps: int = Query
 @router.post("/workflows/{workflow_id}/input")
 def supply_input(workflow_id: str, req: SupplyInputRequest, request: Request):
     """Supplies operator inputs to a workflow paused in WAITING_FOR_INPUT."""
+    _enforce_permission(request, Permission.WORKFLOW_ADVANCE)
     user_id = getattr(request.state, "user_id", None)
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Authentication required: no user_id in request state.")
     logger.info(f"Operator {user_id} supplying input for workflow {workflow_id}")
     
     kernel = _get_kernel(request)
@@ -171,9 +188,8 @@ def supply_input(workflow_id: str, req: SupplyInputRequest, request: Request):
 @router.post("/workflows/{workflow_id}/resume")
 def resume_workflow(workflow_id: str, request: Request):
     """Resumes a workflow paused in WAITING_FOR_RESOURCE after external resource configuration."""
+    _enforce_permission(request, Permission.WORKFLOW_ADVANCE)
     user_id = getattr(request.state, "user_id", None)
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Authentication required: no user_id in request state.")
     logger.info(f"Operator {user_id} resuming workflow {workflow_id}")
     
     kernel = _get_kernel(request)
@@ -189,9 +205,8 @@ def resume_workflow(workflow_id: str, request: Request):
 @router.post("/workflows/{workflow_id}/approve")
 def approve_workflow(workflow_id: str, req: ApproveWorkflowRequest, request: Request):
     """Records human Maker-Checker approval and validates separation of duties."""
+    _enforce_permission(request, Permission.WORKFLOW_APPROVE)
     approver_id = getattr(request.state, "user_id", None)
-    if not approver_id:
-        raise HTTPException(status_code=401, detail="Authentication required: no user_id in request state.")
         
     kernel = _get_kernel(request)
     try:
@@ -208,9 +223,8 @@ def approve_workflow(workflow_id: str, req: ApproveWorkflowRequest, request: Req
 @router.post("/workflows/{workflow_id}/rollback")
 def rollback_workflow(workflow_id: str, request: Request):
     """Triggers pre-validated automated rollback playbook."""
+    _enforce_permission(request, Permission.WORKFLOW_ROLLBACK)
     user_id = getattr(request.state, "user_id", None)
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Authentication required: no user_id in request state.")
     logger.info(f"Operator {user_id} triggering rollback for workflow {workflow_id}")
     
     kernel = _get_kernel(request)
@@ -224,6 +238,7 @@ def rollback_workflow(workflow_id: str, request: Request):
 @router.get("/workflows/{workflow_id}/events")
 def get_workflow_events(workflow_id: str, request: Request):
     """Returns the cryptographic SHA-256 transition audit trail for the workflow."""
+    _enforce_permission(request, Permission.WORKFLOW_READ_ALL)
     kernel = _get_kernel(request)
     events = kernel.repository.get_events(workflow_id)
     return [e.to_dict() for e in events]
@@ -232,6 +247,7 @@ def get_workflow_events(workflow_id: str, request: Request):
 @router.get("/agents")
 def list_agents(request: Request):
     """Lists registered specialist agents, active versions, release stages, and eval scores."""
+    _enforce_permission(request, Permission.WORKFLOW_READ_ALL)
     kernel = _get_kernel(request)
     return kernel.repository.list_agent_versions()
 
@@ -239,6 +255,7 @@ def list_agents(request: Request):
 @router.get("/evals")
 def list_evals(request: Request, limit: int = Query(default=50, ge=1, le=100)):
     """Lists historical evaluation benchmarks and bootstrap statistics."""
+    _enforce_permission(request, Permission.WORKFLOW_READ_ALL)
     kernel = _get_kernel(request)
     return kernel.repository.list_eval_runs(limit=limit)
 
@@ -246,6 +263,7 @@ def list_evals(request: Request, limit: int = Query(default=50, ge=1, le=100)):
 @router.post("/evals/run")
 def run_eval(req: RunEvalRequest, request: Request):
     """Triggers an evaluation benchmark run across the designated tier."""
+    _enforce_permission(request, Permission.EVAL_RUN)
     kernel = _get_kernel(request)
     summary = AgentOSEvalPlatform.run_tier_eval(tier=req.tier)
     record = {

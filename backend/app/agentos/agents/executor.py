@@ -118,12 +118,22 @@ class ConstrainedExecutor:
             )
 
         # 6. Verify HMAC Signature
-        if token.hmac_signature:
-            hmac_key = os.environ.get("VULCAN_CAPABILITY_HMAC_KEY", "")
-            if hmac_key and not token.verify_hmac(hmac_key):
-                raise CapabilityTokenViolationError(
-                    f"HMAC signature verification failed for token '{token.token_id}'. Possible forgery."
-                )
+        is_prod = os.environ.get("AGENTOS_MODE", "").lower() == "production"
+        hmac_key = os.environ.get("VULCAN_CAPABILITY_HMAC_KEY", "")
+
+        if is_prod:
+            if not hmac_key:
+                raise CapabilityTokenViolationError("VULCAN_CAPABILITY_HMAC_KEY is missing in production environment")
+            if not token.hmac_signature:
+                raise CapabilityTokenViolationError("HMAC signature missing in production")
+            if not token.verify_hmac(hmac_key):
+                raise CapabilityTokenViolationError(f"HMAC signature verification failed for token '{token.token_id}'")
+        else:
+            if token.hmac_signature:
+                if hmac_key and not token.verify_hmac(hmac_key):
+                    raise CapabilityTokenViolationError(
+                        f"HMAC signature verification failed for token '{token.token_id}'. Possible forgery."
+                    )
 
         # 7. Delegate to execution adapter
         if self._adapter:

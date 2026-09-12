@@ -57,6 +57,7 @@ def test_api_step_and_auto_run(client):
 
 
 def test_api_list_agents_and_evals(client):
+    client.headers.update({"Authorization": "Bearer vlc_test_admin"})
     res_agents = client.get("/api/v1/agentos/agents")
     assert res_agents.status_code == 200
     agents = res_agents.json()
@@ -65,7 +66,7 @@ def test_api_list_agents_and_evals(client):
     assert "supervisor" in agent_names
     assert "builder" in agent_names
     assert "critic" in agent_names
-
+    
     # Run eval tier 0
     eval_res = client.post("/api/v1/agentos/evals/run", json={"tier": 0})
     assert eval_res.status_code == 200

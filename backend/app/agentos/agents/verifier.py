@@ -52,6 +52,17 @@ class SimulationProbeRunner(IVerificationProbeRunner):
         )
 
 
+class ProductionProbeRunner(IVerificationProbeRunner):
+    """Production probe runner. Delegates to real observability probes."""
+    @property
+    def is_simulation(self) -> bool:
+        return False
+
+    def run_probe(self, probe_type: str, target: str, probe_config: Dict[str, Any]) -> VerificationProbe:
+        raise NotImplementedError("ProductionProbeRunner is not yet implemented for real infrastructure probes.")
+
+
+
 class VerifierAgent(BaseAgent):
     def __init__(self, version: str = "v1.0", probe_runner: Optional[IVerificationProbeRunner] = None):
         super().__init__(

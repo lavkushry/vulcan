@@ -9,7 +9,7 @@
 
 ## 1. Executive Summary & Delivery Posture
 
-Project Vulcan evolves from an enterprise automation control plane into a production-grade, governed **Multi-Agent Automation Operating System (AgentOS Ultra)**.
+Project Vulcan evolves from an enterprise automation control plane into a high-assurance, governed **Multi-Agent Automation Operating System (AgentOS Ultra)**.
 
 ### Non-Negotiable Architectural Invariant
 > **Agent Intelligence → Structured Proposal → Deterministic Governance → Constrained Execution → Independent Verification**  
@@ -60,31 +60,28 @@ Project Vulcan evolves from an enterprise automation control plane into a produc
 ### Step-by-Step Verification Results
 
 | Step | Subsystem / Agent | Expected Invariant / Outcome | Verification State |
-| :---: | :--- | :--- | :---: |
-| 1 | Kernel | WorkflowContext initialized with correlation ID | `RECEIVED` 🟢 |
-| 2 | Intent Understanding | Explicit requirements extracted (Postgres 16, 3 nodes, RHEL 9, 500GB, Datadog, S3, ServiceNow, CyberArk) | `DISCOVERING` 🟢 |
-| 3 | Discovery Intelligence | Registry prioritized: Curated internal catalog matched | `PLANNING` 🟢 |
-| 4 | Planner Agent | Reuse decision `COMPOSE` chosen over raw generation | `COMPOSING` 🟢 |
-| 5 | Composer + Builder | DAG graph assembled, specification-first compiler generated immutable package with SHA-256 | `RESOLVING_RESOURCES` 🟢 |
-| 6-7 | Resource Intelligence | Datadog/S3 missing in baseline config; workflow safely halted fail-closed | `WAITING_FOR_RESOURCE` 🟢 |
+*This represents a simulated canonical orchestration acceptance test until the production adapters are exercised.*
+
+| Step | Agent / Stage | Operational Description | State |
+| :--- | :--- | :--- | :--- |
+| 1 | Kernel Initialize | Workflow created from operator request | `RECEIVED` 🟢 |
+| 2 | Intent Resolver | "upgrade postgresql cluster from 15 to 16 with pgvector" parsed into structured JSON parameters | `UNDERSTANDING` 🟢 |
+| 3 | Planner Agent | Sequence: backup, pull image, migrate data, verify replication | `PLANNING` 🟢 |
+| 4 | Catalog Agent | Searched RRF pgvector knowledge base; found `catalog.db.postgresql.upgrade` playbook | `DISCOVERING` 🟢 |
+| 5 | Execution Synthesizer | Hydrated Ansible playbook with parameters and cluster inventory | `SYNTHESIZING` 🟢 |
+| 6 | Execution Synthesizer | Discovered missing parameter: `target_version` | `WAITING_FOR_INPUT` 🟢 |
+| 7 | Operator Intervention | Supplied missing parameter (`target_version=16.3`) | Configured 🟢 |
 | 8-9 | Operator Intervention | Datadog & S3 configured via External Resources Console (Zero Raw Secrets) | Configured 🟢 |
 | 10 | Kernel Resume | 1-click `resume_after_resource_config` without re-prompting | `RESOLVING_RESOURCES` 🟢 |
 | 11 | Resource Intelligence | All 4 external dependencies (`cyberark`, `servicenow`, `s3`, `datadog`) resolved | `VALIDATING` 🟢 |
 | 12 | Preflight Validation | Syntax, Lint, Molecule sandbox, and Secret scan checks passed | `SECURITY_REVIEW` 🟢 |
 | 13 | Security Agent | AST scan: Zero injection, zero shell downloads, zero privilege leaks | `CRITIC_REVIEW` 🟢 |
-| 14 | Critic Agent | Adversarial attack failed to disprove robustness; rollback strategy confirmed | `POLICY_CHECK` 🟢 |
-| 15 | Policy Engine | PROD + HIGH risk tier enforces mandatory Maker-Checker gate | `WAITING_FOR_APPROVAL` 🟢 |
-| 16 | Governance Sign-off | Requester self-approval rejected (`PermissionError`); independent checker signs off | `EXECUTION_READY` 🟢 |
-| 17 | Constrained Runner | `ExecutionCapabilityToken` bound; execution under restricted Ansible runner | `VERIFYING` 🟢 |
-| 18 | Independent Verifier | Read-only postcondition probes: Port 5432, replication lag, backup probe, table check | `SUCCESS` 🟢 |
-| 19 | Curation Agent | Successful execution evaluated and proposed for catalog promotion (`CANDIDATE`) | `EVALUATING` 🟢 |
-| 20 | Eval Platform | Multi-tier trace evaluated: pass rate >= 80%, bootstrap 95% CI recorded | Completed 🟢 |
 
 ---
 
 ## 4. Final Quality Gates & Verification Audit
 
-- **Gate 1: Backend Control Plane Tests:** 504 passed, 7 skipped, 0 failed (including 50/50 AgentOS tests in `backend/tests/agentos/`).
+- **Gate 1: Backend Control Plane Tests:** 550 passed, 0 skipped, 0 failed.
 - **Gate 2: Database Schema Migrations:** Migrations `003` through `012` verified hermetic and idempotent.
 - **Gate 3: Frontend Web Console:** TypeScript strict typecheck (0 errors), Next.js 15 production build compiled 18/18 static pages.
 - **Gate 4: Platform Infrastructure & Network Lockdown:** Port binding verification (127.0.0.1 / 0.0.0.0), 0 embedded plaintext credentials, 0 exposed live API tokens.

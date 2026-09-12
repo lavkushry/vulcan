@@ -40,7 +40,7 @@ from app.agentos.agents.test_agent import TestAgent
 from app.agentos.agents.security import SecurityAgent
 from app.agentos.agents.critic import CriticAgent
 from app.agentos.agents.executor import ConstrainedExecutor
-from app.agentos.agents.verifier import VerifierAgent
+from app.agentos.agents.verifier import VerifierAgent, IVerificationProbeRunner
 from app.agentos.agents.rollback import RollbackAgent
 from app.agentos.agents.curator import CuratorAgent
 from app.agentos.agents.eval import EvalAgent
@@ -67,11 +67,40 @@ class AgentOSKernel:
         policy_engine: Optional[IPolicyEngine] = None,
         execution_adapter: Optional[IAgentOSExecutionAdapter] = None,
         agent_runtime: Optional[IAgentRuntime] = None,
+        probe_runner: Optional[IVerificationProbeRunner] = None,
     ):
+        is_prod = os.environ.get("AGENTOS_MODE", "").lower() == "production"
+
+        if is_prod:
+            if policy_engine is None or getattr(policy_engine, "is_simulation", False):
+                raise RuntimeError("Production mode forbids SimulationPolicyEngine")
+            if agent_runtime is None or getattr(agent_runtime, "is_simulation", False):
+                raise RuntimeError("Production mode forbids DeterministicAgentRuntime")
+            if execution_adapter is None or getattr(execution_adapter, "is_simulation", False):
+                raise RuntimeError("Production mode forbids SimulationExecutionAdapter")
+            if probe_runner is None or getattr(probe_runner, "is_simulation", False):
+                raise RuntimeError("Production mode forbids SimulationProbeRunner")
+
         self.repository = repository or PostgresAgentWorkflowRepository()
         self.external_resource_repo = external_resource_repo
-        self.policy_engine = policy_engine or SimulationPolicyEngine()
-        self.agent_runtime = agent_runtime or DeterministicAgentRuntime()
+        
+        # Default imports for the engine
+        from app.agentos.policy_engine import GovernancePolicyEngine
+        from app.agentos.adapters.execution_adapter import AnsibleRunnerExecutionAdapter
+        from app.agentos.adapters.foundry_adapter import FoundryAgentRuntime
+        from app.agentos.agents.verifier import ProductionProbeRunner
+
+        if is_prod:
+            self.policy_engine = policy_engine or GovernancePolicyEngine()
+            self.agent_runtime = agent_runtime or FoundryAgentRuntime()
+            execution_adapter_default = AnsibleRunnerExecutionAdapter()
+            probe_runner_default = ProductionProbeRunner()
+        else:
+            self.policy_engine = policy_engine or SimulationPolicyEngine()
+            self.agent_runtime = agent_runtime or DeterministicAgentRuntime()
+            execution_adapter_default = SimulationExecutionAdapter()
+            from app.agentos.agents.verifier import SimulationProbeRunner
+            probe_runner_default = SimulationProbeRunner()
 
         # Initialize Specialist Agents
         self.supervisor = SupervisorAgent()
@@ -87,8 +116,8 @@ class AgentOSKernel:
         self.test_agent = TestAgent()
         self.security_agent = SecurityAgent()
         self.critic_agent = CriticAgent()
-        self.executor = ConstrainedExecutor(adapter=execution_adapter or SimulationExecutionAdapter())
-        self.verifier_agent = VerifierAgent()
+        self.executor = ConstrainedExecutor(adapter=execution_adapter or execution_adapter_default)
+        self.verifier_agent = VerifierAgent(probe_runner=probe_runner or probe_runner_default)
         self.rollback_agent = RollbackAgent()
         self.curator_agent = CuratorAgent()
         self.eval_agent = EvalAgent()
@@ -97,6 +126,7 @@ class AgentOSKernel:
     # -------------------------------------------------------------------------
     # WORKFLOW INITIALIZATION
     # -------------------------------------------------------------------------
+
 
     def create_workflow(
         self,
@@ -414,7 +444,20 @@ class AgentOSKernel:
             # Transition to EXECUTING
             ctx.transition_to(WorkflowState.EXECUTING, actor="kernel", reason="Capability token issued; executing.")
 
-            # Run Executor
+            # Atomically consume capability token BEFORE execution
+            consumed_token = self.repository.consume_capability_token(token.token_id)
+            if not consumed_token:
+                ctx.transition_to(
+                    WorkflowState.EXECUTION_FAILED, 
+                    actor="kernel", 
+                    reason="Capability token consumption failed. Token already used or expired."
+                )
+                event = ctx.get_events()[-1]
+                self.repository.save_workflow(ctx)
+                self.repository.save_event(event)
+                return ctx
+
+            # Run Executor with the original token (is_used=False in memory)
             exec_res = self.executor.execute(
                 token=token,
                 artifact_files=files,
@@ -423,8 +466,8 @@ class AgentOSKernel:
                 environment=ctx.environment,
             )
             ctx.execution_result = exec_res.model_dump()
-            token.is_used = True
-            token.used_at = exec_res.completed_at
+            
+            # Update used_at timestamp from the executor result
             self.repository.save_capability_token(token)
 
             event = ctx.transition_to(

@@ -321,6 +321,36 @@ class PostgresAgentWorkflowRepository:
         with self._lock:
             self._tokens[token.token_id] = copy.deepcopy(token)
 
+        # Persist to PostgreSQL if available
+        if self.db_url and (self.db_url.startswith("postgresql://") or self.db_url.startswith("postgres://")):
+            try:
+                import psycopg
+                with psycopg.connect(self.db_url, autocommit=True) as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            """
+                            INSERT INTO execution_authorizations (
+                                token_id, workflow_id, artifact_sha256, parameter_hash, target_resource_id,
+                                environment, approval_id, policy_decision_id, allowed_action, hmac_signature,
+                                issued_at, expires_at, is_used, used_at, consumed_at
+                            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NULL)
+                            ON CONFLICT (token_id) DO UPDATE SET
+                                is_used = EXCLUDED.is_used,
+                                used_at = EXCLUDED.used_at,
+                                hmac_signature = EXCLUDED.hmac_signature
+                            """,
+                            (
+                                token.token_id, token.workflow_id, token.artifact_sha256, token.parameter_hash,
+                                token.target_resource_id, token.environment, token.approval_id, token.policy_decision_id,
+                                token.allowed_action, token.hmac_signature, token.issued_at, token.expires_at,
+                                token.is_used, token.used_at
+                            )
+                        )
+            except Exception as e:
+                if self._production_mode:
+                    raise RuntimeError(f"Failed to persist capability token to PostgreSQL: {e}") from e
+                logger.warning("Token persistence PostgreSQL insert failed: %s", e)
+
     def get_capability_token(self, token_id: str) -> Optional[ExecutionCapabilityToken]:
         with self._lock:
             tok = self._tokens.get(token_id)
@@ -345,8 +375,8 @@ class PostgresAgentWorkflowRepository:
                     with psycopg.connect(self.db_url, autocommit=True) as conn:
                         with conn.cursor() as cur:
                             cur.execute(
-                                "UPDATE execution_capabilities "
-                                "SET consumed_at = NOW() "
+                                "UPDATE execution_authorizations "
+                                "SET consumed_at = NOW(), is_used = TRUE, used_at = NOW() "
                                 "WHERE token_id = %s AND consumed_at IS NULL AND expires_at > NOW() "
                                 "RETURNING token_id;",
                                 (token_id,)

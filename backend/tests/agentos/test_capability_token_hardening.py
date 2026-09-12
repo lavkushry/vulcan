@@ -128,3 +128,56 @@ def test_valid_token_with_all_checks_succeeds(base_token):
     res = executor.execute(token, files, target_resource_id="db-01.internal", parameters=params)
     assert res.exit_code == 0
     assert token.is_used is True
+
+
+POSTGRES_URL = (
+    os.getenv("POSTGRES_URL")
+    or os.getenv("DATABASE_URL")
+    or f"postgresql://{os.getenv('POSTGRES_USER', 'vulcan_admin')}@{os.getenv('POSTGRES_HOST', 'localhost')}:5432/{os.getenv('POSTGRES_DB', 'vulcan_control_plane')}"
+)
+
+def _is_postgres_available() -> bool:
+    try:
+        import psycopg
+        with psycopg.connect(POSTGRES_URL, connect_timeout=1) as conn:
+            return True
+    except Exception:
+        return False
+
+@pytest.mark.skipif(not _is_postgres_available(), reason="PostgreSQL not available on current host")
+def test_postgresql_atomic_consumption(base_token):
+    from app.agentos.repository import AgentRepository
+    import psycopg
+    
+    token, _, _, _ = base_token
+    repo = AgentRepository(db_url=POSTGRES_URL, production_mode=True)
+    
+    # Save the token
+    repo.save_capability_token(token)
+    
+    # Verify consumed_at is NULL
+    with psycopg.connect(POSTGRES_URL, autocommit=True) as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT consumed_at, is_used FROM execution_authorizations WHERE token_id = %s", (token.token_id,))
+            row = cur.fetchone()
+            assert row is not None
+            assert row[0] is None
+            assert row[1] is False
+            
+    # Consume atomically
+    consumed_token = repo.consume_capability_token(token.token_id)
+    assert consumed_token is not None
+    assert consumed_token.is_used is True
+    
+    # Verify consumed_at is now set
+    with psycopg.connect(POSTGRES_URL, autocommit=True) as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT consumed_at, is_used FROM execution_authorizations WHERE token_id = %s", (token.token_id,))
+            row = cur.fetchone()
+            assert row is not None
+            assert row[0] is not None
+            assert row[1] is True
+
+    # Try to consume again - should fail (concurrency safety)
+    second_consume = repo.consume_capability_token(token.token_id)
+    assert second_consume is None

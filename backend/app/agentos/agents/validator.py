@@ -13,6 +13,7 @@ Enforces: No stage may report PASS if skipped; strict PASS, FAIL, SKIPPED, NOT_A
 """
 from __future__ import annotations
 
+import os
 import re
 from typing import List, Type
 from app.agentos.agents.base import BaseAgent
@@ -177,7 +178,21 @@ class ValidatorAgent(BaseAgent):
         )
 
         non_skipped = [c for c in checks if c.status != ValidationCheckStatus.SKIPPED]
-        all_passed = bool(non_skipped) and all(c.status == ValidationCheckStatus.PASS for c in non_skipped)
+        
+        is_env_prod = ctx.environment.upper() == "PROD"
+        is_mode_prod = os.environ.get("AGENTOS_MODE", "").lower() == "production"
+        if is_env_prod and is_mode_prod:
+            mandatory_checks = {"ansible_lint", "idempotency_verification", "molecule_sandbox_test"}
+            for c in checks:
+                if c.check_name in mandatory_checks and c.status == ValidationCheckStatus.SKIPPED:
+                    c.status = ValidationCheckStatus.FAIL
+                    c.details = f"{c.details} [FATAL in PROD: Mandatory check cannot be SKIPPED]"
+            
+            failed = any(c.status == ValidationCheckStatus.FAIL for c in checks)
+            all_passed = not failed and len(checks) > 0
+        else:
+            all_passed = bool(non_skipped) and all(c.status == ValidationCheckStatus.PASS for c in non_skipped)
+
         next_state = WorkflowState.SECURITY_REVIEW.value if all_passed else WorkflowState.VALIDATION_FAILED.value
 
         return ValidatorOutput(
@@ -186,9 +201,9 @@ class ValidatorAgent(BaseAgent):
             checks=checks,
             syntax_valid=syntax_ok,
             lint_passed=False,  # No real linter was run
-            idempotency_verified=False,  # SKIPPED, not verified
-            sandbox_passed=False,  # SKIPPED, not tested
+            idempotency_verified=False,  # SKIPPED or FAIL
+            sandbox_passed=False,  # SKIPPED or FAIL
             proposed_next_state=next_state,
             confidence=1.0 if all_passed else 0.20,
-            rationale="All 5 preflight checks passed." if all_passed else "Preflight validation failed; workflow halted.",
+            rationale="All required preflight checks passed." if all_passed else "Preflight validation failed; workflow halted.",
         )
