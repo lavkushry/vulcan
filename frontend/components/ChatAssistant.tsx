@@ -31,8 +31,11 @@ import {
   Trash2,
   History,
   MessageSquare,
-  RefreshCw
+  RefreshCw,
+  ThumbsUp,
+  ThumbsDown
 } from 'lucide-react';
+
 import { TokenomicsHUD } from './TokenomicsHUD';
 import { DisambiguationBentoCard, DisambiguationCandidate } from './DisambiguationBentoCard';
 import { getApiBaseUrl } from '@/lib/env';
@@ -75,7 +78,9 @@ interface Message {
     deltaSim: number;
     candidates: DisambiguationCandidate[];
   };
+  userPrompt?: string;
 }
+
 
 const QUICK_PROMPTS = [
   { label: "Renew SSL cert on F5", text: "Renew SSL cert on f5-edge-01.internal for 90 days", icon: Network },
@@ -130,6 +135,70 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
     provenanceConflict?: boolean;
   }>>({});
 
+  // CHAT-26: Human Feedback Reinforcement Loop (RLHF)
+  const [catalogItems, setCatalogItems] = useState<Array<{ identifier: string; name: string }>>([]);
+  const [feedbackStates, setFeedbackStates] = useState<Record<string, {
+    rating?: 'thumbs_up' | 'thumbs_down' | 'rejected' | 'corrected';
+    correction?: string;
+    comment?: string;
+    showPopover?: boolean;
+    isSubmitting?: boolean;
+    submitted?: boolean;
+  }>>({});
+
+  useEffect(() => {
+    fetch(`${getApiBaseUrl()}/api/v1/catalog`)
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) {
+          setCatalogItems(data.map((i: any) => ({ identifier: i.identifier, name: i.name })));
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleFeedback = async (
+    msgId: string,
+    prompt: string,
+    rating: 'thumbs_up' | 'thumbs_down' | 'rejected' | 'corrected',
+    resolvedId?: string,
+    correctionId?: string,
+    comment?: string
+  ) => {
+    setFeedbackStates(prev => ({
+      ...prev,
+      [msgId]: { ...prev[msgId], isSubmitting: true }
+    }));
+    try {
+      await api.submitChatFeedback({
+        session_id: activeSessionId,
+        prompt: prompt || 'Operator intent prompt',
+        rating,
+        resolved_identifier: resolvedId,
+        correction_identifier: correctionId,
+        comment: comment
+      });
+      setFeedbackStates(prev => ({
+        ...prev,
+        [msgId]: {
+          rating,
+          correction: correctionId,
+          comment,
+          showPopover: false,
+          isSubmitting: false,
+          submitted: true
+        }
+      }));
+    } catch (e) {
+      console.error("Failed to submit feedback:", e);
+      setFeedbackStates(prev => ({
+        ...prev,
+        [msgId]: { ...prev[msgId], isSubmitting: false }
+      }));
+    }
+  };
+
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
@@ -172,6 +241,7 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
 
       const reconstructed: Message[] = [];
       const newCardForms: Record<string, any> = {};
+      let lastUserPrompt = '';
 
       for (const turn of detail.turns) {
         const timeStr = turn.created_at
@@ -179,12 +249,14 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
           : 'Just now';
 
         if (turn.role === 'user') {
+          lastUserPrompt = turn.content;
           reconstructed.push({
             id: turn.turn_id,
             sender: 'user',
             timestamp: timeStr,
             text: turn.content
           });
+
         } else if (turn.role === 'assistant') {
           const ci = turn.metadata?.catalog_item;
           let cardData: any = undefined;
@@ -246,9 +318,11 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
                 `Status: ${turn.intent_state || 'PROCESSED'}`,
                 `Two-Tier Redis/PostgreSQL Session Persisted (CHAT-03)`
               ]
-            }
+            },
+            userPrompt: lastUserPrompt
           });
         }
+
       }
 
       if (seq !== sessionReqSeqRef.current) return;
@@ -431,7 +505,8 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
                 `Ambivalence Gate: Delta-Score < 0.05 triggered fail-closed halt`,
                 `Zero-Guess Invariant: Awaiting operator manual disambiguation`
               ]
-            }
+            },
+            userPrompt: text
           }
         ]);
         refreshSessions();
@@ -456,7 +531,8 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
                 `Refusal Gate: Match score below calibrated floor (fail-closed)`,
                 `Safety Invariant: Execution rejected with non-zero refusal telemetry`
               ]
-            }
+            },
+            userPrompt: text
           }
         ]);
         refreshSessions();
@@ -517,9 +593,11 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
               `Two-Tier Session Persisted to Redis & PostgreSQL (CHAT-03)`
             ]
           },
-          cardData: cardData
+          cardData: cardData,
+          userPrompt: text
         }
       ]);
+
 
       refreshSessions();
     } catch (err: any) {
@@ -1220,8 +1298,167 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
                     )}
                   </div>
                 )}
+
+                {/* CHAT-26: Human Feedback Reinforcement Loop (RLHF) */}
+                {msg.id !== 'welcome-msg' && (msg.cardData || msg.isRefusal || msg.disambiguation) && (
+                  <div className="rounded-xl border border-glass-border/40 bg-glass-surface/40 p-3 backdrop-blur-md space-y-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-mono">
+                      <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
+                        <span>Was this intent resolution accurate?</span>
+                        <span className="text-[10px] text-cyan-400 font-bold">(CHAT-26 · RLHF)</span>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {feedbackStates[msg.id]?.submitted ? (
+                          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold animate-fade-in-up">
+                            <Check className="w-3 h-3 text-emerald-400" />
+                            <span>RLHF Dataset Updated</span>
+                            {feedbackStates[msg.id]?.rating === 'thumbs_up' && <span className="text-emerald-400 font-bold">(👍 Accurate)</span>}
+                            {feedbackStates[msg.id]?.rating === 'thumbs_down' && <span className="text-rose-400 font-bold">(👎 Misclassified)</span>}
+                            {feedbackStates[msg.id]?.rating === 'corrected' && (
+                              <span className="text-amber-400 font-bold">
+                                (✓ Corrected to {feedbackStates[msg.id]?.correction})
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              aria-label="Thumbs up intent match"
+                              disabled={feedbackStates[msg.id]?.isSubmitting}
+                              onClick={() => handleFeedback(
+                                msg.id,
+                                msg.userPrompt || msg.text || 'Operator request',
+                                'thumbs_up',
+                                msg.cardData?.identifier
+                              )}
+                              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-900/80 hover:bg-emerald-950/60 text-slate-300 hover:text-emerald-400 border border-glass-border hover:border-emerald-500/40 text-[11px] font-mono transition-all duration-200 ${
+                                feedbackStates[msg.id]?.rating === 'thumbs_up' ? 'border-emerald-500 text-emerald-400 bg-emerald-950/40' : ''
+                              }`}
+                            >
+                              <ThumbsUp className="w-3 h-3 text-emerald-400" />
+                              <span>Accurate</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              aria-label="Thumbs down intent match"
+                              disabled={feedbackStates[msg.id]?.isSubmitting}
+                              onClick={() => {
+                                setFeedbackStates(prev => ({
+                                  ...prev,
+                                  [msg.id]: {
+                                    ...prev[msg.id],
+                                    showPopover: !prev[msg.id]?.showPopover,
+                                    rating: 'thumbs_down'
+                                  }
+                                }));
+                              }}
+                              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-900/80 hover:bg-rose-950/60 text-slate-300 hover:text-rose-400 border border-glass-border hover:border-rose-500/40 text-[11px] font-mono transition-all duration-200 ${
+                                feedbackStates[msg.id]?.showPopover || feedbackStates[msg.id]?.rating === 'thumbs_down' ? 'border-rose-500 text-rose-400 bg-rose-950/40' : ''
+                              }`}
+                            >
+                              <ThumbsDown className="w-3 h-3 text-rose-400" />
+                              <span>Incorrect / Refusal</span>
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Inline Correction Popover (CHAT-26) */}
+                    {feedbackStates[msg.id]?.showPopover && !feedbackStates[msg.id]?.submitted && (
+                      <div className="pt-2 border-t border-glass-border/40 space-y-2 text-xs font-mono animate-fade-in-up">
+                        <div className="flex items-center justify-between text-slate-200 text-[11px]">
+                          <span className="font-bold text-rose-300 flex items-center gap-1.5">
+                            <Sliders className="w-3.5 h-3.5 text-rose-400" />
+                            Operator Correction &amp; RLHF Ground Truth
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setFeedbackStates(prev => ({ ...prev, [msg.id]: { ...prev[msg.id], showPopover: false } }))}
+                            className="text-slate-500 hover:text-white text-xs px-1"
+                          >
+                            ✕
+                          </button>
+                        </div>
+
+                        <div>
+                          <label className="text-[10px] text-slate-400 block mb-1">
+                            What playbook should have been executed? (Optional)
+                          </label>
+                          <select
+                            value={feedbackStates[msg.id]?.correction || ''}
+                            onChange={(e) => setFeedbackStates(prev => ({
+                              ...prev,
+                              [msg.id]: { ...prev[msg.id], correction: e.target.value }
+                            }))}
+                            className="w-full bg-slate-900/90 border border-glass-border text-slate-200 text-xs rounded-lg px-2.5 py-1.5 font-mono outline-none focus:border-cyan-400 transition-colors"
+                          >
+                            <option value="">-- None / General Intent Misclassification --</option>
+                            {catalogItems.map(item => (
+                              <option key={item.identifier} value={item.identifier}>
+                                {item.name} ({item.identifier})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="text-[10px] text-slate-400 block mb-1">
+                            Diagnostic Reason or Clarification:
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="e.g. Prompt intended pool drain before maintenance, not direct node restart"
+                            value={feedbackStates[msg.id]?.comment || ''}
+                            onChange={(e) => setFeedbackStates(prev => ({
+                              ...prev,
+                              [msg.id]: { ...prev[msg.id], comment: e.target.value }
+                            }))}
+                            className="w-full bg-slate-900/90 border border-glass-border text-slate-200 text-xs rounded-lg px-2.5 py-1.5 font-mono outline-none focus:border-cyan-400 placeholder:text-slate-600 transition-colors"
+                          />
+                        </div>
+
+                        <div className="flex items-center justify-end gap-2 pt-1">
+                          <button
+                            type="button"
+                            onClick={() => setFeedbackStates(prev => ({ ...prev, [msg.id]: { ...prev[msg.id], showPopover: false } }))}
+                            className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-mono transition-colors"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            disabled={feedbackStates[msg.id]?.isSubmitting}
+                            onClick={() => handleFeedback(
+                              msg.id,
+                              msg.userPrompt || msg.text || 'Operator request',
+                              feedbackStates[msg.id]?.correction ? 'corrected' : 'thumbs_down',
+                              msg.cardData?.identifier,
+                              feedbackStates[msg.id]?.correction,
+                              feedbackStates[msg.id]?.comment
+                            )}
+                            className="px-3.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold text-[11px] font-mono transition-colors flex items-center gap-1.5"
+                          >
+                            {feedbackStates[msg.id]?.isSubmitting ? (
+                              <>
+                                <Radio className="w-3 h-3 animate-spin" />
+                                <span>Recording...</span>
+                              </>
+                            ) : (
+                              <span>Submit RLHF Correction</span>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
+
           </div>
         ))}
 

@@ -110,7 +110,17 @@ export const api = {
     // Multi-Cluster Topology Radar (UI-25)
     getClusterTopology: () =>
       req<import("./types").ClusterTopology>("GET", "/api/v1/clusters"),
+    // Human Feedback Reinforcement Loop (CHAT-26)
+    submitChatFeedback: (feedback: import("./types").SubmitFeedbackRequest) =>
+      req<{ status: string; feedback_id: string; feedback: import("./types").ChatFeedbackRecord }>(
+        "POST",
+        "/api/v1/chat/feedback",
+        feedback
+      ),
+    getChatFeedbackStats: () =>
+      req<import("./types").ChatFeedbackStats>("GET", "/api/v1/chat/feedback/stats"),
   };
+
 
 // Enterprise Banking Personas & RBAC Mapping
 export const DEMO_USERS = [

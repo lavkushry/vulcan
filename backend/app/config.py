@@ -24,6 +24,8 @@ from app.use_cases.diagnose_failure import FailureDiagnosticEngine
 from app.use_cases.resolve_intent import IntentResolver
 from app.use_cases.runner import AnsibleJobRunner
 from app.adapters.redis_chat_repository import RedisChatSessionRepository
+from app.adapters.feedback_repository import PostgresFeedbackRepository
+
 
 logger = logging.getLogger("vulcan.config")
 
@@ -182,6 +184,10 @@ class AppContainer:
             db_url=self.database_url if self.persistence_backend == "postgres" else None,
             ttl_seconds=int(os.getenv("VULCAN_CHAT_SESSION_TTL", "7200"))
         )
+        self.feedback_repo = PostgresFeedbackRepository(
+            db_url=self.database_url if self.persistence_backend == "postgres" else None
+        )
+
 
         # 9. Decoupled Job Queue & Worker Fleet (BKND-18)
         from app.adapters.redis_queue_adapter import RedisJobQueue, InMemoryJobQueue

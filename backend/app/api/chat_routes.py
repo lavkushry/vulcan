@@ -11,11 +11,13 @@ from __future__ import annotations
 import time
 import uuid
 from typing import Any, Dict, List, Optional
+from datetime import datetime, timezone
 from pydantic import BaseModel, Field
 from fastapi import APIRouter, HTTPException, Query, Request, status
 
 from app.api.routes import container
-from app.domain.chat_entities import ChatSession, ChatTurn
+from app.domain.chat_entities import ChatFeedbackRecord, ChatSession, ChatTurn
+
 
 chat_router = APIRouter(prefix="/chat", tags=["Conversational Chat"])
 
@@ -248,4 +250,114 @@ def delete_session(session_id: str, request: Request):
         )
     deleted = repo.delete_session(session_id)
     return {"status": "SUCCESS", "session_id": session_id, "deleted": deleted}
+
+
+# -----------------------------------------------------------------------------
+# Operator RLHF Feedback Reinforcement Endpoints (CHAT-26)
+# -----------------------------------------------------------------------------
+
+VALID_FEEDBACK_RATINGS = {"thumbs_up", "thumbs_down", "rejected", "corrected"}
+
+
+class SubmitFeedbackRequest(BaseModel):
+    prompt: str = Field(..., description="Original operator natural language prompt or query")
+    rating: str = Field(..., description="Rating: 'thumbs_up', 'thumbs_down', 'rejected', or 'corrected'")
+    session_id: Optional[str] = Field(default=None, description="Associated chat session ID")
+    turn_index: Optional[int] = Field(default=None, description="Turn index in session")
+    resolved_identifier: Optional[str] = Field(default=None, description="Catalog playbook identifier proposed by AI")
+    correction_identifier: Optional[str] = Field(default=None, description="Catalog playbook the operator actually intended")
+    comment: Optional[str] = Field(default=None, description="Optional qualitative operator feedback note")
+    metadata: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Additional context or parameter telemetry")
+
+
+@chat_router.post("/feedback", status_code=status.HTTP_201_CREATED)
+def submit_feedback(req: SubmitFeedbackRequest, request: Request):
+    """
+    Submits human operator reinforcement feedback on an intent resolution (CHAT-26).
+    Enables positive/negative ratings, corrections, and RLHF/DPO dataset curation.
+    """
+    current_user = _get_current_user(request)
+
+    if req.rating not in VALID_FEEDBACK_RATINGS:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid feedback rating '{req.rating}'. Must be one of: {sorted(list(VALID_FEEDBACK_RATINGS))}"
+        )
+
+    if req.session_id:
+        session = container.chat_session_repo.get_session(req.session_id)
+        if session and session.user_id != current_user and not _is_admin(current_user):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Forbidden: Cannot submit feedback on a chat session belonging to another user."
+            )
+
+    feedback_id = f"fdbk-{uuid.uuid4().hex[:12]}"
+    record = ChatFeedbackRecord(
+        feedback_id=feedback_id,
+        user_id=current_user,
+        prompt=req.prompt,
+        rating=req.rating,
+        session_id=req.session_id,
+        turn_index=req.turn_index,
+        resolved_identifier=req.resolved_identifier,
+        correction_identifier=req.correction_identifier,
+        comment=req.comment,
+        metadata=req.metadata or {},
+        created_at=datetime.now(timezone.utc)
+    )
+
+    saved = container.feedback_repo.save_feedback(record)
+    return {
+        "status": "SUCCESS",
+        "feedback_id": saved.feedback_id,
+        "feedback": saved.to_dict()
+    }
+
+
+@chat_router.get("/feedback")
+def list_feedback(
+    request: Request,
+    session_id: Optional[str] = Query(None, description="Filter by session ID"),
+    user_id: Optional[str] = Query(None, description="Filter by user ID"),
+    rating: Optional[str] = Query(None, description="Filter by rating ('thumbs_up', 'thumbs_down', 'rejected', 'corrected')"),
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0)
+):
+    """Lists operator feedback records for analysis and dataset curation."""
+    current_user = _get_current_user(request)
+    target_user = user_id
+    if not _is_admin(current_user):
+        target_user = current_user
+
+    records = container.feedback_repo.list_feedback(
+        session_id=session_id,
+        user_id=target_user,
+        rating=rating,
+        limit=limit,
+        offset=offset
+    )
+    return [r.to_dict() for r in records]
+
+
+@chat_router.get("/feedback/stats")
+def get_feedback_stats(request: Request):
+    """Returns aggregated feedback metrics (acceptance rate, volume, top corrections)."""
+    _get_current_user(request)
+    return container.feedback_repo.get_feedback_stats()
+
+
+@chat_router.get("/feedback/export-rlhf")
+def export_rlhf_dataset(request: Request):
+    """
+    Exports pairwise preference dataset for RLHF/DPO/KTO model fine-tuning.
+    Formats records into {prompt, chosen, rejected, type}.
+    """
+    _get_current_user(request)
+    dataset = container.feedback_repo.export_rlhf_dataset()
+    return {
+        "dataset_size": len(dataset),
+        "dataset": dataset
+    }
+
 

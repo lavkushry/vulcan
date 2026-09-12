@@ -7,7 +7,8 @@ import abc
 from typing import Any, Dict, List, Optional
 
 from app.domain.entities import AuditRecord, CatalogItem, ExecutionJob, JobStatus
-from app.domain.chat_entities import ChatSession, ChatTurn
+from app.domain.chat_entities import ChatFeedbackRecord, ChatSession, ChatTurn
+
 
 
 class IJobRepository(abc.ABC):
@@ -164,4 +165,40 @@ class IChatSessionRepository(abc.ABC):
     def delete_session(self, session_id: str) -> bool:
         """Deletes a chat session and its associated turns."""
         pass
+
+
+class IFeedbackRepository(abc.ABC):
+    """
+    Abstract persistence port for operator reinforcement feedback (CHAT-26).
+    Enables gathering human ratings and corrections on intent resolutions
+    for model evaluation, guardrail calibration, and RLHF/DPO dataset curation.
+    """
+
+    @abc.abstractmethod
+    def save_feedback(self, record: ChatFeedbackRecord) -> ChatFeedbackRecord:
+        """Persists an operator feedback record."""
+        pass
+
+    @abc.abstractmethod
+    def list_feedback(
+        self,
+        session_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+        rating: Optional[str] = None,
+        limit: int = 100,
+        offset: int = 0
+    ) -> List[ChatFeedbackRecord]:
+        """Lists feedback records with optional filtering and pagination."""
+        pass
+
+    @abc.abstractmethod
+    def get_feedback_stats(self) -> Dict[str, Any]:
+        """Aggregates feedback metrics (acceptance rate, volume, top corrections)."""
+        pass
+
+    @abc.abstractmethod
+    def export_rlhf_dataset(self) -> List[Dict[str, Any]]:
+        """Exports pairwise preference datasets (DPO / KTO / SFT) for training."""
+        pass
+
 

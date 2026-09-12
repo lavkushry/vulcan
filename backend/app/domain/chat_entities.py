@@ -133,3 +133,66 @@ class ChatSession:
             created_at=created_dt,
             updated_at=updated_dt
         )
+
+
+@dataclass(frozen=True)
+class ChatFeedbackRecord:
+    """
+    Operator feedback record for intent resolution reinforcement learning (CHAT-26).
+    Enables operators to rate intent resolutions, flag misclassifications,
+    provide ground-truth playbook corrections, and curate RLHF/DPO datasets.
+    """
+    feedback_id: str
+    user_id: str
+    prompt: str
+    rating: str  # "thumbs_up" | "thumbs_down" | "rejected" | "corrected"
+    session_id: Optional[str] = None
+    turn_index: Optional[int] = None
+    resolved_identifier: Optional[str] = None
+    correction_identifier: Optional[str] = None
+    comment: Optional[str] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "feedback_id": self.feedback_id,
+            "session_id": self.session_id,
+            "turn_index": self.turn_index,
+            "user_id": self.user_id,
+            "prompt": self.prompt,
+            "resolved_identifier": self.resolved_identifier,
+            "rating": self.rating,
+            "correction_identifier": self.correction_identifier,
+            "comment": self.comment,
+            "metadata": self.metadata,
+            "created_at": self.created_at.isoformat() if isinstance(self.created_at, datetime) else str(self.created_at)
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> ChatFeedbackRecord:
+        created = data.get("created_at")
+        if isinstance(created, str):
+            try:
+                created_dt = datetime.fromisoformat(created)
+            except Exception:
+                created_dt = datetime.now(timezone.utc)
+        elif isinstance(created, datetime):
+            created_dt = created
+        else:
+            created_dt = datetime.now(timezone.utc)
+
+        return cls(
+            feedback_id=data.get("feedback_id") or f"fdbk-{uuid.uuid4().hex[:12]}",
+            session_id=data.get("session_id"),
+            turn_index=data.get("turn_index"),
+            user_id=data.get("user_id", "anonymous"),
+            prompt=data.get("prompt", ""),
+            resolved_identifier=data.get("resolved_identifier"),
+            rating=data.get("rating", "thumbs_up"),
+            correction_identifier=data.get("correction_identifier"),
+            comment=data.get("comment"),
+            metadata=data.get("metadata") or {},
+            created_at=created_dt
+        )
+

@@ -339,3 +339,43 @@ export interface ClusterTopology {
   queried_at: string;
 }
 
+// Human Feedback Reinforcement Loop (CHAT-26)
+export interface ChatFeedbackRecord {
+  feedback_id: string;
+  session_id?: string | null;
+  turn_index?: number | null;
+  user_id: string;
+  prompt: string;
+  resolved_identifier?: string | null;
+  rating: 'thumbs_up' | 'thumbs_down' | 'rejected' | 'corrected';
+  correction_identifier?: string | null;
+  comment?: string | null;
+  metadata?: Record<string, any>;
+  created_at: string;
+}
+
+export interface SubmitFeedbackRequest {
+  prompt: string;
+  rating: 'thumbs_up' | 'thumbs_down' | 'rejected' | 'corrected';
+  session_id?: string | null;
+  turn_index?: number | null;
+  resolved_identifier?: string | null;
+  correction_identifier?: string | null;
+  comment?: string | null;
+  metadata?: Record<string, any>;
+}
+
+export interface ChatFeedbackStats {
+  total_feedback: number;
+  thumbs_up_count: number;
+  thumbs_down_count: number;
+  rejected_count: number;
+  corrected_count: number;
+  acceptance_rate_percent: number;
+  top_corrections: Array<{
+    transition: string;
+    count: number;
+  }>;
+}
+
+
