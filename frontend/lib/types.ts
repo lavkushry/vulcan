@@ -378,4 +378,99 @@ export interface ChatFeedbackStats {
   }>;
 }
 
+// Settings → External Resources (EXT-01 / EXT-02)
+export type ResourceCategory =
+  | 'AI & Models'
+  | 'ITSM & CMDB'
+  | 'Secrets & PAM'
+  | 'Source Control'
+  | 'Orchestration & Runners'
+  | 'Observability'
+  | 'Persistence'
+  | 'Cloud & Infrastructure'
+  | 'Other';
+
+export type ResourceEnvironment = 'PROD' | 'STAGE' | 'DEV';
+
+export type AuthMode =
+  | 'API_KEY'
+  | 'ENTRA_ID'
+  | 'ENTRA_SERVICE_PRINCIPAL'
+  | 'MANAGED_IDENTITY'
+  | 'BEARER_TOKEN'
+  | 'BASIC_AUTH'
+  | 'MUTUAL_TLS'
+  | 'NONE';
+
+export type HealthStatus = 'HEALTHY' | 'DEGRADED' | 'UNREACHABLE' | 'CONFIGURED' | 'UNKNOWN';
+
+export interface DiscoveredDeployment {
+  name: string;
+  model: string;
+  version?: string;
+  type?: 'chat' | 'embeddings' | 'reasoning' | 'completion' | string;
+  status?: string;
+  capacity?: number;
+  selected_for_chat?: boolean;
+  selected_for_embeddings?: boolean;
+}
+
+export interface ExternalResource {
+  resource_id: string;
+  provider: string;
+  category: ResourceCategory | string;
+  display_name: string;
+  environment: ResourceEnvironment | string;
+  endpoint: string;
+  auth_mode: AuthMode | string;
+  enabled: boolean;
+  health_status: HealthStatus | string;
+  latency_ms: number;
+  last_check_at?: string | null;
+  last_sync_at?: string | null;
+  config: Record<string, any>;
+  secret_refs: Record<string, string>;
+  version: string;
+  revision: number;
+  merkle_root?: string | null;
+  audit_count: number;
+  created_at: string;
+  created_by: string;
+  updated_at: string;
+  updated_by: string;
+}
+
+export interface ConnectionTestResult {
+  resource_id: string;
+  status: HealthStatus | string;
+  latency_ms: number;
+  http_status: number;
+  message: string;
+  connected: boolean;
+  diagnostics: Record<string, any>;
+  probed_at: string;
+}
+
+export interface DiscoveredCapabilities {
+  resource_id: string;
+  provider: string;
+  deployments: DiscoveredDeployment[] | string[];
+  models: string[];
+  tools: string[];
+  agents: string[];
+  discovered_at: string;
+}
+
+export interface ExternalResourceHealthRecord {
+  id?: number;
+  resource_id: string;
+  status: string;
+  latency_ms: number;
+  http_status: number;
+  message: string;
+  diagnostics: Record<string, any>;
+  recorded_at: string;
+}
+
+
 

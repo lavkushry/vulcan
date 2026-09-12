@@ -119,6 +119,32 @@ export const api = {
       ),
     getChatFeedbackStats: () =>
       req<import("./types").ChatFeedbackStats>("GET", "/api/v1/chat/feedback/stats"),
+    // Settings → External Resources (EXT-01 / EXT-02)
+    listExternalResources: (category?: string, environment?: string) => {
+      const params = new URLSearchParams();
+      if (category) params.append("category", category);
+      if (environment) params.append("environment", environment);
+      const qs = params.toString() ? `?${params.toString()}` : "";
+      return req<import("./types").ExternalResource[]>("GET", `/api/v1/external-resources${qs}`);
+    },
+    getExternalResource: (id: string) =>
+      req<import("./types").ExternalResource>("GET", `/api/v1/external-resources/${encodeURIComponent(id)}`),
+    createExternalResource: (payload: Partial<import("./types").ExternalResource>) =>
+      req<import("./types").ExternalResource>("POST", "/api/v1/external-resources", payload),
+    updateExternalResource: (id: string, payload: Partial<import("./types").ExternalResource>) =>
+      req<import("./types").ExternalResource>("PUT", `/api/v1/external-resources/${encodeURIComponent(id)}`, payload),
+    deleteExternalResource: (id: string) =>
+      req<{ ok: boolean; resource_id: string; message: string }>("DELETE", `/api/v1/external-resources/${encodeURIComponent(id)}`),
+    testExternalResource: (id: string) =>
+      req<import("./types").ConnectionTestResult>("POST", `/api/v1/external-resources/${encodeURIComponent(id)}/test`),
+    discoverDeployments: (id: string) =>
+      req<import("./types").DiscoveredCapabilities>("GET", `/api/v1/external-resources/${encodeURIComponent(id)}/deployments`),
+    getResourceCapabilities: (id: string) =>
+      req<any>("GET", `/api/v1/external-resources/${encodeURIComponent(id)}/capabilities`),
+    getResourceHealthHistory: (id: string, limit = 20) =>
+      req<import("./types").ExternalResourceHealthRecord[]>("GET", `/api/v1/external-resources/${encodeURIComponent(id)}/health?limit=${limit}`),
+    syncExternalResource: (id: string) =>
+      req<any>("POST", `/api/v1/external-resources/${encodeURIComponent(id)}/sync`),
   };
 
 

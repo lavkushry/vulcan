@@ -4,10 +4,18 @@ Author: Robert C. Martin ("Uncle Bob") & Alex Xu (Systems Lead)
 Clean Architecture: Domain repository interfaces isolating domain from database engines.
 """
 import abc
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from app.domain.entities import AuditRecord, CatalogItem, ExecutionJob, JobStatus
 from app.domain.chat_entities import ChatFeedbackRecord, ChatSession, ChatTurn
+from app.domain.external_resource_entities import (
+    ExternalResource,
+    ExternalResourceAuditRecord,
+    ExternalResourceHealth,
+    ExternalResourceVersion,
+    ResourceCategory,
+    ResourceEnvironment,
+)
 
 
 
@@ -200,5 +208,95 @@ class IFeedbackRepository(abc.ABC):
     def export_rlhf_dataset(self) -> List[Dict[str, Any]]:
         """Exports pairwise preference datasets (DPO / KTO / SFT) for training."""
         pass
+
+
+class IExternalResourceRepository(abc.ABC):
+    """
+    Abstract persistence port for External Resources (R1, R2).
+    Provides atomic persistence, immutable version history, time-series health telemetry,
+    and Merkle-chained audit logging for external system integrations.
+    """
+
+    @abc.abstractmethod
+    def save(self, resource: ExternalResource, actor: str, reason: str) -> ExternalResource:
+        """
+        Atomically persists or updates an external resource.
+        """
+        pass
+
+    @abc.abstractmethod
+    def get_by_id(self, resource_id: str) -> Optional[ExternalResource]:
+        """
+        Retrieves an external resource by its unique identifier.
+        """
+        pass
+
+    @abc.abstractmethod
+    def list_all(
+        self,
+        category: Optional[Union[ResourceCategory, str]] = None,
+        environment: Optional[Union[ResourceEnvironment, str]] = None,
+        enabled: Optional[bool] = None,
+        limit: int = 100,
+        offset: int = 0
+    ) -> List[ExternalResource]:
+        """
+        Lists external resources matching optional filter criteria with pagination.
+        """
+        pass
+
+    @abc.abstractmethod
+    def delete(self, resource_id: str, actor: str) -> bool:
+        """
+        Deletes an external resource by its identifier.
+        """
+        pass
+
+    @abc.abstractmethod
+    def get_versions(self, resource_id: str, limit: int = 50) -> List[ExternalResourceVersion]:
+        """
+        Retrieves immutable historical configuration revision snapshots for a resource.
+        """
+        pass
+
+    @abc.abstractmethod
+    def record_health(self, health: ExternalResourceHealth) -> None:
+        """
+        Records a health telemetry check and updates the resource's current operational state.
+        """
+        pass
+
+    @abc.abstractmethod
+    def get_latest_health(self, resource_id: str) -> Optional[ExternalResourceHealth]:
+        """
+        Retrieves the most recent health check record for a resource.
+        """
+        pass
+
+    @abc.abstractmethod
+    def get_health_history(self, resource_id: str, limit: int = 50) -> List[ExternalResourceHealth]:
+        """
+        Retrieves chronological health check history for a resource.
+        """
+        pass
+
+    @abc.abstractmethod
+    def get_audit_records(
+        self,
+        resource_id: Optional[str] = None,
+        limit: int = 50
+    ) -> List[ExternalResourceAuditRecord]:
+        """
+        Retrieves Merkle audit ledger records.
+        """
+        pass
+
+    @abc.abstractmethod
+    def verify_audit_integrity(self) -> bool:
+        """
+        Cryptographically validates the SHA-256 Merkle chain across all audit records.
+        """
+        pass
+
 
 

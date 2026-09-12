@@ -20,6 +20,7 @@ from app.api.auth import APIKeyMiddleware, load_token_map
 from app.api.routes import router, container
 from app.api.curation_routes import curation_router
 from app.api.chat_routes import chat_router
+from app.api.external_resources_routes import router as external_resources_router
 from app.api.websockets import ws_hub
 from app.adapters.structured_logger import setup_structured_logging
 
@@ -295,9 +296,11 @@ def create_app() -> FastAPI:
 
         return "\n".join(lines) + "\n"
 
+    app.state.container = container
     app.include_router(router)
     app.include_router(curation_router, prefix="/api/v1")
     app.include_router(chat_router, prefix="/api/v1")
+    app.include_router(external_resources_router, prefix="/api/v1")
     return app
 
 

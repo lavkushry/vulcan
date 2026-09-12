@@ -13,6 +13,13 @@ from app.domain.entities import (
     ExecutionJob,
     HealthCheckResult,
 )
+from app.domain.external_resource_entities import (
+    ConnectionTestResult,
+    HealthStatus,
+    ProviderCapabilities,
+    SyncResult,
+    ValidationResult,
+)
 
 
 class ILockManager(abc.ABC):
@@ -361,5 +368,76 @@ class IJobQueue(abc.ABC):
     def queue_depth(self) -> int:
         """Returns total count of pending and unacknowledged messages."""
         pass
+
+
+class IExternalResourceProvider(abc.ABC):
+    """
+    Abstract port for External Resource Providers (R1, R3, R4).
+    Standard lifecycle contracts for configuration validation, connection testing,
+    dynamic capability discovery, operational health, and catalog synchronization.
+    """
+
+    @abc.abstractmethod
+    def validate_config(
+        self,
+        config: Dict[str, Any],
+        secret_refs: Dict[str, str]
+    ) -> ValidationResult:
+        """
+        Validates non-secret configuration parameters and vault secret references offline.
+        Enforces schema completeness, type constraints, URL formats, and vault URI schemas.
+        Must execute with zero external network side-effects.
+        """
+        pass
+
+    @abc.abstractmethod
+    def test_connection(
+        self,
+        config: Dict[str, Any],
+        secret_refs: Dict[str, str],
+        endpoint: Optional[str] = None
+    ) -> ConnectionTestResult:
+        """
+        Executes a real network handshake to probe endpoint reachability, TLS negotiation,
+        and authentication validity against the remote service.
+        Measures exact round-trip latency in milliseconds.
+        Must never echo raw credentials or sensitive auth tokens in return payload.
+        """
+        pass
+
+    @abc.abstractmethod
+    def discover_capabilities(
+        self,
+        config: Dict[str, Any],
+        secret_refs: Dict[str, str],
+        endpoint: Optional[str] = None
+    ) -> ProviderCapabilities:
+        """
+        Queries the external resource to dynamically enumerate available features,
+        model deployments, capabilities, agent tools, or managed assets.
+        """
+        pass
+
+    @abc.abstractmethod
+    def get_health(self) -> HealthStatus:
+        """
+        Returns the current operational health status of the provider.
+        """
+        pass
+
+    @abc.abstractmethod
+    def sync(
+        self,
+        resource_id: str,
+        config: Optional[Dict[str, Any]] = None,
+        secret_refs: Optional[Dict[str, str]] = None
+    ) -> SyncResult:
+        """
+        Executes a live synchronization cycle for the specified resource.
+        Re-indexes remote catalogs, refreshes model deployment metadata,
+        or synchronizes configuration drift.
+        """
+        pass
+
 
 

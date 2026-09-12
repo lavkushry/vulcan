@@ -319,3 +319,39 @@ In accordance with banking governance rules, 10 registered items were subjected 
       6. *Test Matrix & Builds:* Verified with 7 dedicated unit and API integration tests in `backend/tests/test_chat_feedback.py`. Full backend test suite at **287 passed, 7 skipped, 0 failures** across 29 suites. 500-scenario golden evaluation benchmark passing 100% green. Frontend Next.js production build passing with 0 errors across 16 routes.
       7. *Canonical Architecture Milestone:* With `CHAT-26` implemented and operational, **Project Vulcan has achieved 127/127 (100.0%) canonical implementation across all architectural opportunity registers (`UI-01..28`, `CHAT-01..26`, `BKND-01..35`, `INFRA-01..30`, `REG-01..08`)**.
 
+---
+
+## 7. Post-Baseline Milestone Extension: External Resources Control Plane (`EXT-01` – `EXT-02`)
+
+Following the 127/127 frozen baseline achievement, Project Vulcan was extended with the enterprise **Settings → External Resources** control surface (`/settings/external-resources` with `/integrations` retained as an alias), elevating third-party connectors into a unified, governed control plane with Microsoft Foundry as a first-class AI model provider.
+
+### Post-Baseline Extension Register
+
+| ID | Initiative Name | Problem Killed | Persona | Prio | Phase | Status | Verification Artifact |
+| :--- | :--- | :--- | :--- | :---: | :---: | :---: | :--- |
+| **EXT-01** | External Resource Registry & PostgreSQL 16 Store | Ad-hoc connector configs in SQLite without schema validation or tamper audit | Uncle Bob & Alex Xu | P0 | Post-Baseline | 🟢 Implemented | `backend/migrations/011_external_resources.sql`, `backend/app/adapters/postgres_external_resource_repository.py`, `backend/app/domain/external_resource_entities.py`, `backend/app/api/external_resources_routes.py` |
+| **EXT-02** | Microsoft Foundry Provider & Dynamic Deployment Discovery | Static model configs requiring code changes when deployments scale in Azure | Karpathy & Jordan Walke | P0 | Post-Baseline | 🟢 Implemented | `backend/app/adapters/providers/microsoft_foundry_provider.py`, `frontend/components/ExternalResourcesConsole.tsx`, `frontend/app/settings/external-resources/page.tsx`, `frontend/tests/e2e/external_resources.spec.ts` |
+
+### Detailed Implementation & Verification Summary
+
+1. **`EXT-01` (External Resource Registry, PostgreSQL 16 Store & Zero-Raw-Secrets Invariant):**
+   - *Domain Entities & Invariants (`backend/app/domain/external_resource_entities.py`):* Defined 19-field `ExternalResource` dataclass with strictly typed `ResourceCategory` (7 core domains), `AuthMode` (7 strategies including Entra ID and Managed Identity), `HealthStatus`, and `ResourceEnvironment`. Enforced the Zero-Raw-Secrets Invariant at the entity layer: raw credentials raise validation errors; only URI pointer schemes (`vault://`, `cyberark://`, `env://`) are permitted.
+   - *PostgreSQL 16 Schema Migration 011 (`backend/migrations/011_external_resources.sql`):* DDL migration defining tables `external_resources`, `external_resource_versions` (immutable revision history), `external_resource_health` (chronological telemetry probes), and `external_resource_audit` (cryptographic Merkle chain ledger). Included seed data compliant with Zero-Raw-Secrets Invariant.
+   - *Two-Tier Repository (`backend/app/adapters/postgres_external_resource_repository.py`):* Thread-safe in-memory cache backing store when `db_url=None`, with automatic schema initialization and hydration from PostgreSQL 16. SHA-256 Merkle chain verification (`verify_audit_chain()`), automated version bump upon configuration mutation, and non-admin secret masking (`********`).
+   - *Universal Provider Framework (`backend/app/adapters/providers/`):* Abstract base class `BaseExternalResourceProvider` and `ProviderRegistry` with pluggable drivers for all 16 enterprise connectors (`microsoft_foundry`, `servicenow`, `cyberark`, `vault`, `github`, `bitbucket`, `aap`, `datadog`, `prometheus`, `postgres`, `redis`, `minio`, `openai`, `openrouter`, `gemini`, `huggingface`).
+   - *REST API & RBAC Controller (`backend/app/api/external_resources_routes.py`):* Mounted on `/api/v1/external-resources`, `/providers`, `/{id}/test`, `/{id}/deployments`, `/{id}/capabilities`, `/{id}/health`, `/{id}/sync`. Enforces RBAC (`PLATFORM_ADMIN` required for mutations and connection probes; `OPERATOR` and `AUDITOR` receive 403 Forbidden on mutations and masked secret references).
+   - *Test Matrix:* Verified with 67 domain unit tests (`test_external_resources_domain.py` and `test_external_resources_challenger_m1_2.py`) and 91 E2E tests across Tier 1, 2, 3, and 4 suites. Status: 🟢 Implemented.
+
+2. **`EXT-02` (Microsoft Foundry AI Provider & Dynamic Deployment Discovery Console):**
+   - *Microsoft Foundry Driver (`backend/app/adapters/providers/microsoft_foundry_provider.py`):* Enterprise integration with modern Azure AI Foundry project endpoints (`https://<resource>.services.ai.azure.com/api/projects/<project>`). Supports Entra ID Service Principal token acquisition, Azure Managed Identity IMDS endpoint, and API Key authentication. Dynamically discovers deployments via `GET {project_endpoint}/deployments?api-version=v1` and maps model capacities and routes.
+   - *Frontend Operator Console (`frontend/components/ExternalResourcesConsole.tsx` & `frontend/app/settings/external-resources/page.tsx`):*
+     - Bento Catalog Sidebar with 7 enterprise categories, environment pills (`[PROD]`, `[STAGE]`, `[DEV]`), real-time status badges, and latency indicators.
+     - 4-Tab Detail View: `Overview` (transport, security, Merkle receipt), `Configuration` (schema-driven forms with live Zero-Raw-Secrets client validation and non-admin masking `••••••••`), `Capabilities` (dynamic deployment discovery trigger and Vulcan routing defaults: `[x] Chat reasoning`, `[x] Intent embeddings`), and `Diagnostics` (chronological probe history and raw telemetry payload).
+     - `/integrations` backward-compatible alias route rendering the unified console without console errors.
+   - *Verification & CI Release Gates:*
+     - Full backend suite: **454 passed, 7 skipped, 0 failures** across 37 test suites.
+     - 500-scenario Golden Evaluation benchmark: **100% green pass** (82.00% Top-1, 97.33% Top-3, 100% Slot F1, 100% Injection Refusal).
+     - Clean checkout verification (`scripts/verify-clean-checkout.sh`): **All 5 release gates green** (PyTest, migrations 003..011, TypeScript 0 errors + 17/17 Next.js pages build, network lockdown & secret leak checks, and SBOM generation).
+     - Status: 🟢 Implemented.
+
+

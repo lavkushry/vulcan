@@ -57,11 +57,11 @@ deploy/
 
 | Variable | Default Value | Description |
 | :--- | :--- | :--- |
-| `DATABASE_URL` | *Required* | PostgreSQL 16 connection string (e.g. `postgresql://user:pass@postgres:5432/vulcan_control_plane`). |
+| `DATABASE_URL` | *Required* | PostgreSQL 16 connection string (e.g. `postgresql://user:***@postgres:5432/vulcan_control_plane`). |
 | `POSTGRES_DB` | `vulcan_control_plane` | Database name initialized inside PostgreSQL container. |
 | `POSTGRES_USER` | `vulcan_admin` | Database administrative username. |
 | `POSTGRES_PASSWORD` | *Required in Prod* | Database password. |
-| `REDIS_URL` | `redis://redis:6379/0` | Redis 7.2 connection URL. For password-protected instances: `redis://:pass@redis:6379/0`. |
+| `REDIS_URL` | `redis://redis:6379/0` | Redis 7.2 connection URL. For password-protected instances: `redis://:***@redis:6379/0`. |
 | `REDIS_PASSWORD` | `""` | Redis authentication password. |
 | `S3_ENDPOINT_URL` | `http://minio:9000` | Internal S3 endpoint reachable by the backend container. |
 | `S3_PUBLIC_ENDPOINT_URL` | `http://<HOST>:9000` | Publicly reachable S3 URL used when rewriting presigned upload/download URLs for browser clients. |

@@ -37,7 +37,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'history', label: 'Execution History', icon: <History size={20} />, href: '/history' },
   { id: 'rules', label: 'Automation Rules', icon: <GitBranch size={20} />, href: '/rules' },
   { id: 'packs', label: 'Content Packs', icon: <Package size={20} />, href: '/packs' },
-  { id: 'integrations', label: 'Connectors & Integrations', icon: <Plug size={20} />, href: '/integrations' },
+  { id: 'integrations', label: 'External Resources', icon: <Plug size={20} />, href: '/settings/external-resources' },
   { id: 'policies', label: 'Roles & Policies', icon: <KeyRound size={20} />, href: '/policies' },
   { id: 'audit', label: 'Audit & Compliance', icon: <ShieldCheck size={20} />, href: '/audit' },
   { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={20} />, href: '/dashboard' },
@@ -70,6 +70,9 @@ export function Sidebar() {
     (href: string) => {
       if (href === '/chat') {
         return pathname === '/' || pathname === '/chat' || pathname.startsWith('/chat/');
+      }
+      if (href === '/settings/external-resources') {
+        return pathname === '/settings/external-resources' || pathname.startsWith('/settings/external-resources') || pathname === '/integrations' || pathname.startsWith('/integrations');
       }
       return pathname === href || pathname.startsWith(href + '/');
     },

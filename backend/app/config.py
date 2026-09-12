@@ -25,6 +25,7 @@ from app.use_cases.secure_intent_resolver import SecureIntentResolver
 from app.use_cases.runner import AnsibleJobRunner
 from app.adapters.redis_chat_repository import RedisChatSessionRepository
 from app.adapters.feedback_repository import PostgresFeedbackRepository
+from app.adapters.postgres_external_resource_repository import PostgresExternalResourceRepository
 
 
 logger = logging.getLogger("vulcan.config")
@@ -186,6 +187,10 @@ class AppContainer:
         )
         self.feedback_repo = PostgresFeedbackRepository(
             db_url=self.database_url if self.persistence_backend == "postgres" else None
+        )
+        self.external_resource_repo = PostgresExternalResourceRepository(
+            db_url=self.database_url if self.persistence_backend == "postgres" else None,
+            seed_defaults=True
         )
 
 
