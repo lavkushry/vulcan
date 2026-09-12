@@ -191,3 +191,51 @@ export interface JobAuditVerification {
   tip_hash: string;
   records: MerkleAuditRecord[];
 }
+
+// Distributed Conversational Chat Subsystem (CHAT-03)
+export interface ChatTurnItem {
+  turn_id: string;
+  session_id: string;
+  turn_index: number;
+  role: "user" | "assistant" | "system";
+  content: string;
+  intent_state?: string | null;
+  catalog_identifier?: string | null;
+  parameters?: Record<string, any>;
+  token_usage?: number | null;
+  latency_ms?: number | null;
+  metadata?: Record<string, any>;
+  created_at: string;
+}
+
+export interface ChatSessionSummary {
+  session_id: string;
+  user_id: string;
+  title: string;
+  turn_count: number;
+  created_at: string;
+  updated_at: string;
+  metadata?: Record<string, any>;
+}
+
+export interface ChatSessionDetail extends ChatSessionSummary {
+  turns: ChatTurnItem[];
+}
+
+export interface AppendTurnResponse {
+  session_id: string;
+  user_turn: Record<string, any>;
+  assistant_turn: Record<string, any>;
+  intent_status: string;
+  catalog_identifier?: string | null;
+  catalog_item?: Record<string, any> | null;
+  parameters: Record<string, any>;
+  missing_fields: string[];
+  refusal_reason?: string | null;
+  tokens_used?: number | null;
+  latency_ms?: number | null;
+  disambiguation?: {
+    deltaSim: number;
+    candidates: any[];
+  } | null;
+}

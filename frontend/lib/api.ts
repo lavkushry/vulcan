@@ -86,6 +86,21 @@ export const api = {
       req<import("./types").JobAuditVerification>("GET", `/api/v1/jobs/${encodeURIComponent(correlationId)}/audit`),
     getWormReceiptUrl: (correlationId: string) =>
       `${getApiBaseUrl()}/api/v1/jobs/${encodeURIComponent(correlationId)}/audit/worm`,
+    // Distributed Conversational Chat Subsystem (CHAT-03)
+    listChatSessions: (userId?: string) =>
+      req<import("./types").ChatSessionSummary[]>("GET", `/api/v1/chat/sessions${userId ? `?user_id=${encodeURIComponent(userId)}` : ""}`),
+    createChatSession: (title?: string, metadata?: Record<string, any>) =>
+      req<{ status: string; session: import("./types").ChatSessionDetail }>("POST", "/api/v1/chat/sessions", { title, metadata }),
+    getChatSession: (sessionId: string) =>
+      req<import("./types").ChatSessionDetail>("GET", `/api/v1/chat/sessions/${encodeURIComponent(sessionId)}`),
+    appendChatTurn: (sessionId: string, content: string, ambient_params?: Record<string, any>, metadata?: Record<string, any>) =>
+      req<import("./types").AppendTurnResponse>("POST", `/api/v1/chat/sessions/${encodeURIComponent(sessionId)}/turns`, {
+        content,
+        ambient_params,
+        metadata,
+      }),
+    deleteChatSession: (sessionId: string) =>
+      req<{ status: string; session_id: string; deleted: boolean }>("DELETE", `/api/v1/chat/sessions/${encodeURIComponent(sessionId)}`),
   };
 
 // Enterprise Banking Personas & RBAC Mapping

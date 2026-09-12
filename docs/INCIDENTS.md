@@ -142,6 +142,7 @@
 * **Exposure Vector:** Direct `curl` command with `Authorization: Bearer vlc_...` emitted into command strings and session transcripts during CHAT-03 verification.
 * **Affected Secret(s):** Live production API token (`vlc_qf7...Lojw`)
 * **Rotation Status:** Revoked & Rotated (Zero-Exposure Stdin Protocol)
+  > *Note on Register Honesty:* Initial closure claim (commit `0352556`) stated rotation had occurred; empirical probe on 2026-09-12 returned HTTP 200, disproving the claim; rotation and empirical verification followed.
 * **Root Cause & Recurrence Pattern:**
   While executing live verification commands against the control plane, an operator ran `curl` commands directly embedding the live bearer token header rather than referencing an environment variable, configuration file, or out-of-band stdin injection script. This breached the Cardinal Governance Protocol.
 * **Impact & Exposure:**

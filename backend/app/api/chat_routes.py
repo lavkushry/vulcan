@@ -165,6 +165,36 @@ def append_turn(session_id: str, req: AppendTurnRequest, request: Request):
     else:
         asst_msg = intent_res.refusal_reason or "Request does not match any approved catalog playbooks."
 
+    cat_item_dict = None
+    if intent_res.catalog_item:
+        ci = intent_res.catalog_item
+        cat_item_dict = {
+            "identifier": ci.identifier,
+            "name": ci.name,
+            "engine": ci.engine,
+            "risk_tier": ci.risk_tier.value if hasattr(ci.risk_tier, "value") else str(ci.risk_tier),
+            "requires_maker_checker": ci.requires_maker_checker,
+            "requires_chg": ci.requires_chg,
+            "description": getattr(ci, "description", ""),
+            "params": [
+                {
+                    "name": p.name,
+                    "type": p.type,
+                    "required": p.required,
+                    "description": getattr(p, "description", ""),
+                    "choices": getattr(p, "choices", None)
+                }
+                for p in getattr(ci, "params", [])
+            ]
+        }
+
+    disambiguation_data = None
+    if intent_res.disambiguation_candidates:
+        disambiguation_data = {
+            "deltaSim": intent_res.delta_sim,
+            "candidates": intent_res.disambiguation_candidates
+        }
+
     # 3. Record assistant turn
     asst_turn = ChatTurn(
         turn_id=f"turn-ast-{uuid.uuid4().hex[:8]}",
@@ -180,7 +210,9 @@ def append_turn(session_id: str, req: AppendTurnRequest, request: Request):
         metadata={
             "missing_fields": intent_res.missing_fields,
             "refusal_reason": intent_res.refusal_reason,
-            "tokens_used": getattr(intent_res, "tokens_used", None)
+            "tokens_used": getattr(intent_res, "tokens_used", None),
+            "catalog_item": cat_item_dict,
+            "disambiguation": disambiguation_data
         }
     )
     repo.append_turn(session_id, asst_turn)
@@ -191,8 +223,13 @@ def append_turn(session_id: str, req: AppendTurnRequest, request: Request):
         "assistant_turn": asst_turn.to_dict(),
         "intent_status": intent_res.status,
         "catalog_identifier": cat_id,
+        "catalog_item": cat_item_dict,
         "parameters": params,
-        "missing_fields": intent_res.missing_fields
+        "missing_fields": intent_res.missing_fields,
+        "refusal_reason": intent_res.refusal_reason,
+        "tokens_used": getattr(intent_res, "tokens_used", None),
+        "latency_ms": latency_ms,
+        "disambiguation": disambiguation_data
     }
 
 

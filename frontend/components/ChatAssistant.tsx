@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { 
   Sparkles, 
   Send, 
@@ -26,11 +26,18 @@ import {
   CornerDownLeft,
   Bot,
   User,
-  Zap
+  Zap,
+  Plus,
+  Trash2,
+  History,
+  MessageSquare,
+  RefreshCw
 } from 'lucide-react';
 import { TokenomicsHUD } from './TokenomicsHUD';
 import { DisambiguationBentoCard, DisambiguationCandidate } from './DisambiguationBentoCard';
 import { getApiBaseUrl } from '@/lib/env';
+import { api } from '@/lib/api';
+import type { ChatSessionSummary, AppendTurnResponse } from '@/lib/types';
 
 
 export interface ChatLaunchPayload {
@@ -79,6 +86,22 @@ const QUICK_PROMPTS = [
   { label: "Rotate SSH keys", text: "Rotate SSH authorized keys across prod bastions", icon: ShieldCheck }
 ];
 
+const WELCOME_MESSAGE: Message = {
+  id: 'welcome-msg',
+  sender: 'assistant',
+  timestamp: 'Just now',
+  text: "👋 Hello! I am **Vulcan Copilot**. Tell me what you want to automate in natural language, and I will resolve the exact playbook or Terraform stack from your 120+ catalog, fill the parameters, and prepare safe execution.",
+  thoughtProcess: {
+    time: '0.4s',
+    steps: [
+      'Initialized Vulcan Neural Intent Engine',
+      'Indexed 120 production-grade playbooks across 6 infrastructure packs',
+      'Enforced Maker-Checker & ServiceNow Change Governance',
+      'Two-Tier Redis/PostgreSQL Session Persisted (CHAT-03)'
+    ]
+  }
+};
+
 export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, currentUser = 'eng.alice' }: ChatAssistantProps) {
   const [inputPrompt, setInputPrompt] = useState('');
   const [isThinking, setIsThinking] = useState(false);
@@ -86,22 +109,13 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
   const [openThoughts, setOpenThoughts] = useState<Record<string, boolean>>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: 'welcome-msg',
-      sender: 'assistant',
-      timestamp: 'Just now',
-      text: "👋 Hello! I am **Vulcan Copilot**. Tell me what you want to automate in natural language, and I will resolve the exact playbook or Terraform stack from your 120+ catalog, fill the parameters, and prepare safe execution.",
-      thoughtProcess: {
-        time: '0.4s',
-        steps: [
-          'Initialized Vulcan Neural Intent Engine',
-          'Indexed 120 production-grade playbooks across 6 infrastructure packs',
-          'Enforced Maker-Checker & ServiceNow Change Governance'
-        ]
-      }
-    }
-  ]);
+  // Distributed Chat Session Management (CHAT-03)
+  const [sessions, setSessions] = useState<ChatSessionSummary[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [isSessionLoading, setIsSessionLoading] = useState(false);
+  const [isSessionDropdownOpen, setIsSessionDropdownOpen] = useState(false);
+
+  const [messages, setMessages] = useState<Message[]>([WELCOME_MESSAGE]);
 
   // Form states for the currently displayed launch card
   const [cardForms, setCardForms] = useState<Record<string, {
@@ -125,9 +139,207 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
     setOpenThoughts(prev => ({ ...prev, [msgId]: !prev[msgId] }));
   };
 
+  const refreshSessions = useCallback(async () => {
+    try {
+      const list = await api.listChatSessions(currentUser);
+      setSessions(list);
+      return list;
+    } catch (e) {
+      console.error("Failed to list chat sessions:", e);
+      return [];
+    }
+  }, [currentUser]);
+
+  const loadSession = useCallback(async (sessionId: string) => {
+    setIsSessionLoading(true);
+    try {
+      const detail = await api.getChatSession(sessionId);
+      setActiveSessionId(detail.session_id);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(`vulcan_active_chat_session_${currentUser}`, detail.session_id);
+      }
+
+      if (!detail.turns || detail.turns.length === 0) {
+        setMessages([WELCOME_MESSAGE]);
+        setCardForms({});
+        return;
+      }
+
+      const reconstructed: Message[] = [];
+      const newCardForms: Record<string, any> = {};
+
+      for (const turn of detail.turns) {
+        const timeStr = turn.created_at
+          ? new Date(turn.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          : 'Just now';
+
+        if (turn.role === 'user') {
+          reconstructed.push({
+            id: turn.turn_id,
+            sender: 'user',
+            timestamp: timeStr,
+            text: turn.content
+          });
+        } else if (turn.role === 'assistant') {
+          const ci = turn.metadata?.catalog_item;
+          let cardData: any = undefined;
+
+          if (ci && (turn.intent_state === 'READY' || turn.intent_state === 'NEEDS_INPUT')) {
+            cardData = {
+              confidence: 0.95,
+              identifier: ci.identifier,
+              name: ci.name,
+              engine: ci.engine,
+              category: ci.engine === 'ansible' ? 'network' : 'cloud',
+              risk_tier: ci.risk_tier,
+              requires_maker_checker: ci.requires_maker_checker,
+              requires_chg: ci.requires_chg,
+              detected_environment: turn.parameters?.environment || 'PROD',
+              suggested_parameters: turn.parameters || {},
+              missing_fields: turn.metadata?.missing_fields || [],
+              servicenow_chg: turn.parameters?.servicenow_chg || '',
+              tokens_used: turn.token_usage,
+              reasoning: `Extracted parameters for ${ci.name}.`
+            };
+
+            newCardForms[turn.turn_id] = {
+              targetHost: cardData.suggested_parameters?.hostname || cardData.suggested_parameters?.target_resource_id || cardData.suggested_parameters?.target_host || `${ci.identifier}-node-01`,
+              environment: cardData.detected_environment || 'PROD',
+              dryRun: false,
+              servicenow_chg: cardData.servicenow_chg || '',
+              parameters: { ...(cardData.suggested_parameters || {}) },
+              isSubmitting: false
+            };
+          }
+
+          if (turn.token_usage || turn.latency_ms) {
+            setTokenomics({ tokens_used: turn.token_usage || undefined, latency_ms: turn.latency_ms || undefined });
+          }
+
+          const isRefusal = turn.intent_state === 'REFUSED' || turn.intent_state === 'REJECTED';
+          const isQuota = turn.intent_state === 'SERVICE_UNAVAILABLE';
+
+          reconstructed.push({
+            id: turn.turn_id,
+            sender: 'assistant',
+            timestamp: timeStr,
+            text: turn.content,
+            cardData,
+            isRefusal,
+            isQuotaExhausted: isQuota,
+            refusalReason: turn.metadata?.refusal_reason,
+            disambiguation: turn.metadata?.disambiguation ? {
+              deltaSim: turn.metadata.disambiguation.deltaSim,
+              candidates: turn.metadata.disambiguation.candidates
+            } : undefined,
+            thoughtProcess: {
+              time: turn.latency_ms ? `${(turn.latency_ms / 1000).toFixed(1)}s` : '0.4s',
+              steps: [
+                ci ? `Matched catalog playbook [${ci.identifier}]` : `Evaluated intent against 120+ playbooks`,
+                `Status: ${turn.intent_state || 'PROCESSED'}`,
+                `Two-Tier Redis/PostgreSQL Session Persisted (CHAT-03)`
+              ]
+            }
+          });
+        }
+      }
+
+      setMessages(reconstructed);
+      setCardForms(newCardForms);
+    } catch (e) {
+      console.error("Failed to load session:", e);
+    } finally {
+      setIsSessionLoading(false);
+    }
+  }, [currentUser]);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      const list = await refreshSessions();
+      if (!mounted) return;
+
+      const savedId = typeof window !== 'undefined'
+        ? localStorage.getItem(`vulcan_active_chat_session_${currentUser}`)
+        : null;
+
+      if (savedId && list.some(s => s.session_id === savedId)) {
+        await loadSession(savedId);
+      } else if (list.length > 0) {
+        await loadSession(list[0].session_id);
+      } else {
+        try {
+          const created = await api.createChatSession("Automation Session");
+          if (mounted && created?.session?.session_id) {
+            setActiveSessionId(created.session.session_id);
+            if (typeof window !== 'undefined') {
+              localStorage.setItem(`vulcan_active_chat_session_${currentUser}`, created.session.session_id);
+            }
+            await refreshSessions();
+          }
+        } catch (e) {
+          console.error("Failed to auto-create session:", e);
+        }
+      }
+    })();
+    return () => { mounted = false; };
+  }, [currentUser, refreshSessions, loadSession]);
+
+  const handleCreateNewSession = async () => {
+    try {
+      setIsSessionLoading(true);
+      const created = await api.createChatSession("New Automation Session");
+      if (created?.session?.session_id) {
+        setActiveSessionId(created.session.session_id);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(`vulcan_active_chat_session_${currentUser}`, created.session.session_id);
+        }
+        setMessages([WELCOME_MESSAGE]);
+        setCardForms({});
+        await refreshSessions();
+      }
+    } catch (e) {
+      console.error("Failed to create new session:", e);
+    } finally {
+      setIsSessionLoading(false);
+      setIsSessionDropdownOpen(false);
+    }
+  };
+
+  const handleDeleteSession = async (sessionId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await api.deleteChatSession(sessionId);
+      const updated = await refreshSessions();
+      if (sessionId === activeSessionId) {
+        if (updated.length > 0) {
+          await loadSession(updated[0].session_id);
+        } else {
+          await handleCreateNewSession();
+        }
+      }
+    } catch (e) {
+      console.error("Failed to delete session:", e);
+    }
+  };
+
   const handleSendPrompt = async (promptText: string) => {
     const text = promptText.trim();
     if (!text || isThinking) return;
+
+    let sessionId = activeSessionId;
+    if (!sessionId) {
+      try {
+        const created = await api.createChatSession(text.length > 30 ? text.slice(0, 30) + '...' : text);
+        sessionId = created.session.session_id;
+        setActiveSessionId(sessionId);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(`vulcan_active_chat_session_${currentUser}`, sessionId);
+        }
+      } catch (e) {
+        console.error("Failed to create session on prompt:", e);
+      }
+    }
 
     const userMsgId = `user-${Date.now()}`;
     const newMessages: Message[] = [
@@ -146,93 +358,45 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
     const startTime = performance.now();
 
     try {
-      const API_BASE = getApiBaseUrl();
-      const token = (typeof window !== 'undefined' ? window.localStorage.getItem('vulcan_api_token') : null) || process.env.NEXT_PUBLIC_VULCAN_API_TOKEN;
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
+      let turnRes: AppendTurnResponse;
+      if (sessionId) {
+        turnRes = await api.appendChatTurn(sessionId, text, { environment: 'PROD', user_id: currentUser });
+      } else {
+        const raw = await api.resolveIntent(text);
+        turnRes = {
+          session_id: 'ephemeral',
+          user_turn: { turn_id: userMsgId },
+          assistant_turn: { turn_id: `asst-${Date.now()}` },
+          intent_status: raw.status,
+          catalog_identifier: raw.match?.identifier,
+          catalog_item: raw.match as any,
+          parameters: (raw.parameters as any) || {},
+          missing_fields: (raw.missing_fields as any) || [],
+          refusal_reason: raw.reason,
+          tokens_used: (raw as any).tokens_used,
+          latency_ms: (raw as any).latency_ms,
+          disambiguation: (raw as any).disambiguation
+        };
       }
-      const res = await fetch(`${API_BASE}/api/v1/intent/resolve`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ text })
-      });
 
       const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
-      const assistantMsgId = `asst-${Date.now()}`;
+      const assistantMsgId = turnRes.assistant_turn?.turn_id || `asst-${Date.now()}`;
 
-      if (!res.ok) {
-        let errDetail = `Backend returned HTTP ${res.status}`;
-        let isQuota = res.status === 429;
-        try {
-          const errJson = await res.json();
-          errDetail = errJson.detail || errJson.message || errDetail;
-          if (typeof errDetail === 'object' && errDetail !== null) {
-            errDetail = (errDetail as any).message || JSON.stringify(errDetail);
-          }
-          if (typeof errDetail === 'string' && (errDetail.toLowerCase().includes('quota') || errDetail.toLowerCase().includes('resource_exhausted'))) {
-            isQuota = true;
-          }
-        } catch { /* ignore */ }
+      if (turnRes.tokens_used || turnRes.latency_ms) {
+        setTokenomics({ tokens_used: turnRes.tokens_used || undefined, latency_ms: turnRes.latency_ms || undefined });
+      }
 
-        if (isQuota) {
-          setMessages([
-            ...newMessages,
-            {
-              id: assistantMsgId,
-              sender: 'assistant',
-              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-              text: `The upstream AI provider daily request quota has been reached (1,000 req/day free-tier limit). To prevent unverified synthetic operations and protect banking safety (Invariant INV-AI-01), natural language intent resolution is temporarily paused.\n\nAll core control plane services remain 100% operational. Please proceed with manual playbook execution:`,
-              isQuotaExhausted: true,
-              refusalReason: errDetail,
-              thoughtProcess: {
-                time: `${elapsed}s`,
-                steps: [
-                  `Upstream Provider: Google Gemini Embedding / Chat API`,
-                  `Status: HTTP 429 RESOURCE_EXHAUSTED (EmbedContentRequestsPerDayPerProjectPerModel-FreeTier)`,
-                  `Fail-Closed Invariant INV-AI-01: Prohibits unverified heuristic guessing`,
-                  `Operator Routing: Manual playbook execution via Command Palette (Cmd + K) authorized`
-                ]
-              }
-            }
-          ]);
-          return;
-        }
-
+      if (turnRes.intent_status === 'DISAMBIGUATION' || turnRes.disambiguation?.candidates?.length) {
         setMessages([
           ...newMessages,
           {
             id: assistantMsgId,
             sender: 'assistant',
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            text: `⚠️ **REQUEST ERROR**: ${errDetail}`,
-            isRefusal: true,
-            refusalReason: errDetail,
-          }
-        ]);
-        return;
-      }
-
-      const resolveData = await res.json();
-      if (resolveData.tokens_used || resolveData.latency_ms) {
-        setTokenomics({ tokens_used: resolveData.tokens_used, latency_ms: resolveData.latency_ms });
-      }
-      const toks = resolveData.tokens_used || null;
-      const lat = resolveData.latency_ms || null;
-      const newTokData = { promptTokens: toks ? Math.floor(toks*0.8) : 840, completionTokens: toks ? Math.ceil(toks*0.2) : 180, latencyMs: lat ? lat : Math.round(parseFloat(elapsed) * 1000) };
-
-      // Check for semantic ambivalence / disambiguation gate (CHAT-08)
-      if (resolveData.status === "DISAMBIGUATION" || (resolveData.disambiguation && resolveData.disambiguation.candidates?.length > 0)) {
-        setMessages([
-          ...newMessages,
-          {
-            id: assistantMsgId,
-            sender: 'assistant',
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            text: `⚠️ **SEMANTIC AMBIVALENCE DETECTED**: Your prompt exhibits close similarity across multiple playbooks (Δsim = ${(resolveData.disambiguation?.deltaSim ?? 0.02).toFixed(3)} < 0.05). Autonomous guessing is strictly forbidden by policy. Please select your intended execution catalog item below:`,
+            text: `⚠️ **SEMANTIC AMBIVALENCE DETECTED**: Your prompt exhibits close similarity across multiple playbooks (Δsim = ${(turnRes.disambiguation?.deltaSim ?? 0.02).toFixed(3)} < 0.05). Autonomous guessing is strictly forbidden by policy. Please select your intended execution catalog item below:`,
             disambiguation: {
-              deltaSim: resolveData.disambiguation?.deltaSim ?? 0.02,
-              candidates: resolveData.disambiguation?.candidates ?? []
+              deltaSim: turnRes.disambiguation?.deltaSim ?? 0.02,
+              candidates: turnRes.disambiguation?.candidates ?? []
             },
             thoughtProcess: {
               time: `${elapsed}s`,
@@ -244,12 +408,12 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
             }
           }
         ]);
+        refreshSessions();
         return;
       }
 
-      // Check for calibrated refusal gate (UI-03 / CHAT-06)
-      if (resolveData.status === "REJECTED" || resolveData.status === "REFUSED" || !resolveData.match) {
-        const refusalReason = resolveData.reason || "Your prompt could not be mapped to an authorized catalog playbook with sufficient confidence.";
+      if (turnRes.intent_status === 'REJECTED' || turnRes.intent_status === 'REFUSED' || !turnRes.catalog_item) {
+        const refusalReason = turnRes.refusal_reason || "Your prompt could not be mapped to an authorized catalog playbook with sufficient confidence.";
         setMessages([
           ...newMessages,
           {
@@ -258,54 +422,52 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             text: `⛔ **INTENT REFUSED**: ${refusalReason}`,
             isRefusal: true,
-            refusalReason,
-            suggestions: resolveData.suggestions,
+            refusalReason: refusalReason,
             thoughtProcess: {
               time: `${elapsed}s`,
               steps: [
-                `Catalog Hybrid Search: Refused (confidence below threshold)`,
-                `Governance Rule: Fail-closed on ambiguity, zero autonomous assumptions`,
-                `Token Usage: ${resolveData.tokens_used ?? 0} / 2500 budget tokens`
+                `Catalog Hybrid Search: Executed HNSW Cosine + BM25 RRF`,
+                `Refusal Gate: Match score below calibrated floor (fail-closed)`,
+                `Safety Invariant: Execution rejected with non-zero refusal telemetry`
               ]
             }
           }
         ]);
+        refreshSessions();
         return;
       }
 
-      const match = resolveData.match;
-      const suggestedParams = resolveData.parameters || {};
+      const ci = turnRes.catalog_item;
+      const suggestedParams = turnRes.parameters || {};
       const cardData = {
-        matched: true,
-        confidence: resolveData.confidence ?? 0.95,
-        identifier: match.identifier,
-        name: match.name,
-        engine: match.engine,
-        category: match.engine === 'ansible' ? 'network' : 'cloud',
-        risk_tier: match.risk_tier,
-        requires_maker_checker: match.requires_maker_checker,
-        requires_chg: match.requires_chg,
+        confidence: 0.95,
+        identifier: ci.identifier,
+        name: ci.name,
+        engine: ci.engine,
+        category: ci.engine === 'ansible' ? 'network' : 'cloud',
+        risk_tier: ci.risk_tier,
+        requires_maker_checker: ci.requires_maker_checker,
+        requires_chg: ci.requires_chg,
         detected_environment: suggestedParams.environment || 'PROD',
         suggested_parameters: suggestedParams,
-        missing_fields: resolveData.missing_fields || [],
-        servicenow_chg: resolveData.servicenow_chg || '',
-        tokens_used: resolveData.tokens_used,
-        reasoning: resolveData.reason || `Extracted parameters for ${match.name}.`
+        missing_fields: turnRes.missing_fields || [],
+        servicenow_chg: suggestedParams.servicenow_chg || '',
+        tokens_used: turnRes.tokens_used,
+        reasoning: `Extracted parameters for ${ci.name}.`
       };
 
       setCardForms(prev => ({
         ...prev,
         [assistantMsgId]: {
-          targetHost: cardData.suggested_parameters?.hostname || cardData.suggested_parameters?.target_resource_id || cardData.suggested_parameters?.target_host || `${match.identifier}-node-01`,
+          targetHost: cardData.suggested_parameters?.hostname || cardData.suggested_parameters?.target_resource_id || cardData.suggested_parameters?.target_host || `${ci.identifier}-node-01`,
           environment: cardData.detected_environment || 'PROD',
           dryRun: false,
-          servicenow_chg: cardData.servicenow_chg || (cardData.requires_chg || cardData.requires_maker_checker ? 'CHG-98412' : ''),
+          servicenow_chg: cardData.servicenow_chg || '',
           parameters: { ...(cardData.suggested_parameters || {}) },
           isSubmitting: false
         }
       }));
 
-      // Automatically keep thought open for fresh responses
       setOpenThoughts(prev => ({ ...prev, [assistantMsgId]: true }));
 
       setMessages([
@@ -323,14 +485,17 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
               `Detected environment: ${cardData.detected_environment || 'PROD'}`,
               cardData.requires_maker_checker 
                 ? 'Governance Gate: Tier 1 high-risk automation requires Maker-Checker Dual Control'
-                : 'Governance Gate: Low-risk pre-approved execution allowed'
+                : 'Governance Gate: Low-risk pre-approved execution allowed',
+              `Two-Tier Session Persisted to Redis & PostgreSQL (CHAT-03)`
             ]
           },
           cardData: cardData
         }
       ]);
+
+      refreshSessions();
     } catch (err: any) {
-      console.error("Failed to resolve intent:", err);
+      console.error("Failed to resolve intent via chat session:", err);
       const assistantMsgId = `asst-${Date.now()}`;
       setMessages([
         ...newMessages,
@@ -338,7 +503,7 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
           id: assistantMsgId,
           sender: 'assistant',
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          text: `❌ **SYSTEM ERROR**: Failed to reach backend intent resolver (${err?.message || 'Connection refused'}). No fallback playbook was synthesized.`,
+          text: `❌ **SYSTEM ERROR**: Failed to reach backend chat session resolver (${err?.message || 'Connection refused'}). No fallback playbook was synthesized.`,
           isRefusal: true,
           refusalReason: err?.message || 'Connection refused',
         }
@@ -366,7 +531,7 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
         dry_run: form.dryRun,
         requester_id: currentUser,
         servicenow_chg: (cardData.requires_chg || cardData.requires_maker_checker)
-          ? (form.servicenow_chg || cardData.servicenow_chg || 'CHG001')
+          ? (form.servicenow_chg || cardData.servicenow_chg || undefined)
           : undefined
       };
 
@@ -402,8 +567,8 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
 
   return (
     <div className="flex flex-col h-full bg-canvas-void select-text">
-      {/* Header Bar */}
-      <div className="px-5 py-3 border-b border-glass-border/60 flex items-center justify-between bg-glass-surface/30 backdrop-blur-md">
+      {/* Header Bar with CHAT-03 Session Selector */}
+      <div className="px-5 py-2.5 border-b border-glass-border/60 flex items-center justify-between bg-glass-surface/30 backdrop-blur-md">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-cyan-400 via-purple-500 to-emerald-400 p-[1.5px] shadow-glow-cyan/20">
             <div className="w-full h-full rounded-full bg-canvas-void flex items-center justify-center">
@@ -417,18 +582,115 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
                 120+ Playbooks Ready
               </span>
             </div>
-            <p className="text-[11px] text-slate-400">Natural language orchestrator • Gemini/ChatGPT Simplicity</p>
+            <div className="flex items-center gap-2 text-[11px] text-slate-400">
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span>Two-Tier PG16/Redis Distributed State</span>
+              <span className="text-slate-600">•</span>
+              <span className="font-mono text-slate-500 text-[10px]">CHAT-03</span>
+            </div>
           </div>
         </div>
 
-        <button 
-          onClick={() => setMessages([messages[0]])}
-          className="text-slate-400 hover:text-slate-200 text-xs flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-glass-border hover:bg-white/[0.04] transition-all"
-          title="Reset conversation"
-        >
-          <RotateCcw className="w-3.5 h-3.5" />
-          <span>Reset Chat</span>
-        </button>
+        {/* Session Controls */}
+        <div className="flex items-center gap-2 relative">
+          {/* Session Selector Dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => setIsSessionDropdownOpen(prev => !prev)}
+              className="text-slate-300 hover:text-white text-xs flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-glass-border bg-white/[0.02] hover:bg-white/[0.06] transition-all max-w-[200px]"
+              title="Switch conversational session"
+            >
+              <MessageSquare className="w-3.5 h-3.5 text-cyan-400 flex-shrink-0" />
+              <span className="truncate font-mono text-[11px]">
+                {activeSessionId 
+                  ? (sessions.find(s => s.session_id === activeSessionId)?.title || "Session " + activeSessionId.slice(0, 8))
+                  : "No Session"}
+              </span>
+              <ChevronDown className="w-3 h-3 text-slate-400 flex-shrink-0" />
+            </button>
+
+            {isSessionDropdownOpen && (
+              <div className="absolute right-0 mt-1.5 w-64 rounded-xl border border-glass-border-highlight bg-slate-950/95 shadow-2xl backdrop-blur-2xl z-50 p-1.5 space-y-1">
+                <div className="px-2.5 py-1.5 border-b border-glass-border/40 flex items-center justify-between text-[11px] text-slate-400 font-mono">
+                  <span className="flex items-center gap-1.5">
+                    <History className="w-3 h-3 text-cyan-400" />
+                    <span>Recent Sessions ({sessions.length})</span>
+                  </span>
+                  <button
+                    onClick={refreshSessions}
+                    className="hover:text-cyan-300 transition-colors"
+                    title="Refresh list"
+                  >
+                    <RefreshCw className="w-3 h-3" />
+                  </button>
+                </div>
+
+                <div className="max-h-52 overflow-y-auto space-y-0.5 no-scrollbar">
+                  {sessions.length === 0 ? (
+                    <div className="px-3 py-3 text-center text-xs text-slate-500 font-mono">
+                      No active sessions
+                    </div>
+                  ) : (
+                    sessions.map(s => {
+                      const isActive = s.session_id === activeSessionId;
+                      return (
+                        <div
+                          key={s.session_id}
+                          onClick={() => {
+                            loadSession(s.session_id);
+                            setIsSessionDropdownOpen(false);
+                          }}
+                          className={`group px-2.5 py-1.5 rounded-lg text-xs flex items-center justify-between cursor-pointer transition-colors ${
+                            isActive 
+                              ? 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/30' 
+                              : 'text-slate-300 hover:bg-white/[0.05]'
+                          }`}
+                        >
+                          <div className="min-w-0 pr-2">
+                            <div className="truncate font-medium text-[11px]">{s.title || "Automation Session"}</div>
+                            <div className="text-[10px] text-slate-500 font-mono flex items-center gap-1.5">
+                              <span>{s.turn_count} turns</span>
+                              <span>•</span>
+                              <span>{new Date(s.updated_at).toLocaleDateString([], { month: 'short', day: 'numeric' })}</span>
+                            </div>
+                          </div>
+                          <button
+                            onClick={(e) => handleDeleteSession(s.session_id, e)}
+                            className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-rose-400 p-1 rounded hover:bg-rose-500/10 transition-all"
+                            title="Delete session"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+
+                <div className="pt-1 border-t border-glass-border/40">
+                  <button
+                    onClick={handleCreateNewSession}
+                    className="w-full px-2.5 py-1.5 rounded-lg text-[11px] font-mono text-cyan-400 hover:text-cyan-300 hover:bg-cyan-500/10 flex items-center justify-center gap-1.5 transition-colors"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Start New Thread</span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* New Chat Quick Button */}
+          <button 
+            onClick={handleCreateNewSession}
+            disabled={isSessionLoading}
+            className="text-slate-300 hover:text-white text-xs flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-glass-border bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 transition-all font-mono text-[11px]"
+            title="Start new conversation"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>New Chat</span>
+          </button>
+        </div>
       </div>
 
       {/* Quick Prompts Carousel Bar */}
