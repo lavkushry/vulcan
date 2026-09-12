@@ -34,7 +34,7 @@ class AppendTurnRequest(BaseModel):
 
 def _get_current_user(request: Request, fallback: str = "eng.alice") -> str:
     """Extracts authenticated username from request state or fallback."""
-    user = getattr(request.state, "user", None)
+    user = getattr(request.state, "user_id", None) or getattr(request.state, "user", None)
     if user and isinstance(user, str):
         return user
     return fallback
