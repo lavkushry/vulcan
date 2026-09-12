@@ -147,9 +147,30 @@
 * **Impact & Exposure:**
   The live production token was recorded in the agent session transcript. While access to the remote VM is restricted via loopback iptables and SSH tunneling, conversational transcripts persist in agent logging systems, representing an unauthorized boundary crossing.
 * **Remediation & Action Items:**
-  1. **Immediate Zero-Exposure Rotation**: Generated replacement cryptographically secure 32-character tokens (`secrets.token_urlsafe(32)`) and rotated `VULCAN_API_TOKENS` and `NEXT_PUBLIC_VULCAN_API_TOKEN` in `deploy/.env` (`0600`) on target environments using the zero-exposure stdin pipe protocol (never CLI arguments, flags, or chat text).
-  2. **Container Restart**: Cycled `vulcan-backend` and `vulcan-frontend` containers to load new tokens, invalidating the exposed credential.
+  1. **Immediate Zero-Exposure Rotation**: Generated replacement cryptographically secure 32-character tokens (`secrets.token_urlsafe(32)`) and rotated `VULCAN_API_TOKENS` in `deploy/.env` (`0600`) on target environments using the zero-exposure stdin pipe protocol (never CLI arguments, flags, or chat text).
+  2. **Container Restart**: Cycled `vulcan-backend` container to load new tokens, invalidating the exposed credential.
   3. **Strict Pre-Flight Gate**: Enforced standing rule that no remote commands may run while any unrotated exposed token exists.
+* **Empirical Verification Receipts:**
+  - **Initial Probe (Pre-Rotation):**
+    ```bash
+    $ ssh vulcan 'curl -s -o /dev/null -w "%{http_code}\n" -H "Authorization: Bearer vlc_qf7...Lojw" http://127.0.0.1:8000/api/v1/jobs'
+    200
+    ```
+    *Result:* Confirmed token was live on the target host. Immediate zero-exposure rotation initiated.
+  - **Rotation Execution:** Re-keyed `lead.bob` credential in `/home/ubuntu/vulcan/deploy/.env` (`0600`) via zero-exposure in-memory cryptographic generation (`secrets.token_urlsafe(32)`), backed up previous configuration to `.env.bak.<timestamp>`, and recycled container `vulcan-backend`.
+  - **Post-Rotation Probe (Revocation Confirmed):**
+    ```bash
+    $ ssh vulcan 'curl -s -w "\nHTTP_STATUS:%{http_code}\n" -H "Authorization: Bearer vlc_qf7...Lojw" http://127.0.0.1:8000/api/v1/jobs'
+    {"error_code":"ERR_VULCAN_UNAUTHENTICATED","message":"Missing or invalid API token."}
+    HTTP_STATUS:401
+    ```
+    *Result:* Conclusive HTTP 401 Unauthorized received. Burned token is dead.
+  - **Active Valid Token Probe:**
+    ```bash
+    $ ssh vulcan 'TOKEN=$(grep "^NEXT_PUBLIC_VULCAN_API_TOKEN=" ~/vulcan/deploy/.env | cut -d= -f2); curl -s -o /dev/null -w "%{http_code}\n" -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8000/api/v1/jobs'
+    200
+    ```
+    *Result:* Legitimate authenticated traffic continues without disruption.
 * **Mandatory Governance Protocol Rule:**
   > **CARDINAL RULE**: *A key never touches a text field anywhere, including conversations with agents. Keys must be provisioned out-of-band directly to the target environment (`read -s` into `.env`, never via chat).*
 

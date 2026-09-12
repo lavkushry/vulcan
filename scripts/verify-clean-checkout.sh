@@ -122,6 +122,18 @@ fi
 echo "✓ Connection-string secrets gate: 0 embedded credentials found across docs/, scripts/, backend/."
 echo ""
 
+# Token Leak Prevention Gate: Zero unmasked production API tokens in git repository
+echo "Checking for exposed live Vulcan API tokens across docs/, scripts/, backend/, frontend/, deploy/..."
+EXPOSED_TOKENS=$(git grep -I -nE 'vlc_[A-Za-z0-9_-]{20,}' docs/ scripts/ backend/ frontend/ deploy/ 2>/dev/null | grep -v 'vlc_test_' | grep -v 'vlc_replace_' || true)
+if [ -n "$EXPOSED_TOKENS" ]; then
+    echo "🔴 GATE FAILURE: Exposed live Vulcan API tokens detected in git-tracked files:"
+    echo "$EXPOSED_TOKENS"
+    echo "All production tokens must be loaded dynamically from deploy/.env via stdin and masked in documentation."
+    exit 1
+fi
+echo "✓ Token leak prevention gate: 0 exposed live tokens found in git-tracked files."
+echo ""
+
 # 5. Software Bill of Materials (SBOM) Gate (INFRA-30)
 echo "─── [5/5] Verifying Software Bill of Materials (SBOM) Generation Gate (INFRA-30) ───"
 TEMP_SBOM_DIR=$(mktemp -d)

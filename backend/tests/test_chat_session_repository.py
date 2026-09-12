@@ -341,7 +341,7 @@ class TestLoudPostgresFailureAndWorkerFailover:
 
     def test_postgres_loud_failure_on_unreachable_db(self):
         """When db_url is configured but PostgreSQL is unreachable, writes must raise loudly."""
-        unreachable_url = "postgresql://invalid_user:invalid_pass@127.0.0.1:54329/invalid_db"
+        unreachable_url = "postgresql://invalid_user:***@127.0.0.1:54329/invalid_db"
         repo = RedisChatSessionRepository(db_url=unreachable_url)
 
         # 1. create_session must fail loudly
