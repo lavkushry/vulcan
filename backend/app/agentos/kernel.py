@@ -80,6 +80,8 @@ class AgentOSKernel:
                 raise RuntimeError("Production mode forbids SimulationExecutionAdapter")
             if probe_runner is None or getattr(probe_runner, "is_simulation", False):
                 raise RuntimeError("Production mode forbids SimulationProbeRunner")
+            if not os.environ.get("VULCAN_CAPABILITY_HMAC_KEY"):
+                raise RuntimeError("VULCAN_CAPABILITY_HMAC_KEY is required in production mode")
 
         self.repository = repository or PostgresAgentWorkflowRepository()
         self.external_resource_repo = external_resource_repo

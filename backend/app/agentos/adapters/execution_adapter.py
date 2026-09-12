@@ -101,7 +101,4 @@ class AnsibleRunnerExecutionAdapter(IAgentOSExecutionAdapter):
         environment: str,
     ) -> ExecutionResult:
         # TODO: Wire to actual ansible-runner subprocess
-        raise NotImplementedError(
-            "AnsibleRunnerExecutionAdapter requires ansible-runner to be installed and configured. "
-            "Use SimulationExecutionAdapter for CI/testing."
-        )
+        raise NotImplementedError("AgentOS production execution is not yet implemented (AnsibleRunnerExecutionAdapter)")

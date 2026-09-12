@@ -183,6 +183,15 @@ class ValidatorAgent(BaseAgent):
         is_mode_prod = os.environ.get("AGENTOS_MODE", "").lower() == "production"
         if is_env_prod and is_mode_prod:
             mandatory_checks = {"ansible_lint", "idempotency_verification", "molecule_sandbox_test"}
+            existing_check_names = {c.check_name for c in checks}
+            for mc in mandatory_checks:
+                if mc not in existing_check_names:
+                    checks.append(ValidationCheck(
+                        check_name=mc,
+                        status=ValidationCheckStatus.SKIPPED,
+                        details="Check was completely missing from validation run."
+                    ))
+
             for c in checks:
                 if c.check_name in mandatory_checks and c.status == ValidationCheckStatus.SKIPPED:
                     c.status = ValidationCheckStatus.FAIL

@@ -77,7 +77,4 @@ class GovernancePolicyEngine(IPolicyEngine):
 
     def evaluate(self, ctx: WorkflowContext) -> PolicyDecision:
         # TODO: Wire to IServiceNowGateway for change-window validation
-        raise NotImplementedError(
-            "GovernancePolicyEngine requires IServiceNowGateway to be configured. "
-            "Use SimulationPolicyEngine for CI/testing."
-        )
+        raise NotImplementedError("AgentOS production execution is not yet implemented (GovernancePolicyEngine)")

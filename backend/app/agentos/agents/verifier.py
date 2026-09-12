@@ -59,7 +59,7 @@ class ProductionProbeRunner(IVerificationProbeRunner):
         return False
 
     def run_probe(self, probe_type: str, target: str, probe_config: Dict[str, Any]) -> VerificationProbe:
-        raise NotImplementedError("ProductionProbeRunner is not yet implemented for real infrastructure probes.")
+        raise NotImplementedError("AgentOS production execution is not yet implemented (ProductionProbeRunner)")
 
 
 

@@ -87,7 +87,4 @@ class FoundryAgentRuntime(IAgentRuntime):
         output_schema: Type[BaseAgentOutput],
     ) -> BaseAgentOutput:
         # TODO: Wire to Azure AI Foundry / Gemini / external LLM endpoint
-        raise NotImplementedError(
-            "FoundryAgentRuntime requires endpoint and api_key configuration. "
-            "Use DeterministicAgentRuntime for CI/testing."
-        )
+        raise NotImplementedError("AgentOS production execution is not yet implemented (FoundryAgentRuntime)")
