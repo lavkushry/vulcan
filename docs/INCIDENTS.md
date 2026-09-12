@@ -15,8 +15,8 @@
 | **SEC-INC-04** | 2026-09-08 | Transcript Leak | Docker exec `-e` command flags | PostgreSQL 16, Redis 7.2, MinIO S3 credentials | 🟢 Resolved | Stdin-Only Secret Injection Protocol |
 | **SEC-INC-05** | 2026-09-08 | Codebase / Docs | Fallback strings in adapters & benchmark docs | PostgreSQL connection strings & Redis password | 🟢 Resolved | Connection-String Regex Gate (`verify-clean-checkout.sh`) |
 | **SEC-INC-06** | 2026-09-09 | Transcript Leak | Chat prompt text | Gemini API Key (`AQ.Ab8...1hvA`) | 🟢 Resolved | Immediate AI Studio rotation & Stdin-Transfer protocol |
-| **SEC-INC-07** | 2026-09-09 | Transcript Leak | Chat prompt text (Recurrence Pattern) | Hugging Face Token (`hf_UrW...hete`) | 🟢 Resolved | Out-of-band `read -s` injection protocol mandate |
-| **SEC-INC-08** | 2026-09-09 | Transcript Leak | Chat prompt text (Recurrence Pattern #2) | OpenRouter API Key (`sk-or-v1-01e...91b9`) | 🟢 Resolved | Out-of-band `read -s` injection protocol re-enforcement |
+| **SEC-INC-07** | 2026-09-09 | Transcript Leak | Chat prompt text (Recurrence Pattern) | Hugging Face Token (`hf_UrW...hete`) | 🟡 Pending Rotation | Out-of-band `read -s` injection protocol mandate |
+| **SEC-INC-08** | 2026-09-09 | Transcript Leak | Chat prompt text (Recurrence Pattern #2) | OpenRouter API Key (`sk-or-v1-01e...91b9`) | 🟡 Pending Rotation | Out-of-band `read -s` injection protocol re-enforcement |
 
 ---
 
@@ -87,6 +87,8 @@
 * **Timestamp:** 2026-09-09T04:55:00Z
 * **Description:** During the transition to the live model decision protocol, an unredacted Google AI Studio Gemini API key (`AQ.Ab8...1hvA`) was pasted into the conversational transcript prompt.
 * **Impact & Exposure:** Free-tier Gemini API key was recorded in conversation history. Key was not exposed to public repositories, logs, or deployed to production containers.
+* **Quota Telemetry:** 538.7 / 1,000 daily free-tier requests consumed during morning verification prior to fail-closed `INV-AI-01` trip and Hugging Face pivot.
+* **Rotation Status:** Revoked & Rotated at aistudio.google.com (Date: 2026-09-09)
 * **Remediation:**
   1. Mandated immediate revocation and deletion of the exposed key on `aistudio.google.com`.
   2. Enforced issuance of a fresh replacement key transferred strictly via the zero-exposure stdin injection protocol (`read -s -p "Key: " KEY && ...`).
@@ -100,6 +102,7 @@
 * **Category:** Transcript Credential Leak (Recurrence Pattern)
 * **Exposure Vector:** Chat prompt input field during target environment provisioning
 * **Affected Secret(s):** Hugging Face User Access Token (`hf_UrW...hete`, account: `lavkushry`)
+* **Rotation Status:** Pending Operator Rotation in huggingface.co/settings/tokens (Date: 2026-09-09)
 * **Root Cause & Recurrence Pattern:**
   Immediately following the remediation of SEC-INC-06, a secondary provider token (Hugging Face) was pasted directly into the agent prompt for VM provisioning. This identified a systemic human operational anti-pattern: developers/operators instinctively paste secrets into chat interfaces when attempting to transfer keys to remote environments, rather than using out-of-band stdin streaming.
 * **Impact & Exposure:**
@@ -118,6 +121,7 @@
 * **Category:** Transcript Credential Leak (Recurrence Pattern #2)
 * **Exposure Vector:** Chat prompt input field during multi-provider feature request
 * **Affected Secret(s):** OpenRouter API Key (`sk-or-v1-01e...91b9`)
+* **Rotation Status:** Pending Operator Rotation in openrouter.ai/keys (Date: 2026-09-09)
 * **Root Cause & Recurrence Pattern:**
   Third consecutive occurrence of the conversational credential transfer anti-pattern. While instructing the agent to add OpenRouter integration and provide documentation, the operator pasted the active OpenRouter API key directly into the chat prompt text. This underscores that developers default to prompt-based credential transit unless physical/systemic barriers prevent chat-based entry.
 * **Impact & Exposure:**

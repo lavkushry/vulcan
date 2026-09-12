@@ -94,24 +94,29 @@ In 11 of these 15 cases, the expected playbook is already present inside the top
 
 ### 4.2 Silent Misroutes (Quality Gaps - 12 cases / 8.00%)
 
-In these cases, the hermetic resolver confidently matched an incorrect playbook (`status: NEEDS_INPUT` or `READY`).
-These 12 scenarios represent the genuine baseline benchmark gap that dense vector embeddings and the live model
-must eliminate on the September 22 decision milestone.
+In the live evaluation against `huggingface/BAAI/bge-large-en-v1.5`, the silent misroute count remained flat at **12 cases (8.00%)**.
+Crucially, dense geometry improved everywhere else (surfacing 3 new correct top-1s and eliminating every dead-end choice card).
+A forensic audit of all 12 cases reveals that this is **not a dense retrieval failure**, but a sharp bifurcation between **ranking collisions** and **catalog lexical/copy gaps**:
 
-| ID | Expected Target | Confident Top-1 Actual | Status | Prompt |
-| :--- | :--- | :--- | :---: | :--- |
-| `eval-route-011` | `sec-system-hardening` | `os-rhel9-kernel-patch` | `NEEDS_INPUT` | harden linux kernel sysctl parameters on core bastion |
-| `eval-route-012` | `sec-system-hardening` | `os-rhel9-kernel-patch` | `NEEDS_INPUT` | apply sysctl network hardening parameters |
-| `eval-route-030` | `sec-system-hardening` | `net-dns-bind-zone-reload` | `NEEDS_INPUT` | harden network socket sysctl parameters |
-| `eval-route-039` | `cache-redis-deploy` | `db-redis-cluster-reshard` | `NEEDS_INPUT` | deploy redis caching cluster with replication |
-| `eval-route-040` | `sec-system-hardening` | `sec-cis-benchmark-remediate` | `NEEDS_INPUT` | apply cis benchmark system hardening baseline |
-| `eval-route-046` | `sec-crowdstrike-agent-update-077` | `sec-trufflehog-git-scan` | `NEEDS_INPUT` | install crowdstrike falcon edr sensor daemon |
-| `eval-route-105` | `cache-redis-deploy` | `db-redis-cluster-reshard` | `NEEDS_INPUT` | Provision Redis distributed caching tier on private subnet |
-| `eval-route-108` | `cache-redis-deploy` | `db-redis-cluster-reshard` | `NEEDS_INPUT` | Deploy Redis caching instance with password authentication enabled |
-| `eval-route-109` | `cache-redis-deploy` | `db-redis-cluster-reshard` | `NEEDS_INPUT` | Provision Redis cache cluster for session storage on internal network |
-| `eval-route-146` | `sec-system-hardening` | `sec-cis-benchmark-remediate` | `NEEDS_INPUT` | Apply CIS Linux Level 2 security hardening baseline to host |
-| `eval-route-147` | `sec-system-hardening` | `os-rhel9-kernel-patch` | `NEEDS_INPUT` | Harden Linux kernel network sysctl parameters on core server |
-| `eval-route-150` | `sec-system-hardening` | `sec-cis-benchmark-remediate` | `NEEDS_INPUT` | Can you apply enterprise security hardening baseline and kernel parameters? |
+- **8 cases (66.7%) — Ranking Nudge Gaps (Target at Rank #2)**:
+  The correct playbook was retrieved directly behind a near-twin collision at Rank #1. A scoring nudge (e.g., action-verb weighting like "deploy" vs "reshard") or narrow disambiguation window surfaces these immediately.
+- **4 cases (33.3%) — Catalog Lexical/Copy Gaps (Target Absent from Top 3)**:
+  The prompt uses discriminative terminology ("sysctl network hardening", "CIS Linux Level 2", "kernel parameters") that does not exist in `sec-system-hardening`'s catalog copy or tags, so no vector or sparse retriever can score it above specialized modules.
+
+| Scenario ID | Expected Target | Confident Top-1 Actual | Actual Top 3 Candidates Retrieved | Target Rank | Diagnostic Root Cause & Remediation Class | Prompt |
+| :--- | :--- | :--- | :--- | :---: | :--- | :--- |
+| `eval-route-011` | `sec-system-hardening` | `os-rhel9-kernel-patch` | `['os-rhel9-kernel-patch', 'sec-system-hardening', 'sec-cis-benchmark-remediate']` | **Rank #2** | **Ranking Nudge**: "kernel sysctl" pulls OS kernel patch ahead of generic OS hardening. Target is at #2. | harden linux kernel sysctl parameters on core bastion |
+| `eval-route-012` | `sec-system-hardening` | `os-rhel9-kernel-patch` | `['os-rhel9-kernel-patch', 'net-haproxy-reload-sync', 'net-paloalto-fw-rule-push']` | **ABSENT** | **Catalog Lexical Gap**: "sysctl network hardening" tokens absent from `sec-system-hardening`. Drowned out by network playbooks. | apply sysctl network hardening parameters |
+| `eval-route-030` | `sec-system-hardening` | `net-dns-bind-zone-reload` | `['net-dns-bind-zone-reload', 'net-haproxy-reload-sync', 'os-sandbox-ping']` | **ABSENT** | **Catalog Lexical Gap**: "network socket sysctl" lacks representation in catalog item copy; matches DNS/socket network playbooks. | harden network socket sysctl parameters |
+| `eval-route-039` | `cache-redis-deploy` | `db-redis-cluster-reshard` | `['db-redis-cluster-reshard', 'cache-redis-deploy', 'db-mysql-read-replica-add']` | **Rank #2** | **Ranking Nudge**: "redis caching cluster" token overlap favors reshard cluster playbook. Target is sitting at #2. | deploy redis caching cluster with replication |
+| `eval-route-040` | `sec-system-hardening` | `sec-cis-benchmark-remediate` | `['sec-cis-benchmark-remediate', 'db-redis-cluster-reshard', 'os-rhel9-kernel-patch']` | **ABSENT** | **Catalog Lexical Gap**: "CIS benchmark" strongly binds to specialized `sec-cis-benchmark-remediate`; `sec-system-hardening` unranked in top 3. | apply cis benchmark system hardening baseline |
+| `eval-route-046` | `sec-crowdstrike-agent-update-077` | `sec-trufflehog-git-scan` | `['sec-trufflehog-git-scan', 'sec-crowdstrike-agent-update-077', 'claw-openclaw-deploy']` | **Rank #2** | **Ranking Nudge**: Security sensor daemon prompt ranks Trufflehog #1, target CrowdStrike is at #2. | install crowdstrike falcon edr sensor daemon |
+| `eval-route-105` | `cache-redis-deploy` | `db-redis-cluster-reshard` | `['db-redis-cluster-reshard', 'cache-redis-deploy', 'db-mysql-read-replica-add']` | **Rank #2** | **Ranking Nudge**: "Redis distributed caching tier" matches cluster reshard #1, deploy #2. Verb weighting ("provision") fixes this. | Provision Redis distributed caching tier on private subnet |
+| `eval-route-108` | `cache-redis-deploy` | `db-redis-cluster-reshard` | `['db-redis-cluster-reshard', 'cache-redis-deploy', 'db-mysql-read-replica-add']` | **Rank #2** | **Ranking Nudge**: "Deploy Redis caching instance" verb "deploy" overridden by Redis cluster terms. Target sits at #2. | Deploy Redis caching instance with password authentication enabled |
+| `eval-route-109` | `cache-redis-deploy` | `db-redis-cluster-reshard` | `['db-redis-cluster-reshard', 'cache-redis-deploy', 'db-mysql-read-replica-add']` | **Rank #2** | **Ranking Nudge**: "Redis cache cluster" token "cluster" tips rank to reshard #1, deploy #2. | Provision Redis cache cluster for session storage on internal network |
+| `eval-route-146` | `sec-system-hardening` | `sec-cis-benchmark-remediate` | `['sec-cis-benchmark-remediate', 'sec-system-hardening', 'os-rhel8-security-errata-105']` | **Rank #2** | **Ranking Nudge**: "CIS Linux Level 2 security hardening" retrieves remediation #1, general hardening #2. | Apply CIS Linux Level 2 security hardening baseline to host |
+| `eval-route-147` | `sec-system-hardening` | `os-rhel9-kernel-patch` | `['os-rhel9-kernel-patch', 'sec-system-hardening', 'os-kernel-patch']` | **Rank #2** | **Ranking Nudge**: "kernel network sysctl parameters" ranks kernel patch #1, system hardening #2. | Harden Linux kernel network sysctl parameters on core server |
+| `eval-route-150` | `sec-system-hardening` | `sec-cis-benchmark-remediate` | `['sec-cis-benchmark-remediate', 'sec-tls-bundle-sync', 'os-kernel-patch']` | **ABSENT** | **Catalog Lexical Gap**: Compound prompt combines CIS and kernel; specific playbooks crowd out generic hardening. | Can you apply enterprise security hardening baseline and kernel parameters? |
 
 ## 5. Remaining Candidate Ambiguities (Top-3 Audit)
 
