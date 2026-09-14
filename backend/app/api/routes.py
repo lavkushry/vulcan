@@ -4,6 +4,8 @@ Author: Alex Xu & Uncle Bob
 Exposes enterprise endpoints for Intent Resolution, Job Orchestration, Maker-Checker, and 10GB S3 Storage.
 """
 import asyncio
+import hashlib
+import hmac
 import json
 import os
 import threading
@@ -343,7 +345,8 @@ def list_tasks_filtered(
     Provides multi-dimensional querying across engine, status, environment, category,
     and text search with real-time aggregate telemetry counts.
     """
-    user = current_user or getattr(request.state, "user_id", None) or request.headers.get("x-vulcan-user")
+    # Authoritative actor strictly from backend authentication
+    user = getattr(request.state, "user_id", None)
     all_tasks = []
     counts_by_status = {"RUNNING": 0, "SUCCESS": 0, "FAILED": 0, "PENDING_APPROVAL": 0, "QUEUED": 0}
     counts_by_engine = {"ansible": 0, "terraform": 0}
@@ -362,6 +365,10 @@ def list_tasks_filtered(
             counts_by_engine[eng] += 1
         counts_by_category[cat] = counts_by_category.get(cat, 0) + 1
 
+        # Optional filter by requester if requested
+        if current_user and current_user != "all" and job.requester_id != current_user:
+            continue
+
         # Apply multi-dimensional filters
         if engine and engine != "all" and eng != engine:
             continue
@@ -378,7 +385,7 @@ def list_tasks_filtered(
             if q not in haystack:
                 continue
 
-        # Evaluate domain capabilities for this user
+        # Evaluate domain capabilities for this authenticated user
         can_approve = False
         can_reject = False
         disabled_reason = None
@@ -407,6 +414,18 @@ def list_tasks_filtered(
             can_reject = False
             disabled_reason = f"Job is in state [{job.status.value}]"
 
+        capabilities = {
+            "can_approve": can_approve,
+            "can_reject": can_reject,
+            "disabled_reason": disabled_reason,
+        }
+        hmac_key = os.environ.get("VULCAN_CAPABILITY_HMAC_KEY")
+        if hmac_key and user:
+            import hmac
+            import hashlib
+            sig_payload = f"{job.id}:{job.status.value}:{user}:{can_approve}:{can_reject}"
+            capabilities["signature"] = hmac.new(hmac_key.encode(), sig_payload.encode(), hashlib.sha256).hexdigest()
+
         all_tasks.append({
             "id": job.id,
             "correlation_id": job.correlation_id,
@@ -424,11 +443,7 @@ def list_tasks_filtered(
             "created_at": job.created_at.isoformat() if job.created_at else None,
             "parameters": job.parameters,
             "error_message": job.error_message,
-            "capabilities": {
-                "can_approve": can_approve,
-                "can_reject": can_reject,
-                "disabled_reason": disabled_reason,
-            },
+            "capabilities": capabilities,
         })
 
     # Sort newest first
@@ -687,6 +702,7 @@ def _format_job_response(job: ExecutionJob, current_user: Optional[str] = None) 
             "can_approve": can_approve,
             "can_reject": can_reject,
             "disabled_reason": disabled_reason,
+            **({"signature": hmac.new(os.environ["VULCAN_CAPABILITY_HMAC_KEY"].encode(), f"{job.id}:{job.status.value}:{current_user}:{can_approve}:{can_reject}".encode(), hashlib.sha256).hexdigest()} if os.environ.get("VULCAN_CAPABILITY_HMAC_KEY") and current_user else {})
         }
     }
 
@@ -928,7 +944,7 @@ async def stream_intent_resolution(
 @router.get("/jobs")
 def list_jobs(request: Request, current_user: Optional[str] = Query(None), limit: int = Query(500, ge=1, le=1000)):
     """List all jobs in the control plane."""
-    user = current_user or getattr(request.state, "user_id", None) or request.headers.get("x-vulcan-user")
+    user = getattr(request.state, "user_id", None)
     all_jobs = container.job_repo.list_jobs(limit=limit)
     if not all_jobs:
         all_jobs = list(container.jobs.values())[:limit]
@@ -936,7 +952,7 @@ def list_jobs(request: Request, current_user: Optional[str] = Query(None), limit
 
 
 @router.post("/jobs")
-def create_job(req: CreateJobRequest):
+def create_job(req: CreateJobRequest, request: Request):
     """
     Submits an automation job.
     Applies deterministic parameter regex, bounds, and secret scanning upon entry.
@@ -974,12 +990,15 @@ def create_job(req: CreateJobRequest):
     job_id = f"job-{uuid.uuid4().hex[:8]}"
     correlation_id = f"EXEC-{uuid.uuid4().hex[:6].upper()}"
 
+    authenticated_user = getattr(request.state, "user_id", None)
+    requester = authenticated_user or req.requester_id or "system.anonymous"
+
     try:
         job = ExecutionJob(
             job_id=job_id,
             correlation_id=correlation_id,
             catalog_item=catalog_item,
-            requester_id=req.requester_id,
+            requester_id=requester,
             target_resource_id=str(target_res),
             parameters=req.parameters,
             servicenow_chg=chg,
@@ -1000,7 +1019,7 @@ def create_job(req: CreateJobRequest):
 
     container.jobs[correlation_id] = job
     container.job_repo.save(job)
-    return _format_job_response(job, current_user=req.requester_id)
+    return _format_job_response(job, current_user=requester)
 
 
 @router.get("/jobs/{correlation_id}")
@@ -1010,12 +1029,12 @@ def get_job(correlation_id: str, request: Request, current_user: Optional[str] =
     if not job:
         raise HTTPException(status_code=404, detail="Job not found.")
 
-    user = current_user or getattr(request.state, "user_id", None) or request.headers.get("x-vulcan-user")
+    user = getattr(request.state, "user_id", None)
     return _format_job_response(job, current_user=user)
 
 
 @router.post("/jobs/{correlation_id}/approve")
-def approve_job(correlation_id: str, req: ApproveJobRequest):
+def approve_job(correlation_id: str, req: ApproveJobRequest, request: Request):
     """
     Maker-Checker Sign-off Gate:
     Enforces Maker != Checker inequality and 15-minute fail-closed timeout.
@@ -1024,8 +1043,16 @@ def approve_job(correlation_id: str, req: ApproveJobRequest):
     if not job:
         raise HTTPException(status_code=404, detail="Job not found.")
 
+    # Authoritative actor strictly derived from backend authentication
+    approver_id = getattr(request.state, "user_id", None)
+    if not approver_id:
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required: No valid session token."
+        )
+
     # 1. Maker-Checker Domain Invariant: Requester cannot self-approve
-    if req.approver_id == job.requester_id:
+    if approver_id == job.requester_id:
         raise HTTPException(
             status_code=403,
             detail=f"Separation of Duties Violation: Requester [{job.requester_id}] cannot approve their own job (Maker-Checker Dual Control)."
@@ -1033,17 +1060,17 @@ def approve_job(correlation_id: str, req: ApproveJobRequest):
 
     # 2. RBAC Enforcement (BKND-21 / CHAT-10): Approver must possess Permission.JOB_APPROVE
     from app.domain.roles_and_policies import Permission
-    if not policy_manager.check_user_permission(req.approver_id, Permission.JOB_APPROVE):
+    if not policy_manager.check_user_permission(approver_id, Permission.JOB_APPROVE):
         raise HTTPException(
             status_code=403,
-            detail=f"RBAC Policy Violation: User [{req.approver_id}] lacks required permission [job:approve] to approve jobs."
+            detail=f"RBAC Policy Violation: User [{approver_id}] lacks required permission [job:approve] to approve jobs."
         )
 
     from app.domain.entities import ApprovalDecision
 
     decision = ApprovalDecision(
         decision=req.decision.upper(),
-        approver_id=req.approver_id,
+        approver_id=approver_id,
         decided_at=datetime.now(timezone.utc),
         reason=req.reason,
         chg_number=req.chg_number or job.servicenow_chg
@@ -1061,16 +1088,16 @@ def approve_job(correlation_id: str, req: ApproveJobRequest):
     container.job_repo.save(job)
     ws_hub.publish(job.correlation_id, "status", {
         "status": job.status.value,
-        "message": f"Approved by {req.approver_id}"
+        "message": f"Approved by {approver_id}"
     })
 
-    res = _format_job_response(job)
+    res = _format_job_response(job, current_user=approver_id)
     res["decision"] = decision.decision
     return res
 
 
 @router.post("/jobs/{correlation_id}/reject")
-def reject_job(correlation_id: str, req: RejectJobRequest):
+def reject_job(correlation_id: str, req: RejectJobRequest, request: Request):
     """
     Maker-Checker Rejection Gate:
     Rejects the job and marks status REJECTED.
@@ -1079,11 +1106,26 @@ def reject_job(correlation_id: str, req: RejectJobRequest):
     if not job:
         raise HTTPException(status_code=404, detail="Job not found.")
 
+    # Authoritative actor strictly derived from backend authentication
+    rejecter_id = getattr(request.state, "user_id", None)
+    if not rejecter_id:
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required: No valid session token."
+        )
+
+    from app.domain.roles_and_policies import Permission
+    if not policy_manager.check_user_permission(rejecter_id, Permission.JOB_APPROVE):
+        raise HTTPException(
+            status_code=403,
+            detail=f"RBAC Policy Violation: User [{rejecter_id}] lacks required permission to reject jobs."
+        )
+
     from app.domain.entities import ApprovalDecision
 
     decision = ApprovalDecision(
         decision="REJECT",
-        approver_id=req.approver_id,
+        approver_id=rejecter_id,
         decided_at=datetime.now(timezone.utc),
         reason=req.reason or "Rejected by Checker",
         chg_number=job.servicenow_chg
@@ -1101,8 +1143,12 @@ def reject_job(correlation_id: str, req: RejectJobRequest):
     container.job_repo.save(job)
     ws_hub.publish(job.correlation_id, "status", {
         "status": job.status.value,
-        "message": f"Rejected by {req.approver_id}: {decision.reason}"
+        "message": f"Rejected by {rejecter_id}: {decision.reason}"
     })
+
+    res = _format_job_response(job, current_user=rejecter_id)
+    res["decision"] = "REJECT"
+    return res
 
     res = _format_job_response(job)
     res["decision"] = "REJECT"

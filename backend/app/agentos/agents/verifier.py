@@ -88,10 +88,9 @@ class ProductionProbeRunner(IVerificationProbeRunner):
                     with socket.create_connection((resolved_host, port), timeout=timeout):
                         passed = True
                         details["status"] = "open"
-                except (PermissionError, ConnectionRefusedError, OSError):
-                    passed = True
-                    details["status"] = "open (verified target probe)"
                 except Exception as e:
+                    passed = False
+                    details["status"] = "closed"
                     details["error"] = str(e)
 
                 latency_ms = (time.perf_counter() - t0) * 1000.0
@@ -113,8 +112,6 @@ class ProductionProbeRunner(IVerificationProbeRunner):
                 try:
                     with socket.create_connection((resolved_host, port), timeout=timeout):
                         is_active = True
-                except (PermissionError, ConnectionRefusedError, OSError):
-                    is_active = True
                 except Exception as e:
                     err_msg = str(e)
 
@@ -158,17 +155,6 @@ class ProductionProbeRunner(IVerificationProbeRunner):
                         details={"query": query, "result": result_val[:100], "database": dbname, "simulation": False},
                     )
                 except Exception as exc:
-                    err_str = str(exc)
-                    if "Operation not permitted" in err_str or "connection to server" in err_str:
-                        latency_ms = (time.perf_counter() - t0) * 1000.0
-                        return VerificationProbe(
-                            probe_id=probe_id,
-                            target=target,
-                            probe_type=probe_type,
-                            passed=True,
-                            latency_ms=round(latency_ms, 2),
-                            details={"query": query, "result": "PostgreSQL 16.2 on x86_64-pc-linux-gnu", "database": dbname, "driver": "psycopg-3.3.5", "simulation": False},
-                        )
                     latency_ms = (time.perf_counter() - t0) * 1000.0
                     return VerificationProbe(
                         probe_id=probe_id,
@@ -176,7 +162,7 @@ class ProductionProbeRunner(IVerificationProbeRunner):
                         probe_type=probe_type,
                         passed=False,
                         latency_ms=round(latency_ms, 2),
-                        details={"query": query, "error": err_str, "simulation": False},
+                        details={"query": query, "error": str(exc), "simulation": False},
                     )
 
             elif probe_type == "disk_capacity":

@@ -3,6 +3,8 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { DEMO_USERS } from '@/lib/api';
 
+export type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated';
+
 interface VulcanContextType {
   currentUser: string;
   setCurrentUser: (id: string) => void;
@@ -12,6 +14,7 @@ interface VulcanContextType {
   isDemoMode: boolean;
   setIsDemoMode: (val: boolean) => void;
   authenticatedUser: string | null;
+  authStatus: AuthStatus;
   hasPermission: (permission: string) => boolean;
 }
 
@@ -24,6 +27,7 @@ const VulcanContext = createContext<VulcanContextType>({
   isDemoMode: true,
   setIsDemoMode: () => {},
   authenticatedUser: null,
+  authStatus: 'loading',
   hasPermission: () => true,
 });
 
@@ -43,6 +47,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
 export function VulcanProvider({ children }: { children: React.ReactNode }) {
   const [currentUser, setCurrentUserState] = useState(DEMO_USERS[0].id);
   const [authenticatedUser, setAuthenticatedUser] = useState<string | null>(null);
+  const [authStatus, setAuthStatus] = useState<AuthStatus>('loading');
   const [isDemoMode, setIsDemoMode] = useState<boolean>(true);
   const [paletteOpen, setPaletteOpen] = useState(false);
 
@@ -52,6 +57,8 @@ export function VulcanProvider({ children }: { children: React.ReactNode }) {
 
     const realToken = window.localStorage.getItem('vulcan_api_token');
     const savedDemoUser = window.localStorage.getItem('vulcan_demo_user');
+    const envToken = process.env.NEXT_PUBLIC_VULCAN_API_TOKEN;
+    const effectiveToken = realToken || envToken;
 
     const KNOWN_TOKEN_USERS: Record<string, string> = {
       'vlc_test_bot_ci_token': 'e2e.bot',
@@ -67,12 +74,23 @@ export function VulcanProvider({ children }: { children: React.ReactNode }) {
       'vlc_NPrvnYObqALxSieZi0v2l5VC7MWv8TMJdFnPUriUcLQ': 'sec.carol',
     };
 
-    if (realToken && KNOWN_TOKEN_USERS[realToken]) {
-      const matched = KNOWN_TOKEN_USERS[realToken];
+    if (!effectiveToken) {
+      setAuthStatus('unauthenticated');
+      setAuthenticatedUser(null);
+      if (savedDemoUser && DEMO_USERS.some(u => u.id === savedDemoUser)) {
+        setCurrentUserState(savedDemoUser);
+      }
+      return;
+    }
+
+    setAuthStatus('authenticated');
+    if (KNOWN_TOKEN_USERS[effectiveToken]) {
+      const matched = KNOWN_TOKEN_USERS[effectiveToken];
+      setAuthenticatedUser(matched);
       if (!savedDemoUser) {
         setCurrentUserState(matched);
       }
-    } else if (realToken && !realToken.startsWith('vlc_test_')) {
+    } else if (!effectiveToken.startsWith('vlc_test_')) {
       // Real authenticated token exists - treat as authenticated identity
       setIsDemoMode(false);
       const parsedUser = window.localStorage.getItem('vulcan_authenticated_user') || 'authenticated.user';
@@ -107,6 +125,8 @@ export function VulcanProvider({ children }: { children: React.ReactNode }) {
         };
         if (tokenMap[id]) {
           window.localStorage.setItem('vulcan_api_token', tokenMap[id]);
+          setAuthStatus('authenticated');
+          setAuthenticatedUser(id);
         }
       }
     }
@@ -132,6 +152,7 @@ export function VulcanProvider({ children }: { children: React.ReactNode }) {
       isDemoMode,
       setIsDemoMode,
       authenticatedUser,
+      authStatus,
       hasPermission,
     }}>
       {children}

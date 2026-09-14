@@ -52,6 +52,11 @@ test.describe('Flow 2: WebSocket Reconnect Resilience', () => {
     await setupAuth(page);
     await page.goto('/chat');
     await expect(page).toHaveTitle(/Vulcan/i);
+    // Open details pane if in default focused mode
+    const inspectBtn = page.locator('button:has-text("Inspect Details")');
+    if (await inspectBtn.isVisible()) {
+      await inspectBtn.click();
+    }
 
     // Wait for the task to appear in the Task Monitor list
     const taskItem = page.locator(`text=${corrId}`).first();

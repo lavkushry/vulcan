@@ -157,6 +157,11 @@ test.describe('Component Audits: UI-14, UI-23, UI-25, UI-27 Verification', () =>
 
     await setupAuth(page, TOKENS.bot);
     await page.goto('/chat');
+    // Open details pane if in default focused mode
+    const inspectBtn = page.locator('button:has-text("Inspect Details")');
+    if (await inspectBtn.isVisible()) {
+      await inspectBtn.click();
+    }
     // Select the completed task (EXEC-9820) from TaskMonitor
     const successTask = page.locator('button:has-text("EXEC-9820")').first();
     await expect(successTask).toBeVisible({ timeout: 20000 });

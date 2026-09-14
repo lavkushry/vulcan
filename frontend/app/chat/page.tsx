@@ -27,7 +27,7 @@ function ChatConsoleContent() {
   const [statusFilter, setStatusFilter] = useState<JobStatus | 'ALL'>('ALL');
   const [query, setQuery] = useState('');
   const [isHelpOpen, setIsHelpOpen] = useState(false);
-  const [showDetails, setShowDetails] = useState(true);
+  const [showDetails, setShowDetails] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const refreshJobs = useCallback(async () => {

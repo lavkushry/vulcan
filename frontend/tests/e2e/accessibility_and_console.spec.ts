@@ -3,10 +3,16 @@ import AxeBuilder from '@axe-core/playwright';
 import { setupAuth } from './helpers';
 
 /**
- * Project Vulcan: Milestone C.1 — Accessibility & Console Error Audits
- * Verifies:
- * 1. All primary console views load with zero unhandled browser console errors.
- * 2. Pages pass Axe-core WCAG 2.1 AA accessibility auditing.
+ * Project Vulcan: Automated Accessibility & Browser Console Baseline Audit
+ *
+ * Scope & Limitations:
+ * 1. Verifies primary console views load with zero unhandled browser console errors.
+ * 2. Runs automated Axe-core checks scoped to critical and serious violations under
+ *    WCAG 2.0 / 2.1 AA tags (wcag2a, wcag2aa, wcag21a, wcag21aa).
+ * 3. Color-contrast heuristic is disabled due to transparent backdrop-filter/glassmorphism
+ *    surfaces which confuse DOM-tree contrast calculators, and .xterm canvas is excluded.
+ * 4. This is an automated CI smoke gate for structural a11y (ARIA, landmarks, roles, button names),
+ *    NOT an exhaustive full WCAG 2.2 manual conformance certification.
  */
 
 const CORE_PAGES = [
@@ -17,9 +23,9 @@ const CORE_PAGES = [
   { path: '/dashboard', name: 'Mission Control Dashboard' },
 ];
 
-test.describe('Platform Quality: Zero Console Errors & WCAG Accessibility', () => {
+test.describe('Platform Quality: Zero Console Errors & Automated WCAG 2.1 AA Structural Audit', () => {
   for (const pageInfo of CORE_PAGES) {
-    test(`${pageInfo.name} (${pageInfo.path}) loads cleanly with 0 console errors and passes a11y`, async ({ page }) => {
+    test(`${pageInfo.name} (${pageInfo.path}) loads cleanly with 0 console errors and 0 critical/serious a11y violations`, async ({ page }) => {
       const consoleErrors: string[] = [];
       page.on('console', (msg) => {
         if (msg.type() === 'error') {

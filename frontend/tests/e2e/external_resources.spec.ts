@@ -3,15 +3,14 @@ import { setupAuth, TOKENS } from './helpers';
 
 /**
  * Project Vulcan: Settings → External Resources & Microsoft Foundry Playwright E2E Suite.
- * Author: Jordan Walke (Frontend Lead) & E2E Test Suite Architect.
  *
- * Verifies Requirements R4, R5, R6:
+ * Verifies:
  * 1. Web Console route /settings/external-resources and /integrations alias redirect.
- * 2. Bento Catalog Sidebar with 7 categories, status pills, latency, and environment tags.
- * 3. 4-Tab Detail Pane: Overview, Configuration, Capabilities, Diagnostics.
+ * 2. Honest empty state when unseeded/unconnected vs. Bento Catalog in Demo Mode.
+ * 3. 4-Tab Detail Pane: Overview, Configuration, Capabilities, Diagnostics navigation.
  * 4. Microsoft Foundry Dynamic Deployment Discovery & Vulcan Routing Default selection.
- * 5. Zero-Raw-Secrets Invariant UI validation & secret masking (•••••••• / ********).
- * 6. Enterprise RBAC: PLATFORM_ADMIN mutation access vs OPERATOR/AUDITOR read-only enforcement.
+ * 5. Zero-Raw-Secrets Invariant UI validation & secret masking.
+ * 6. Enterprise RBAC: PLATFORM_ADMIN mutation access vs OPERATOR read-only enforcement.
  */
 
 test.describe('Settings → External Resources & Microsoft Foundry Console', () => {
@@ -21,7 +20,6 @@ test.describe('Settings → External Resources & Microsoft Foundry Console', () 
   });
 
   test('Route accessibility and /integrations alias redirection (R5)', async ({ page }) => {
-    // 1. Trap console errors
     const consoleErrors: string[] = [];
     page.on('console', (msg) => {
       if (msg.type() === 'error' && !msg.text().includes('favicon.ico')) {
@@ -29,32 +27,28 @@ test.describe('Settings → External Resources & Microsoft Foundry Console', () 
       }
     });
 
-    // 2. Navigate to /settings/external-resources
+    // 1. Navigate to /settings/external-resources
     await page.goto('/settings/external-resources');
     await expect(page).toHaveTitle(/Vulcan/i);
 
-    // 3. Verify main console container is rendered
-    const consoleContainer = page.locator(
-      '[data-testid="external-resources-console"], main, [role="main"]'
-    ).first();
+    // 2. Verify main console container is rendered
+    const consoleContainer = page.locator('[data-testid="external-resources-console"]').first();
     await expect(consoleContainer).toBeVisible();
 
-    // 4. Test backward-compatible alias route /integrations
+    // 3. Test backward-compatible alias route /integrations redirects
     await page.goto('/integrations');
-    await expect(page).toHaveURL(/\/(settings\/external-resources|integrations)/);
+    await expect(page).toHaveURL(/\/settings\/external-resources/);
     expect(consoleErrors).toEqual([]);
   });
 
-  test('Bento Catalog Sidebar renders categories, status badges, and environment tags (R5)', async ({ page }) => {
+  test('Bento Catalog renders actual connections, honest empty state when unprovisioned, and Demo Mode support (R5)', async ({ page }) => {
     await page.goto('/settings/external-resources');
 
-    // Bento catalog container
-    const catalog = page.locator(
-      '[data-testid="bento-catalog-sidebar"], aside, [data-testid="resource-catalog"]'
-    ).first();
+    // Verify bento sidebar container exists
+    const catalog = page.locator('[data-testid="bento-catalog-sidebar"]');
     await expect(catalog).toBeVisible();
 
-    // Verify key category sections exist
+    // Verify actual connected categories are displayed
     const categoryHeadings = [
       'AI & Models',
       'ITSM & CMDB',
@@ -62,117 +56,139 @@ test.describe('Settings → External Resources & Microsoft Foundry Console', () 
       'Source Control'
     ];
     for (const cat of categoryHeadings) {
-      const heading = page.locator(`text=${cat}`).first();
-      // If the categories are loaded, heading should be present
-      if (await heading.isVisible()) {
-        await expect(heading).toBeVisible();
-      }
+      const heading = page.locator('aside').getByText(cat, { exact: true }).first();
+      await expect(heading).toBeVisible();
     }
 
-    // Verify status badge indicators (Connected, Degraded, Configured)
-    const statusBadges = page.locator(
-      '[data-testid*="status-badge"], .status-badge, [class*="emerald"], [class*="rose"], [class*="amber"]'
-    );
-    expect(await statusBadges.count()).toBeGreaterThanOrEqual(0);
+    // Verify status badge indicators are rendered once resources load
+    const statusBadges = page.locator('[data-testid="status-badge"]');
+    await expect(statusBadges.first()).toBeVisible();
+    expect(await statusBadges.count()).toBeGreaterThan(0);
+
+    // Filter to STAGE where no external resources are currently provisioned
+    await page.locator('aside button:has-text("STAGE")').click();
+
+    // Verify honest empty state is shown for unprovisioned environments in sidebar
+    await expect(page.locator('text=No external resources connected')).toBeVisible();
+
+    // Toggle demo mode explicitly
+    const demoBtn = page.locator('button:has-text("Load Sample Demo Connections"), button:has-text("Demo Samples"), button:has-text("DEMO MODE")').first();
+    await expect(demoBtn).toBeVisible();
+    await demoBtn.click();
+
+    // In demo mode, sample resources are loaded even in STAGE
+    await expect(statusBadges.first()).toBeVisible();
+    expect(await statusBadges.count()).toBeGreaterThan(0);
   });
 
   test('4-Tab Detail View navigation (Overview, Configuration, Capabilities, Diagnostics) (R5)', async ({ page }) => {
     await page.goto('/settings/external-resources');
 
-    // Click first resource card in sidebar if present
-    const firstCard = page.locator('[data-testid="resource-card"], [role="button"]').first();
-    if (await firstCard.isVisible()) {
-      await firstCard.click();
-    }
+    // Turn on demo mode so resources are available
+    await page.locator('button:has-text("Demo Samples"), button:has-text("DEMO MODE")').first().click();
 
-    // Verify Tab Bar exists
+    // Click first resource card in sidebar
+    const firstCard = page.locator('[data-testid="resource-card"]').first();
+    await expect(firstCard).toBeVisible();
+    await firstCard.click();
+
+    // Verify all 4 tabs exist and navigate through each unconditionally
     const tabs = ['Overview', 'Configuration', 'Capabilities', 'Diagnostics'];
     for (const tabName of tabs) {
-      const tabButton = page.locator(`button:has-text("${tabName}"), [role="tab"]:has-text("${tabName}")`).first();
-      if (await tabButton.isVisible()) {
-        await tabButton.click();
-        // Active tab should have active styling or aria-selected=true
-        await expect(tabButton).toBeVisible();
-      }
+      const tabButton = page.locator(`button:has-text("${tabName}")`).first();
+      await expect(tabButton).toBeVisible();
+      await tabButton.click();
+      await expect(tabButton).toBeVisible();
     }
   });
 
   test('Microsoft Foundry Dynamic Deployment Discovery and Vulcan Routing Defaults (R4/R5)', async ({ page }) => {
     await page.goto('/settings/external-resources');
 
-    // Select or filter to Microsoft Foundry resource
-    const foundryCard = page.locator('text=Foundry').or(page.locator('text=Microsoft Foundry')).first();
-    if (await foundryCard.isVisible()) {
-      await foundryCard.click();
+    // Turn on demo mode
+    await page.locator('button:has-text("Demo Samples"), button:has-text("DEMO MODE")').first().click();
 
-      // Navigate to Capabilities Tab
-      const capTab = page.locator('button:has-text("Capabilities")').first();
-      if (await capTab.isVisible()) {
-        await capTab.click();
+    // Select Microsoft Foundry resource card
+    const foundryCard = page.locator('[data-testid="resource-card"]:has-text("Foundry")').first();
+    await expect(foundryCard).toBeVisible();
+    await foundryCard.click();
 
-        // Verify dynamic deployment discovery trigger or list
-        const discoverBtn = page.locator('button:has-text("Discover"), button:has-text("Refresh Deployments")').first();
-        if (await discoverBtn.isVisible()) {
-          await discoverBtn.click();
-        }
+    // Navigate to Capabilities Tab
+    const capTab = page.locator('button:has-text("Capabilities")').first();
+    await expect(capTab).toBeVisible();
+    await capTab.click();
 
-        // Verify Vulcan routing default pickers
-        const chatPicker = page.locator('[data-testid="vulcan-chat-default"], label:has-text("Chat reasoning")').first();
-        const embPicker = page.locator('[data-testid="vulcan-embedding-default"], label:has-text("Intent embeddings")').first();
-        if (await chatPicker.isVisible()) {
-          await expect(chatPicker).toBeVisible();
-        }
-        if (await embPicker.isVisible()) {
-          await expect(embPicker).toBeVisible();
-        }
-      }
-    }
+    // Trigger dynamic deployment discovery
+    const discoverBtn = page.locator('button:has-text("Discover Deployments")').first();
+    await expect(discoverBtn).toBeVisible();
+    await discoverBtn.click();
+
+    // Verify Vulcan routing default pickers are visible
+    const chatPicker = page.locator('[data-testid="vulcan-chat-default"]').first();
+    const embPicker = page.locator('[data-testid="vulcan-embedding-default"]').first();
+    await expect(chatPicker).toBeVisible();
+    await expect(embPicker).toBeVisible();
   });
 
   test('Zero-Raw-Secrets Invariant enforcement in Configuration Form (R2/R5)', async ({ page }) => {
     await page.goto('/settings/external-resources');
 
-    // Navigate to Configuration tab of any resource
+    // Turn on demo mode
+    await page.locator('button:has-text("Demo Samples"), button:has-text("DEMO MODE")').first().click();
+
+    // Click first resource card
+    const firstCard = page.locator('[data-testid="resource-card"]').first();
+    await expect(firstCard).toBeVisible();
+    await firstCard.click();
+
+    // Navigate to Configuration tab
     const configTab = page.locator('button:has-text("Configuration")').first();
-    if (await configTab.isVisible()) {
-      await configTab.click();
+    await expect(configTab).toBeVisible();
+    await configTab.click();
 
-      // Find secret pointer input
-      const secretInput = page.locator('input[name*="secret"], input[placeholder*="vault://"], input[placeholder*="cyberark://"]').first();
-      if (await secretInput.isVisible()) {
-        // Attempt to enter raw password without URI scheme
-        await secretInput.fill('MyRawPassword123!');
-        // Trigger validation (blur)
-        await secretInput.blur();
+    // Find secret pointer input
+    const secretInput = page.locator('input[placeholder*="vault://"], input[placeholder*="cyberark://"], input[name*="secret"]').first();
+    await expect(secretInput).toBeVisible();
 
-        // Verify validation error or warning is shown
-        const errorMsg = page.locator('text=scheme').or(page.locator('text=vault://')).or(page.locator('text=cyberark://')).first();
-        if (await errorMsg.isVisible()) {
-          await expect(errorMsg).toBeVisible();
-        }
+    // Attempt to enter raw password without URI scheme
+    await secretInput.fill('MyRawPassword123!');
+    await secretInput.blur();
 
-        // Enter valid URI pointer
-        await secretInput.fill('vault://secret/vulcan/demo');
-        await secretInput.blur();
-      }
-    }
+    // Verify validation warning is unconditionally displayed
+    const errorMsg = page.locator('text=scheme').or(page.locator('text=vault://')).or(page.locator('text=cyberark://')).first();
+    await expect(errorMsg).toBeVisible();
+
+    // Enter valid URI pointer to clear error
+    await secretInput.fill('vault://secret/vulcan/demo');
+    await secretInput.blur();
   });
 
-  test('Enterprise RBAC: Operator sees read-only views and masked secrets (R6)', async ({ page }) => {
+  test('Enterprise RBAC: Operator sees read-only views and disabled mutation controls (R6)', async ({ page }) => {
     // Authenticate as OPERATOR (eng.alice)
     await setupAuth(page, TOKENS.alice);
     await page.goto('/settings/external-resources');
 
-    // Mutation buttons (Save, Delete, Test Handshake) should be disabled or absent for Operator
-    const saveBtn = page.locator('button:has-text("Save"), button:has-text("Update Config")').first();
-    if (await saveBtn.isVisible()) {
-      await expect(saveBtn).toBeDisabled();
-    }
+    // Turn on demo mode
+    await page.locator('button:has-text("Demo Samples"), button:has-text("DEMO MODE")').first().click();
 
-    // Secret values should be masked with bullets or asterisks
-    const maskedText = page.locator('text=••••••••').or(page.locator('text=********')).first();
-    if (await maskedText.isVisible()) {
-      await expect(maskedText).toBeVisible();
-    }
+    // Click first resource card
+    const firstCard = page.locator('[data-testid="resource-card"]').first();
+    await expect(firstCard).toBeVisible();
+    await firstCard.click();
+
+    // Mutation buttons in header should be disabled for Operator
+    const testHandshakeBtn = page.locator('button:has-text("Test Handshake")').first();
+    await expect(testHandshakeBtn).toBeVisible();
+    await expect(testHandshakeBtn).toBeDisabled();
+
+    // Navigate to Configuration tab
+    const configTab = page.locator('button:has-text("Configuration")').first();
+    await expect(configTab).toBeVisible();
+    await configTab.click();
+
+    // Save Configuration button should be disabled for Operator
+    const saveBtn = page.locator('button:has-text("Save Configuration")').first();
+    await expect(saveBtn).toBeVisible();
+    await expect(saveBtn).toBeDisabled();
   });
 });
