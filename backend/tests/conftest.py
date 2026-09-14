@@ -25,3 +25,5 @@ os.environ.setdefault("VULCAN_AUTH_DISABLED", "0")
 os.environ.setdefault("VULCAN_API_TOKENS", json.dumps(TEST_TOKENS))
 os.environ.setdefault("NEXT_PUBLIC_VULCAN_API_TOKEN", "vlc_test_alice")
 os.environ.setdefault("AGENTOS_MODE", "development")
+os.environ.setdefault("VULCAN_ALLOW_DEV_TOKENS", "true")
+

@@ -174,9 +174,10 @@ class PlannerAgent(BaseAgent):
             cand_sha = cand.get("commit_sha")
 
             try:
+                expected_content_sha = test_expected_sha or cand_meta.get("expected_artifact_sha")
                 resolved = resolver.resolve_and_download(
                     identifier=cand_id,
-                    expected_sha=test_expected_sha or cand_sha,
+                    expected_sha=expected_content_sha,
                     commit_sha=cand_sha,
                     requested_os=requested_os,
                     workflow_id=ctx.workflow_id,

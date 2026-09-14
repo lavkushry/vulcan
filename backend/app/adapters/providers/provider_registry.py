@@ -12,9 +12,11 @@ from typing import Any, Dict, List, Optional
 from app.adapters.providers.base_provider import BaseExternalResourceProvider
 from app.adapters.providers.concrete_providers import (
     AAPProvider,
+    AnsibleSSHProvider,
     BitbucketProvider,
     CyberArkProvider,
     DatadogProvider,
+    DockerProvider,
     GeminiProvider,
     GitHubProvider,
     HuggingFaceProvider,
@@ -52,7 +54,7 @@ class ProviderRegistry:
         return cls._instance
 
     def _register_default_providers(self) -> None:
-        """Bootstraps all 16 enterprise connectors."""
+        """Bootstraps all 16 enterprise connectors and execution drivers."""
         self._providers["microsoft_foundry"] = MicrosoftFoundryProvider()
         self._providers["servicenow"] = ServiceNowProvider()
         self._providers["cyberark"] = CyberArkProvider()
@@ -69,6 +71,12 @@ class ProviderRegistry:
         self._providers["openrouter"] = OpenRouterProvider()
         self._providers["gemini"] = GeminiProvider()
         self._providers["huggingface"] = HuggingFaceProvider()
+        self._providers["ansible_ssh"] = AnsibleSSHProvider()
+        self._providers["docker"] = DockerProvider()
+        # Aliases
+        self._providers["s3"] = self._providers["minio"]
+        self._providers["galaxy"] = self._providers["aap"]
+
 
     @classmethod
     def get_provider(cls, key: str) -> Optional[IExternalResourceProvider]:

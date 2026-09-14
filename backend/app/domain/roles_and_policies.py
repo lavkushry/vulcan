@@ -100,6 +100,39 @@ ROLE_PERMISSIONS: Dict[UserRole, List[Permission]] = {
 }
 
 
+USER_ROLE_MAP: Dict[str, UserRole] = {
+    "admin.dave": UserRole.PLATFORM_ADMIN,
+    "system.admin": UserRole.PLATFORM_ADMIN,
+    "local.dev": UserRole.PLATFORM_ADMIN,
+    "sec.carol": UserRole.SECURITY_ADMIN,
+    "lead.bob": UserRole.APPROVING_LEAD,
+    "eng.alice": UserRole.OPERATOR,
+    "audit.emma": UserRole.AUDITOR,
+    "e2e.bot": UserRole.PLATFORM_ADMIN,
+}
+
+ROLE_BADGES: Dict[UserRole, str] = {
+    UserRole.PLATFORM_ADMIN: "PLATFORM ADMIN",
+    UserRole.APPROVING_LEAD: "APPROVING LEAD",
+    UserRole.SECURITY_ADMIN: "SECURITY ADMIN",
+    UserRole.AUDITOR: "AUDITOR",
+    UserRole.OPERATOR: "OPERATOR",
+}
+
+
+def resolve_user_role(user_id: Optional[str]) -> UserRole:
+    """Canonical resolver for user RBAC role."""
+    if not user_id:
+        return UserRole.OPERATOR
+    return USER_ROLE_MAP.get(user_id, UserRole.OPERATOR)
+
+
+def is_platform_admin(user_id: Optional[str]) -> bool:
+    """Checks whether the given user identity possesses PLATFORM_ADMIN privileges."""
+    return resolve_user_role(user_id) == UserRole.PLATFORM_ADMIN
+
+
+
 class EnforcementLevel(str, enum.Enum):
     MANDATORY_BLOCK = "MANDATORY_BLOCK"
     APPROVAL_GATE = "APPROVAL_GATE"

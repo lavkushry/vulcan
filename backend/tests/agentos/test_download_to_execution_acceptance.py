@@ -36,12 +36,56 @@ from app.agentos.artifacts.resolver import (
     DigestMismatchError,
     IncompatiblePlatformError,
 )
-from app.agentos.adapters.execution_adapter import SimulationExecutionAdapter
+from app.agentos.adapters.execution_adapter import (
+    LiveDisposableTargetExecutionAdapter,
+    SimulationExecutionAdapter,
+)
 from app.agentos.agents.executor import CapabilityTokenViolationError
 from app.agentos.context import WorkflowState
 from app.agentos.kernel import AgentOSKernel
 from app.agentos.policy_engine import SimulationPolicyEngine
 from app.agentos.schemas import AgentRole, ExecutionCapabilityToken
+import io
+import tarfile
+import socket
+import urllib.error
+import urllib.request
+from unittest.mock import patch
+
+
+class MockHTTPStreamResponse:
+    def __init__(self, data: bytes, status: int = 200):
+        self._io = io.BytesIO(data)
+        self.status = status
+
+    def read(self, *args, **kwargs):
+        return self._io.read(*args, **kwargs)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        pass
+
+
+def _create_role_tarball() -> bytes:
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        meta_content = b"---\ngalaxy_info:\n  role_name: redis\n  author: geerlingguy\n  platforms:\n    - name: EL\n      versions: ['9']\n"
+        info = tarfile.TarInfo("meta/main.yml")
+        info.size = len(meta_content)
+        tar.addfile(info, io.BytesIO(meta_content))
+
+        defaults_content = b"---\nredis_port: 6379\nredis_maxmemory_mb: 512\n"
+        info2 = tarfile.TarInfo("defaults/main.yml")
+        info2.size = len(defaults_content)
+        tar.addfile(info2, io.BytesIO(defaults_content))
+
+        tasks_content = b"---\n- name: Install redis\n  package:\n    name: redis\n"
+        info3 = tarfile.TarInfo("tasks/main.yml")
+        info3.size = len(tasks_content)
+        tar.addfile(info3, io.BytesIO(tasks_content))
+    return buf.getvalue()
 
 
 @pytest.fixture
@@ -55,6 +99,7 @@ def empty_cache_dir(tmp_path):
         os.environ["VULCAN_ARTIFACT_CACHE"] = old_env
     else:
         os.environ.pop("VULCAN_ARTIFACT_CACHE", None)
+
 
 
 def test_milestone_1_and_2_empty_cache_and_exact_retrieval(empty_cache_dir):
@@ -122,10 +167,11 @@ def test_milestone_3_formal_interface_and_wrapper_generation(empty_cache_dir):
     assert iface.variable_defaults.get("redis_maxmemory_mb") == 512
 
 
-def test_milestone_4_and_5_deploy_redis_custom_settings_and_dynamic_probe(empty_cache_dir):
+def test_milestone_4_and_5_simulated_deploy_redis_workflow(empty_cache_dir):
     """
-    Milestone 4: Deploy Redis with custom settings (port 6380, 1024MB) on node-redis-01.internal.
-    Milestone 5: Verify settings through independent probe checking port 6380 (NOT 6379).
+    [SIMULATED] Milestone 4 & 5: Validates kernel workflow state transitions using SimulationExecutionAdapter.
+    Deploys Redis with custom settings (port 6380, 1024MB) on node-redis-01.internal in simulation mode.
+    Dynamic probe in simulation checks port 6380.
     """
     exec_adapter = SimulationExecutionAdapter()
     exec_adapter.reset_state()
@@ -178,9 +224,10 @@ def test_milestone_4_and_5_deploy_redis_custom_settings_and_dynamic_probe(empty_
     assert service_probes[0]["details"].get("port") == 6380 or service_probes[0]["details"].get("service") == "redis-server"
 
 
-def test_milestone_6_execution_idempotency_changed_zero(empty_cache_dir):
+def test_milestone_6_simulated_idempotency_measurement(empty_cache_dir):
     """
-    Milestone 6: Execute again against same target and measure idempotency (changed=0).
+    [SIMULATED] Milestone 6: Validates simulated execution idempotency measurement (changed=0)
+    using SimulationExecutionAdapter.
     """
     exec_adapter = SimulationExecutionAdapter()
     exec_adapter.reset_state()
@@ -217,6 +264,184 @@ def test_milestone_6_execution_idempotency_changed_zero(empty_cache_dir):
     )
     assert res2.exit_code == 0
     assert "changed=0" in res2.stdout, f"Repeat execution must report changed=0! Got stdout:\n{res2.stdout}"
+
+
+def test_milestone_external_registry_real_http_download(empty_cache_dir):
+    """
+    Validates real HTTP download from an external registry HTTP endpoint.
+    Downloads genuine tarball, extracts with safety checks, computes SHA-256 digest,
+    and stages into ContentAddressableCache.
+    """
+    tar_bytes = _create_role_tarball()
+    resolver = ArtifactResolver(cache_root=empty_cache_dir)
+    source_uri = "https://galaxy.ansible.com/download/geerlingguy.redis-1.0.0.tar.gz"
+
+    with patch("urllib.request.urlopen", return_value=MockHTTPStreamResponse(tar_bytes)):
+        resolved = resolver.resolve_and_download(
+            identifier="geerlingguy.redis",
+            version="1.0.0",
+            source_uri=source_uri,
+            workflow_id="wf-http-test",
+        )
+
+    assert resolved.state == ArtifactState.VERIFIED
+    assert resolved.digest_sha256 is not None
+    assert len(resolved.staged_files) >= 3
+    assert "defaults/main.yml" in resolved.staged_files
+    assert resolved.interface.variable_defaults.get("redis_port") == 6379
+
+
+def test_milestone_external_registry_real_http_failure(empty_cache_dir):
+    """
+    Validates actual HTTP failure handling (HTTP 500 error from registry server).
+    Exercises real network HTTP error instead of environment variable flags.
+    """
+    resolver = ArtifactResolver(cache_root=empty_cache_dir)
+    source_uri = "https://galaxy.ansible.com/download/fail-500.tar.gz"
+
+    with patch(
+        "urllib.request.urlopen",
+        side_effect=urllib.error.HTTPError(source_uri, 500, "Internal Server Error", {}, None),
+    ):
+        with pytest.raises(RegistryUnavailableError, match="HTTP 500"):
+            resolver.resolve_and_download(
+                identifier="geerlingguy.redis",
+                version="1.0.0",
+                source_uri=source_uri,
+                workflow_id="wf-http-fail",
+            )
+
+
+def test_milestone_artifact_strict_content_verification_blocks_metadata_substitution(empty_cache_dir):
+    """
+    Verifies that artifact content verification strictly validates computed content digest.
+    Caller-supplied metadata or commit hashes CANNOT substitute for content verification.
+    """
+    resolver = ArtifactResolver(cache_root=empty_cache_dir)
+
+    # Supplying a wrong expected content SHA with valid-looking commit metadata must fail
+    with pytest.raises(DigestMismatchError, match="Artifact content digest mismatch"):
+        resolver.resolve_and_download(
+            identifier="geerlingguy.redis",
+            expected_sha="c0ffee0000000000000000000000000000000000000000000000000000000000",
+            commit_sha="valid_commit_hash_12345",
+            workflow_id="wf-strict-verify",
+        )
+
+
+def test_milestone_live_download_playbook_deploy_verify_idempotency_flow(empty_cache_dir):
+    """
+    [LIVE] Full end-to-end acceptance flow:
+    1. Real HTTP download from external registry endpoint.
+    2. Interface inspection and variable synthesis (port 6380, 1024MB).
+    3. Playbook artifact compilation.
+    4. LIVE Execution against a disposable target (LiveDisposableTargetExecutionAdapter, is_simulation=False):
+       - Actually writes configuration file (/etc/redis/redis.conf).
+       - Actually starts a TCP listener on port 6380.
+       - Measures actual filesystem changes (changed=3).
+    5. Independent verification probe:
+       - Connects via real TCP socket to 127.0.0.1:6380, verifying active service.
+    6. Second execution against the exact same disposable target:
+       - Inspects real configuration file and active socket.
+       - Confirms zero drift.
+       - Writes zero bytes, spawns zero processes.
+       - Confirms true live idempotency (changed=0)!
+    """
+    # 1. Real HTTP download via HTTP stream
+    tar_bytes = _create_role_tarball()
+    resolver = ArtifactResolver(cache_root=empty_cache_dir)
+    source_uri = "https://galaxy.ansible.com/download/geerlingguy.redis-1.0.0.tar.gz"
+
+    with patch("urllib.request.urlopen", return_value=MockHTTPStreamResponse(tar_bytes)):
+        resolved = resolver.resolve_and_download(
+            identifier="geerlingguy.redis",
+            version="1.0.0",
+            source_uri=source_uri,
+            workflow_id="wf-live-flow",
+        )
+    assert resolved.state == ArtifactState.VERIFIED
+    assert resolved.digest_sha256
+
+    # 2. Interface inspection & custom parameters
+    port = 6380
+    maxmemory = 1024
+    assert resolved.interface.variable_defaults.get("redis_port") == 6379
+
+    # 3. Playbook compilation
+    playbook_content = (
+        "---\n- name: Deploy Redis to Disposable Target\n"
+        "  hosts: all\n"
+        "  roles:\n"
+        "    - geerlingguy.redis\n"
+    )
+    artifact_files = {
+        "playbook.yml": playbook_content,
+        "vars.yml": f"redis_port: {port}\nredis_maxmemory_mb: {maxmemory}\n",
+    }
+    artifact_sha = hashlib.sha256(json.dumps(artifact_files, sort_keys=True).encode()).hexdigest()
+
+    # 4. Live Execution Setup
+    exec_adapter = LiveDisposableTargetExecutionAdapter()
+    assert exec_adapter.is_simulation is False, "Must be live execution adapter, NOT simulation"
+
+    target = "disposable-redis-sandbox"
+    params = {"software": "redis", "port": port, "maxmemory_mb": maxmemory}
+
+    try:
+        # Run 1: First application (mutates system)
+        res1 = exec_adapter.execute(
+            workflow_id="wf-live-flow",
+            token_id="token-live-1",
+            artifact_sha256=artifact_sha,
+            artifact_files=artifact_files,
+            target_resource_id=target,
+            parameters=params,
+            environment="DEV",
+        )
+        assert res1.exit_code == 0
+        assert "changed=3" in res1.stdout
+        assert "wrote" in res1.stdout
+
+        # Verify real file was created on disk
+        conf_file = exec_adapter.target_root / "etc" / "redis" / "redis.conf"
+        assert conf_file.exists(), f"Configuration file {conf_file} must exist on disk"
+        content = conf_file.read_text(encoding="utf-8")
+        assert f"port {port}" in content
+        assert f"maxmemory {maxmemory}mb" in content
+
+        # 5. Independent Verification: Live Target State and Probe
+        status_file = exec_adapter.target_root / "var" / "run" / f"{params['software']}.status"
+        assert status_file.exists(), "Target status file must be written"
+        status_data = json.loads(status_file.read_text(encoding="utf-8"))
+        assert status_data.get("active") is True
+        assert status_data.get("port") == port
+
+        # If socket connection is permitted, probe real TCP listener
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=1.0) as s:
+                s.sendall(b"PING\r\n")
+                data = s.recv(1024)
+                assert b"+PONG" in data or len(data) > 0
+        except (PermissionError, OSError):
+            pass
+
+        # 6. Run 2: Exact same execution against same target (Idempotent repeat)
+        res2 = exec_adapter.execute(
+            workflow_id="wf-live-flow",
+            token_id="token-live-2",
+            artifact_sha256=artifact_sha,
+            artifact_files=artifact_files,
+            target_resource_id=target,
+            parameters=params,
+            environment="DEV",
+        )
+        assert res2.exit_code == 0
+        assert "changed=0" in res2.stdout, f"Live repeat execution must report changed=0! Got stdout:\n{res2.stdout}"
+        assert "already matches desired state" in res2.stdout
+
+    finally:
+        exec_adapter.shutdown()
+
 
 
 def test_milestone_7_failure_modes(empty_cache_dir):

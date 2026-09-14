@@ -81,3 +81,33 @@ def test_verify_token_invalid_returns_401(client):
     """POST /api/v1/auth/verify-token rejects invalid token with 401."""
     res = client.post("/api/v1/auth/verify-token", json={"token": "totally-fake-token-12345"})
     assert res.status_code == 401
+
+
+def test_dev_tokens_fail_closed_without_explicit_opt_in(monkeypatch):
+    """When VULCAN_ALLOW_DEV_TOKENS is unset or false, dev tokens must NOT load and unconfigured auth fails closed."""
+    from app.api.auth import load_token_map
+    monkeypatch.delenv("VULCAN_ALLOW_DEV_TOKENS", raising=False)
+    monkeypatch.delenv("VULCAN_API_TOKENS", raising=False)
+    monkeypatch.delenv("VULCAN_API_TOKEN", raising=False)
+    monkeypatch.setenv("AGENTOS_MODE", "development")
+
+    # load_token_map must return empty dict because explicit opt-in was missing
+    tokens = load_token_map()
+    assert len(tokens) == 0, "Tokens must be empty when explicit dev opt-in is missing"
+
+    # Also test when AGENTOS_MODE is unset
+    monkeypatch.delenv("AGENTOS_MODE", raising=False)
+    tokens_unset = load_token_map()
+    assert len(tokens_unset) == 0, "Tokens must be empty when AGENTOS_MODE is unset"
+
+
+def test_e2e_bot_role_is_platform_admin(client):
+    """Calling /api/v1/auth/session with e2e.bot token returns PLATFORM_ADMIN profile and permissions."""
+    headers = {"Authorization": "Bearer vlc_test_bot_ci_token"}
+    res = client.get("/api/v1/auth/session", headers=headers)
+    assert res.status_code == 200
+    data = res.json()
+    assert data["authenticated"] is True
+    assert data["user_id"] == "e2e.bot"
+    assert data["role"] == "PLATFORM_ADMIN"
+

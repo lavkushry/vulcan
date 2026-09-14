@@ -291,9 +291,10 @@ class AgentOSKernel:
             if primary_ident and not ctx.automation_plan.get("resolved_asset"):
                 known_params = ctx.normalized_intent.get("known_parameters", {}) if isinstance(ctx.normalized_intent, dict) else {}
                 test_expected_sha = known_params.get("expected_artifact_sha")
+                expected_content_sha = test_expected_sha or (cand_meta.get("expected_artifact_sha") if cand_meta else None)
                 resolved = resolver.resolve_and_download(
                     identifier=primary_ident,
-                    expected_sha=test_expected_sha or cand_sha,
+                    expected_sha=expected_content_sha,
                     commit_sha=cand_sha,
                     requested_os=known_params.get("os_platform"),
                     workflow_id=ctx.workflow_id,

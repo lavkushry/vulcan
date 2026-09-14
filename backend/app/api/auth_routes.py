@@ -11,28 +11,16 @@ from fastapi import APIRouter, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 
 from app.api.auth import authenticate_token, load_token_map
-from app.domain.roles_and_policies import Permission, ROLE_PERMISSIONS, UserRole
+from app.domain.roles_and_policies import (
+    Permission,
+    ROLE_PERMISSIONS,
+    ROLE_BADGES,
+    USER_ROLE_MAP,
+    UserRole,
+    resolve_user_role,
+)
 
 router = APIRouter(prefix="/auth", tags=["Authentication & Identity"])
-
-USER_ROLE_MAP: Dict[str, UserRole] = {
-    "admin.dave": UserRole.PLATFORM_ADMIN,
-    "system.admin": UserRole.PLATFORM_ADMIN,
-    "local.dev": UserRole.PLATFORM_ADMIN,
-    "sec.carol": UserRole.SECURITY_ADMIN,
-    "lead.bob": UserRole.APPROVING_LEAD,
-    "eng.alice": UserRole.OPERATOR,
-    "audit.emma": UserRole.AUDITOR,
-    "e2e.bot": UserRole.PLATFORM_ADMIN,
-}
-
-ROLE_BADGES: Dict[UserRole, str] = {
-    UserRole.PLATFORM_ADMIN: "PLATFORM ADMIN",
-    UserRole.APPROVING_LEAD: "APPROVING LEAD",
-    UserRole.SECURITY_ADMIN: "SECURITY ADMIN",
-    UserRole.AUDITOR: "AUDITOR",
-    UserRole.OPERATOR: "OPERATOR",
-}
 
 
 class TokenVerifyRequest(BaseModel):
@@ -43,10 +31,11 @@ def _resolve_user_and_role(user_id: Optional[str]) -> tuple[UserRole, str, List[
     """Resolves UserRole, badge string, and permission strings for a given user_id."""
     if not user_id:
         return UserRole.OPERATOR, "GUEST", []
-    role = USER_ROLE_MAP.get(user_id, UserRole.OPERATOR)
+    role = resolve_user_role(user_id)
     badge = ROLE_BADGES.get(role, role.value)
     permissions = [p.value for p in ROLE_PERMISSIONS.get(role, [])]
     return role, badge, permissions
+
 
 
 def _extract_token_from_request(request: Request) -> Optional[str]:

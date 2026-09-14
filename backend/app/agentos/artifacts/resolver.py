@@ -236,7 +236,9 @@ class ArtifactResolver:
         workspace_parent: Optional[Path] = None,
         raw_catalog_item: Optional[Dict[str, Any]] = None,
         provided_parameters: Optional[Dict[str, Any]] = None,
+        expected_commit_sha: Optional[str] = None,
     ) -> ResolvedAsset:
+
         """
         Orchestrates DISCOVERED -> DOWNLOADED -> VERIFIED pipeline.
         Enforces:
@@ -281,10 +283,13 @@ class ArtifactResolver:
             # Download via appropriate adapter
             # Determine source: if git_repo declared in raw_catalog_item or git in source_uri
             adapter: RegistryDownloadAdapter = self.local_adapter
-            if "galaxy" in source_uri or (raw_catalog_item and raw_catalog_item.get("source_type") == "galaxy"):
+            if source_uri.startswith("http://") or source_uri.startswith("https://"):
+                adapter = GalaxyDownloadAdapter(server_url=source_uri)
+            elif "galaxy" in source_uri or (raw_catalog_item and raw_catalog_item.get("source_type") == "galaxy"):
                 adapter = self.galaxy_adapter
             elif "git" in source_uri or (raw_catalog_item and raw_catalog_item.get("source_type") == "git"):
                 adapter = self.git_adapter
+
 
             downloaded_root = adapter.download_artifact(identifier, version, staging_parent)
 
@@ -328,18 +333,29 @@ class ArtifactResolver:
         actual_commit_sha = (
             commit_sha
             or (raw_catalog_item.get("git_commit_sha") or raw_catalog_item.get("commit_sha") if raw_catalog_item else None)
-            or hashlib.sha1(identifier.encode()).hexdigest()
+            or ""
         )
 
-        # Cryptographic digest / SHA verification
+        # Strict verification: Content digest vs. Revision metadata
+        # 1. Content digest verification (strictly verified against actual staged files)
         if expected_sha:
             clean_expected = expected_sha.strip().lower()
-            matches_digest = (clean_expected == computed_digest.lower())
-            matches_commit = (clean_expected == (actual_commit_sha or "").lower())
-            if not (matches_digest or matches_commit):
+            if clean_expected != computed_digest.lower():
                 raise DigestMismatchError(
-                    f"Artifact digest mismatch for '{identifier}'! Expected '{expected_sha}', but computed '{computed_digest}' (commit '{actual_commit_sha}')."
+                    f"Artifact content digest mismatch for '{identifier}'! Expected '{expected_sha}', but computed '{computed_digest}'."
                 )
+
+        # 2. Revision verification (strictly verified against actual fetched repository commit)
+        target_expected_commit = (
+            expected_commit_sha
+            or (raw_catalog_item.get("expected_commit_sha") if raw_catalog_item else None)
+        )
+        if target_expected_commit:
+            if not actual_commit_sha or target_expected_commit.strip().lower() != actual_commit_sha.strip().lower():
+                raise DigestMismatchError(
+                    f"Artifact revision mismatch for '{identifier}'! Expected commit '{target_expected_commit}', but resolved '{actual_commit_sha}'."
+                )
+
 
         # 5. Interface Inspection: argument_specs.yml priority -> input_schema -> defaults/main.yml fallback
         platforms: List[Dict[str, Any]] = []

@@ -241,9 +241,70 @@ class GalaxyDownloadAdapter(RegistryDownloadAdapter):
             return version_constraint
         return "1.5.0"
 
-    def download_artifact(self, identifier: str, version: str, dest_dir: Path) -> Path:
+    def download_artifact(self, identifier: str, version: str, dest_dir: Path | str) -> Path:
+        dest_dir = Path(dest_dir)
         if os.environ.get("VULCAN_REGISTRY_UNAVAILABLE") == "1":
             raise RegistryUnavailableError(f"Ansible Galaxy server '{self.server_url}' is unreachable.")
+
+
+        # If server_url is an HTTP endpoint, perform real HTTP download with archive verification
+        if self.server_url.startswith("http://") or self.server_url.startswith("https://"):
+            clean_url = self.server_url.rstrip("/")
+            if clean_url.endswith(".tar.gz") or clean_url.endswith(".tgz"):
+                download_url = clean_url
+            elif "api" in clean_url:
+                download_url = f"{clean_url}/api/v3/roles/{identifier}/versions/{version}/download/"
+            else:
+                download_url = f"{clean_url}/{identifier}-{version}.tar.gz"
+
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            archive_path = dest_dir / f"{identifier.replace('.', '_')}_{version}.tar.gz"
+            dest_role = dest_dir / identifier.replace(".", "_")
+
+            try:
+                req = urllib.request.Request(download_url)
+                if self.auth_token:
+                    req.add_header("Authorization", f"Bearer {self.auth_token}")
+
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    if resp.status != 200:
+                        raise RegistryUnavailableError(f"HTTP {resp.status} downloading from '{download_url}'.")
+                    with open(archive_path, "wb") as f:
+                        shutil.copyfileobj(resp, f)
+
+                # Validate archive safety and extract safely
+                ArchiveSafetyValidator.safe_extract_tar(archive_path, dest_role)
+                if archive_path.exists():
+                    archive_path.unlink()
+
+                # If archive extracted into a single wrapper folder (e.g. role-name/meta), promote contents
+                children = list(dest_role.iterdir())
+                if len(children) == 1 and children[0].is_dir() and not (dest_role / "meta").exists() and not (dest_role / "defaults").exists():
+                    wrapper_dir = children[0]
+                    for item in wrapper_dir.iterdir():
+                        target_loc = dest_role / item.name
+                        if target_loc.exists():
+                            if target_loc.is_dir():
+                                shutil.rmtree(target_loc)
+                            else:
+                                target_loc.unlink()
+                        shutil.move(str(item), str(dest_role))
+                    wrapper_dir.rmdir()
+
+                return dest_role
+
+            except urllib.error.HTTPError as http_err:
+                raise RegistryUnavailableError(
+                    f"HTTP {http_err.code} error from registry '{download_url}': {http_err.reason}"
+                ) from http_err
+            except (urllib.error.URLError, ConnectionError, OSError) as conn_err:
+                # If pointing to default public galaxy and disconnected, fallback to local
+                if self.local_fallback and "galaxy.ansible.com" in self.server_url:
+                    pass
+                else:
+                    raise RegistryUnavailableError(
+                        f"Network error connecting to registry '{download_url}': {conn_err}"
+                    ) from conn_err
 
         dest_role = dest_dir / identifier.replace(".", "_")
         try:
@@ -256,6 +317,7 @@ class GalaxyDownloadAdapter(RegistryDownloadAdapter):
                 encoding="utf-8"
             )
             return dest_role
+
 
 
 class GitDownloadAdapter(RegistryDownloadAdapter):

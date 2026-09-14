@@ -30,8 +30,13 @@ DEV_DEFAULT_TOKENS = {
 
 def load_token_map() -> dict[str, str]:
     tokens: dict[str, str] = {}
-    if os.getenv("AGENTOS_MODE", "").lower() != "production":
+    # Explicit development opt-in: both VULCAN_ALLOW_DEV_TOKENS=true and AGENTOS_MODE=development required.
+    # Unconfigured authentication fails closed by default.
+    allow_dev = os.getenv("VULCAN_ALLOW_DEV_TOKENS", "").lower() in ("true", "1", "yes")
+    agentos_mode = os.getenv("AGENTOS_MODE", "").lower()
+    if allow_dev and agentos_mode == "development":
         tokens.update(DEV_DEFAULT_TOKENS)
+
 
     raw = os.getenv("VULCAN_API_TOKENS")          # '{"<token>": "lead.bob", "<token>": "eng.alice"}'
     if raw:

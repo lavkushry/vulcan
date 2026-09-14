@@ -422,9 +422,10 @@ class VerifierAgent(BaseAgent):
         probe_configs: List[tuple[str, Dict[str, Any]]] = []
         known = ctx.normalized_intent.get("known_parameters", {}) if isinstance(ctx.normalized_intent, dict) else {}
         desired = ctx.desired_state if isinstance(ctx.desired_state, dict) else {}
-        resolved_asset = ctx.automation_plan.get("resolved_asset", {}) if isinstance(ctx.automation_plan, dict) else {}
-        resolved_interface = resolved_asset.get("interface", {})
-        interface_defaults = resolved_interface.get("variable_defaults", {})
+        resolved_asset = (ctx.automation_plan.get("resolved_asset") or {}) if isinstance(ctx.automation_plan, dict) else {}
+        resolved_interface = (resolved_asset.get("interface") or {}) if isinstance(resolved_asset, dict) else {}
+        interface_defaults = (resolved_interface.get("variable_defaults") or {}) if isinstance(resolved_interface, dict) else {}
+
 
         def get_dynamic_port(default_val: int) -> int:
             val = (

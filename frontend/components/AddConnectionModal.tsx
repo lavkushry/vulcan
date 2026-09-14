@@ -157,8 +157,41 @@ export function AddConnectionModal({
   const [testResult, setTestResult] = useState<any | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [resumeError, setResumeError] = useState<{ message: string; workflowId: string } | null>(null);
+  const [isResuming, setIsResuming] = useState(false);
 
   if (!isOpen) return null;
+
+  const handleRetryResume = async () => {
+    if (!resumeError?.workflowId) return;
+    setIsResuming(true);
+    const baseUrl = getApiBaseUrl();
+    const token = typeof window !== 'undefined' ? window.localStorage.getItem('vulcan_api_token') : null;
+    try {
+      const res = await fetch(`${baseUrl}/api/v1/agentos/workflows/${encodeURIComponent(resumeError.workflowId)}/resume`, {
+        method: 'POST',
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      });
+      if (res.ok) {
+        setResumeError(null);
+        onClose();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        setResumeError({
+          message: `Connection saved; resume failed (${res.status}: ${err.detail || err.message || 'Unknown error'})`,
+          workflowId: resumeError.workflowId,
+        });
+      }
+    } catch (e: any) {
+      setResumeError({
+        message: `Connection saved; resume failed (Network error: ${e.message || 'Failed to reach backend'})`,
+        workflowId: resumeError.workflowId,
+      });
+    } finally {
+      setIsResuming(false);
+    }
+  };
+
 
   const handleSelectProvider = (prov: ProviderDefinition) => {
     setSelectedProvider(prov);
@@ -246,10 +279,26 @@ export function AddConnectionModal({
 
         // If a workflow was halted waiting for this resource, resume it automatically!
         if (workflowIdToResume) {
-          await fetch(`${baseUrl}/api/v1/agentos/workflows/${encodeURIComponent(workflowIdToResume)}/resume`, {
-            method: 'POST',
-            headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-          }).catch(() => {});
+          try {
+            const resumeRes = await fetch(`${baseUrl}/api/v1/agentos/workflows/${encodeURIComponent(workflowIdToResume)}/resume`, {
+              method: 'POST',
+              headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+            });
+            if (!resumeRes.ok) {
+              const err = await resumeRes.json().catch(() => ({}));
+              setResumeError({
+                message: `Connection saved; resume failed (${resumeRes.status}: ${err.detail || err.message || 'Failed to resume workflow'})`,
+                workflowId: workflowIdToResume,
+              });
+              return;
+            }
+          } catch (netErr: any) {
+            setResumeError({
+              message: `Connection saved; resume failed (Network error: ${netErr.message || 'Could not connect to backend'})`,
+              workflowId: workflowIdToResume,
+            });
+            return;
+          }
         }
 
         onClose();
@@ -257,6 +306,7 @@ export function AddConnectionModal({
         const err = await res.json().catch(() => ({}));
         setErrorMessage(err.message || err.detail || 'Failed to save connection');
       }
+
     } catch (e: any) {
       setErrorMessage(e.message || 'Error saving connection');
     } finally {
@@ -315,6 +365,39 @@ export function AddConnectionModal({
               <span>{errorMessage}</span>
             </div>
           )}
+
+          {resumeError && (
+            <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-mono flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="flex items-start gap-2">
+                <AlertCircle size={16} className="shrink-0 mt-0.5 text-amber-400" />
+                <div>
+                  <div className="font-bold">{resumeError.message}</div>
+                  <div className="text-[11px] text-amber-400/80 mt-0.5">
+                    Connection was saved, but workflow resumption failed. You can retry resuming now.
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+                <button
+                  type="button"
+                  onClick={handleRetryResume}
+                  disabled={isResuming}
+                  className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-40"
+                >
+                  <RefreshCw size={12} className={isResuming ? 'animate-spin' : ''} />
+                  <span>Retry Resume</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs cursor-pointer"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          )}
+
 
           {/* STEP 1: CHOOSE PROVIDER */}
           {step === 1 && (

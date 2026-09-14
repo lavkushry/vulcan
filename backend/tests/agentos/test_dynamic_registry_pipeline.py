@@ -282,7 +282,7 @@ def test_artifact_lifecycle_stage_and_inspection(tmp_path):
     resolved = resolver.resolve_and_download(
         identifier="geerlingguy.postgresql",
         version="3.4.0",
-        expected_sha="c7e1f4a920b13d8e5f2a1b3c4d5e6f7a8b9c0d1e",
+        expected_commit_sha="c7e1f4a920b13d8e5f2a1b3c4d5e6f7a8b9c0d1e",
         commit_sha="c7e1f4a920b13d8e5f2a1b3c4d5e6f7a8b9c0d1e",
         workflow_id="wf-lifecycle-01",
         workspace_parent=tmp_path,

@@ -25,41 +25,30 @@ from app.domain.external_resource_entities import (
     ResourceCategory,
     ResourceEnvironment,
 )
-from app.domain.roles_and_policies import UserRole
+from app.domain.roles_and_policies import UserRole, is_platform_admin, resolve_user_role
 
 logger = logging.getLogger("vulcan.api.external_resources")
 
 router = APIRouter(prefix="/external-resources", tags=["External Resources"])
 
-USER_ROLE_MAP: Dict[str, UserRole] = {
-    "admin.dave": UserRole.PLATFORM_ADMIN,
-    "system.admin": UserRole.PLATFORM_ADMIN,
-    "local.dev": UserRole.PLATFORM_ADMIN,
-    "sec.carol": UserRole.SECURITY_ADMIN,
-    "lead.bob": UserRole.APPROVING_LEAD,
-    "eng.alice": UserRole.OPERATOR,
-    "audit.emma": UserRole.AUDITOR,
-}
-
 
 def _get_user_and_role(request: Request) -> tuple[str, UserRole]:
     """Resolves authenticated username and RBAC role."""
     user_id = getattr(request.state, "user_id", None) or getattr(request.state, "user", None) or "anonymous"
-    role = USER_ROLE_MAP.get(user_id, UserRole.OPERATOR)
-    if user_id in ("system.admin", "admin.dave", "local.dev"):
-        role = UserRole.PLATFORM_ADMIN
+    role = resolve_user_role(user_id)
     return user_id, role
 
 
 def _require_platform_admin(request: Request) -> str:
     """Enforces that the caller holds PLATFORM_ADMIN role for mutations (R6)."""
     user_id, role = _get_user_and_role(request)
-    if role != UserRole.PLATFORM_ADMIN:
+    if not is_platform_admin(user_id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"Forbidden: Insufficient permissions. User '{user_id}' with role '{role.value}' cannot mutate external resources. Platform Admin role required."
         )
     return user_id
+
 
 
 def _get_repo(request: Request):
@@ -284,13 +273,11 @@ def test_preflight_connection(request: Request, req: PreflightTestRequest):
     user_id = _require_platform_admin(request)
     provider = ProviderRegistry.get_provider(req.provider)
     if not provider:
-        return {
-            "status": "HEALTHY",
-            "latency_ms": 14.2,
-            "http_status": 200,
-            "message": f"Pre-flight probe to '{req.provider}' passed (ready for configuration).",
-            "diagnostics": {"reachable": True, "provider": req.provider, "endpoint": req.endpoint},
-        }
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported provider '{req.provider}'. Cannot perform pre-flight verification."
+        )
+
 
     test_res = provider.test_connection(req.config, req.secret_refs, endpoint=req.endpoint)
     out = test_res.to_dict()

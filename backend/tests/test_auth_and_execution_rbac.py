@@ -37,6 +37,7 @@ class TestAuthAndExecutionRBAC(unittest.TestCase):
         os.environ.pop("VULCAN_AUTH_DISABLED", None)
         os.environ.pop("VULCAN_API_TOKENS", None)
         os.environ.pop("VULCAN_API_TOKEN", None)
+        os.environ.pop("VULCAN_ALLOW_DEV_TOKENS", None)
 
         app = create_app()
         client = TestClient(app)
