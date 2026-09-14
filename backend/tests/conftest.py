@@ -12,6 +12,12 @@ TEST_TOKENS = {
     "vlc_test_admin": "admin.dave",
     "vlc_test_sec": "sec.carol",
     "vlc_test_charlie": "operator.charlie",
+    "vlc_test_dave_ci_token": "admin.dave",
+    "vlc_test_bob_ci_token": "lead.bob",
+    "vlc_test_alice_ci_token": "eng.alice",
+    "vlc_test_carol_ci_token": "sec.carol",
+    "vlc_test_emma_ci_token": "audit.emma",
+    "vlc_test_bot_ci_token": "e2e.bot",
 }
 
 # Set default test environment variables BEFORE app import

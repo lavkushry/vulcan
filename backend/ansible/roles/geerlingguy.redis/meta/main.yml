@@ -1,0 +1,27 @@
+---
+dependencies: []
+
+galaxy_info:
+  role_name: redis
+  author: geerlingguy
+  description: Redis in-memory cache server for Linux.
+  company: "Midwestern Mac, LLC"
+  license: "license (BSD, MIT)"
+  min_ansible_version: "2.11"
+  platforms:
+    - name: EL
+      versions:
+        - 8
+        - 9
+    - name: Ubuntu
+      versions:
+        - focal
+        - jammy
+    - name: Debian
+      versions:
+        - bookworm
+        - bullseye
+  galaxy_tags:
+    - cache
+    - redis
+    - database

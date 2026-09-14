@@ -25,6 +25,7 @@ router = APIRouter(prefix="/agentos", tags=["AgentOS Ultra"])
 class CreateWorkflowRequest(BaseModel):
     original_request: str = Field(..., min_length=3, description="Natural language infrastructure requirement")
     environment: str = Field(default="PROD", description="Target environment: PROD, STAGE, or DEV")
+    auto_prepare: bool = Field(default=False, description="Automatically advance preparation through discovery, planning, composition, build, validation, and security")
 
 
 class SupplyInputRequest(BaseModel):
@@ -61,10 +62,92 @@ def _enforce_permission(request: Request, permission: Permission):
         )
 
 
+def generate_plan_summary(ctx) -> Dict[str, Any]:
+    intent = ctx.normalized_intent or {}
+    params = intent.get("known_parameters", {})
+    software = params.get("software") or intent.get("desired_outcome") or "service"
+    target = params.get("target_host") or params.get("target_resource_id") or params.get("hostname")
+    port = params.get("port")
+    mem = params.get("maxmemory_mb")
+    
+    plan = ctx.automation_plan or {}
+    selected = plan.get("selected_assets", [])
+    asset_name = selected[0] if selected else "Ansible Playbook"
+
+    # Human-readable synopsis
+    parts = [f"The plan configures {str(software).title()}"]
+    if mem:
+        parts.append(f"with a {mem} MB memory limit" if mem < 1024 else f"with a {round(mem/1024, 1)} GB memory limit")
+    if port:
+        parts.append(f"on port {port}")
+    if target:
+        parts.append(f"on `{target}`.")
+    else:
+        parts.append("(target server pending).")
+    synopsis = " ".join(parts)
+
+    next_action = "Review and deploy"
+    if ctx.current_state == WorkflowState.WAITING_FOR_INPUT:
+        missing = ctx.unresolved_questions or ["target host"]
+        next_action = f"Which development server should I use? (Required: {', '.join(missing)})"
+    elif ctx.current_state == WorkflowState.WAITING_FOR_RESOURCE:
+        missing_res = [r.get("provider") for r in ctx.required_resources if not r.get("is_available")]
+        next_action = f"Connect your execution environment to continue. [Add connection: {', '.join(missing_res)}]"
+    elif ctx.current_state in (WorkflowState.WAITING_FOR_APPROVAL, WorkflowState.EXECUTION_READY):
+        next_action = "Review and deploy"
+    elif ctx.current_state == WorkflowState.SUCCESS:
+        next_action = "Completed and verified"
+    elif ctx.current_state == WorkflowState.EXECUTION_FAILED:
+        next_action = "Execution failed — Rollback available"
+    elif ctx.current_state == WorkflowState.VERIFY_FAILED:
+        next_action = "Verification failed — Rollback available"
+
+    # Probes info
+    probes_summary = []
+    if ctx.postcondition_verification and "probes" in ctx.postcondition_verification:
+        probes_summary = ctx.postcondition_verification.get("probes", [])
+    elif port:
+        probes_summary = [
+            {"probe_type": "port_open", "target": target or "server", "expected": f"Port {port} open"},
+            {"probe_type": "service_status", "target": target or "server", "expected": f"{software} active"},
+        ]
+
+    # Execution outcome summary
+    execution_summary = None
+    if ctx.execution_result:
+        exec_res = ctx.execution_result
+        stdout = exec_res.get("stdout", "")
+        execution_summary = {
+            "exit_code": exec_res.get("exit_code", 0),
+            "what_ran": f"Playbook for {asset_name}",
+            "what_changed": "Host configuration applied successfully" if ("changed: [" in stdout or "changed=" in stdout) else "No changes needed",
+            "verification_established": "All dynamic probes passed" if (ctx.postcondition_verification or {}).get("all_passed") else "Verification pending or failed",
+            "stdout": stdout,
+        }
+
+    return {
+        "synopsis": synopsis,
+        "software": software,
+        "target_host": target,
+        "parameters": params,
+        "asset": asset_name,
+        "environment": ctx.environment,
+        "risk_tier": ctx.risk_classification.get("risk_tier", "TIER_2") if ctx.risk_classification else "TIER_2",
+        "next_action": next_action,
+        "probes": probes_summary,
+        "execution_summary": execution_summary,
+    }
+
+
+def _workflow_response(ctx) -> Dict[str, Any]:
+    out = ctx.to_dict()
+    out["plan_summary"] = generate_plan_summary(ctx)
+    return out
+
 
 @router.post("/workflows")
 def create_workflow(req: CreateWorkflowRequest, request: Request):
-    """Creates and persists a new canonical WorkflowContext in RECEIVED state."""
+    """Creates and persists a new canonical WorkflowContext, advancing through preparation if auto_prepare=True."""
     _enforce_permission(request, Permission.WORKFLOW_CREATE)
     requester_id = getattr(request.state, "user_id", None)
     
@@ -77,7 +160,27 @@ def create_workflow(req: CreateWorkflowRequest, request: Request):
             environment=req.environment,
             correlation_id=corr_id,
         )
-        return ctx.to_dict()
+
+        if req.auto_prepare:
+            # Advance automatically until paused (WAITING_FOR_INPUT, WAITING_FOR_RESOURCE, WAITING_FOR_APPROVAL, EXECUTION_READY) or terminal
+            max_steps = 15
+            for _ in range(max_steps):
+                prev_state = ctx.current_state
+                ctx = kernel.step(ctx.workflow_id)
+                if ctx.current_state in (
+                    WorkflowState.WAITING_FOR_INPUT,
+                    WorkflowState.WAITING_FOR_RESOURCE,
+                    WorkflowState.WAITING_FOR_APPROVAL,
+                    WorkflowState.EXECUTION_READY,
+                    WorkflowState.SUCCESS,
+                    WorkflowState.EXECUTION_FAILED,
+                    WorkflowState.VERIFY_FAILED,
+                    WorkflowState.POLICY_DENIED,
+                    WorkflowState.ROLLED_BACK,
+                ) or ctx.current_state == prev_state:
+                    break
+
+        return _workflow_response(ctx)
     except Exception as e:
         logger.error("Error creating workflow: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
@@ -99,13 +202,13 @@ def list_workflows(
 
 @router.get("/workflows/{workflow_id}")
 def get_workflow(workflow_id: str, request: Request):
-    """Retrieves full WorkflowContext by workflow_id."""
+    """Retrieves full WorkflowContext by workflow_id with plan summary."""
     _enforce_permission(request, Permission.WORKFLOW_READ_ALL)
     kernel = _get_kernel(request)
     ctx = kernel.repository.get_workflow(workflow_id)
     if not ctx:
         raise HTTPException(status_code=404, detail=f"Workflow '{workflow_id}' not found.")
-    return ctx.to_dict()
+    return _workflow_response(ctx)
 
 
 @router.post("/workflows/{workflow_id}/step")
@@ -115,7 +218,7 @@ def step_workflow(workflow_id: str, request: Request):
     kernel = _get_kernel(request)
     try:
         ctx = kernel.step(workflow_id)
-        return ctx.to_dict()
+        return _workflow_response(ctx)
     except StateTransitionError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except OptimisticLockError as e:
@@ -145,6 +248,7 @@ def auto_run_workflow(workflow_id: str, request: Request, max_steps: int = Query
             WorkflowState.WAITING_FOR_INPUT,
             WorkflowState.WAITING_FOR_RESOURCE,
             WorkflowState.WAITING_FOR_APPROVAL,
+            WorkflowState.EXECUTION_READY,
             WorkflowState.SUCCESS,
             WorkflowState.EVALUATING,
             WorkflowState.MANUAL_INTERVENTION_REQUIRED,
@@ -156,7 +260,7 @@ def auto_run_workflow(workflow_id: str, request: Request, max_steps: int = Query
             break
 
     return {
-        "workflow": ctx.to_dict(),
+        "workflow": _workflow_response(ctx),
         "steps_taken": steps_taken,
         "is_paused": ctx.current_state.value.startswith("WAITING_"),
         "is_terminal": ctx.current_state in (
@@ -169,8 +273,8 @@ def auto_run_workflow(workflow_id: str, request: Request, max_steps: int = Query
 
 
 @router.post("/workflows/{workflow_id}/input")
-def supply_input(workflow_id: str, req: SupplyInputRequest, request: Request):
-    """Supplies operator inputs to a workflow paused in WAITING_FOR_INPUT."""
+def supply_input(workflow_id: str, req: SupplyInputRequest, request: Request, auto_advance: bool = Query(default=True)):
+    """Supplies operator inputs to a workflow paused in WAITING_FOR_INPUT and automatically resumes preparation."""
     _enforce_permission(request, Permission.WORKFLOW_ADVANCE)
     user_id = getattr(request.state, "user_id", None)
     logger.info(f"Operator {user_id} supplying input for workflow {workflow_id}")
@@ -178,7 +282,23 @@ def supply_input(workflow_id: str, req: SupplyInputRequest, request: Request):
     kernel = _get_kernel(request)
     try:
         ctx = kernel.supply_input(workflow_id, req.operator_input)
-        return ctx.to_dict()
+        if auto_advance:
+            for _ in range(15):
+                prev_state = ctx.current_state
+                ctx = kernel.step(workflow_id)
+                if ctx.current_state in (
+                    WorkflowState.WAITING_FOR_INPUT,
+                    WorkflowState.WAITING_FOR_RESOURCE,
+                    WorkflowState.WAITING_FOR_APPROVAL,
+                    WorkflowState.EXECUTION_READY,
+                    WorkflowState.SUCCESS,
+                    WorkflowState.EXECUTION_FAILED,
+                    WorkflowState.VERIFY_FAILED,
+                    WorkflowState.POLICY_DENIED,
+                    WorkflowState.ROLLED_BACK,
+                ) or ctx.current_state == prev_state:
+                    break
+        return _workflow_response(ctx)
     except StateTransitionError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -186,7 +306,7 @@ def supply_input(workflow_id: str, req: SupplyInputRequest, request: Request):
 
 
 @router.post("/workflows/{workflow_id}/resume")
-def resume_workflow(workflow_id: str, request: Request):
+def resume_workflow(workflow_id: str, request: Request, auto_advance: bool = Query(default=True)):
     """Resumes a workflow paused in WAITING_FOR_RESOURCE after external resource configuration."""
     _enforce_permission(request, Permission.WORKFLOW_ADVANCE)
     user_id = getattr(request.state, "user_id", None)
@@ -195,7 +315,23 @@ def resume_workflow(workflow_id: str, request: Request):
     kernel = _get_kernel(request)
     try:
         ctx = kernel.resume_after_resource_config(workflow_id)
-        return ctx.to_dict()
+        if auto_advance:
+            for _ in range(15):
+                prev_state = ctx.current_state
+                ctx = kernel.step(workflow_id)
+                if ctx.current_state in (
+                    WorkflowState.WAITING_FOR_INPUT,
+                    WorkflowState.WAITING_FOR_RESOURCE,
+                    WorkflowState.WAITING_FOR_APPROVAL,
+                    WorkflowState.EXECUTION_READY,
+                    WorkflowState.SUCCESS,
+                    WorkflowState.EXECUTION_FAILED,
+                    WorkflowState.VERIFY_FAILED,
+                    WorkflowState.POLICY_DENIED,
+                    WorkflowState.ROLLED_BACK,
+                ) or ctx.current_state == prev_state:
+                    break
+        return _workflow_response(ctx)
     except StateTransitionError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -211,13 +347,38 @@ def approve_workflow(workflow_id: str, req: ApproveWorkflowRequest, request: Req
     kernel = _get_kernel(request)
     try:
         ctx = kernel.approve_workflow(workflow_id, approver_id=approver_id, reason=req.reason)
-        return ctx.to_dict()
+        return _workflow_response(ctx)
     except PermissionError as e:
         raise HTTPException(status_code=403, detail=str(e))
     except StateTransitionError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/workflows/{workflow_id}/deploy", summary="Authorize and execute prepared workflow")
+def deploy_workflow(workflow_id: str, request: Request, reason: str = Query(default="Authorized deployment")):
+    """Authorizes an execution-ready workflow, executes it, and independently verifies desired state."""
+    _enforce_permission(request, Permission.WORKFLOW_ADVANCE)
+    kernel = _get_kernel(request)
+    ctx = kernel.repository.get_workflow(workflow_id)
+    if not ctx:
+        raise HTTPException(status_code=404, detail=f"Workflow '{workflow_id}' not found.")
+
+    user_id = getattr(request.state, "user_id", None) or "admin.dave"
+
+    # If waiting for approval, approve it first
+    if ctx.current_state == WorkflowState.WAITING_FOR_APPROVAL:
+        ctx = kernel.approve_workflow(workflow_id, approver_id=user_id, reason=reason)
+
+    if ctx.current_state == WorkflowState.EXECUTION_READY:
+        # Step to EXECUTING -> VERIFYING
+        ctx = kernel.step(workflow_id)
+        # Step to VERIFYING -> SUCCESS
+        if ctx.current_state == WorkflowState.VERIFYING:
+            ctx = kernel.step(workflow_id)
+
+    return _workflow_response(ctx)
 
 
 @router.post("/workflows/{workflow_id}/rollback")

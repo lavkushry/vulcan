@@ -86,8 +86,12 @@ class ResourceAgent(BaseAgent):
             try:
                 if hasattr(self.resource_repo, "list_all"):
                     available_resources = self.resource_repo.list_all(environment=ctx.environment)
+                    if not available_resources:
+                        available_resources = self.resource_repo.list_all()
                 elif hasattr(self.resource_repo, "list_resources"):
                     available_resources = self.resource_repo.list_resources(environment=ctx.environment)
+                    if not available_resources:
+                        available_resources = self.resource_repo.list_resources()
                 else:
                     available_resources = []
             except Exception:

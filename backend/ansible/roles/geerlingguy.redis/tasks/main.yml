@@ -1,0 +1,27 @@
+---
+- name: Install Redis packages
+  ansible.builtin.package:
+    name: redis-server
+    state: present
+
+- name: Configure Redis port
+  ansible.builtin.lineinfile:
+    path: /etc/redis/redis.conf
+    regexp: '^#?port '
+    line: "port {{ redis_port }}"
+    state: present
+  notify: Restart Redis
+
+- name: Configure Redis maxmemory limit
+  ansible.builtin.lineinfile:
+    path: /etc/redis/redis.conf
+    regexp: '^#?maxmemory '
+    line: "maxmemory {{ redis_maxmemory_mb }}mb"
+    state: present
+  notify: Restart Redis
+
+- name: Ensure Redis service is running and enabled
+  ansible.builtin.service:
+    name: "{{ redis_service_name }}"
+    state: started
+    enabled: true

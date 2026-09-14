@@ -114,41 +114,32 @@ class ComposerAgent(BaseAgent):
         dag["step-2"] = ["step-1"]
         rollback_dag["step-2"] = "step-rollback"
 
-        # 3. Optional Step: Datadog Monitoring (ONLY if explicitly requested)
-        if known_params.get("monitoring") == "datadog" or "datadog" in prompt_lower:
+        # 3. Policy-Driven Organizational Requirements (Monitoring, Backup, Compliance)
+        # Evaluated via PolicyEngine rather than hardcoded DAG construction
+        policy_steps = []
+        if hasattr(ctx, "policy_engine") and ctx.policy_engine:
+            policy_steps = ctx.policy_engine.evaluate_organizational_requirements(ctx)
+        else:
+            from app.agentos.policy_engine import SimulationPolicyEngine
+            policy_steps = SimulationPolicyEngine().evaluate_organizational_requirements(ctx)
+
+        for p_step in policy_steps:
             s_idx = len(steps) + 1
             s_id = f"step-{s_idx}"
-            step_dd = ExecutionStep(
+            exec_step = ExecutionStep(
                 step_id=s_id,
-                name=f"{s_idx}. Attach Datadog APM & Host Telemetry",
-                action_identifier="datadog-agent-install",
+                name=f"{s_idx}. {p_step.name}",
+                action_identifier=p_step.action_identifier,
                 engine="ansible",
-                parameters={"integrations": [software]},
+                parameters=dict(p_step.parameters, software=software, policy_id=p_step.policy_id),
                 depends_on=["step-2"],
                 rollback_step_id="step-rollback",
-                postconditions=["datadog_metrics_flowing"],
+                postconditions=p_step.postconditions or [f"{p_step.step_type}_verified"],
             )
-            steps.append(step_dd)
+            steps.append(exec_step)
             dag[s_id] = ["step-2"]
             rollback_dag[s_id] = "step-rollback"
 
-        # 4. Optional Step: S3 Backup (ONLY if explicitly requested)
-        if known_params.get("backup") == "s3" or "s3" in prompt_lower:
-            s_idx = len(steps) + 1
-            s_id = f"step-{s_idx}"
-            step_s3 = ExecutionStep(
-                step_id=s_id,
-                name=f"{s_idx}. Configure S3 Automated Backup Target ({software})",
-                action_identifier=f"s3-{software}-backup-config",
-                engine="ansible",
-                parameters={"bucket_policy": "encrypted"},
-                depends_on=["step-2"],
-                rollback_step_id="step-rollback",
-                postconditions=["s3_backup_job_verified"],
-            )
-            steps.append(step_s3)
-            dag[s_id] = ["step-2"]
-            rollback_dag[s_id] = "step-rollback"
 
         return ComposerOutput(
             workflow_id=ctx.workflow_id,

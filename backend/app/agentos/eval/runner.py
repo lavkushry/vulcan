@@ -203,10 +203,12 @@ class AgentOSEvalRunner:
                 # Forged HMAC / tampered token test
                 if curr == WorkflowState.EXECUTION_READY and scenario.setup_kwargs.get("tamper_token"):
                     ctx = kernel.repository.get_workflow(ctx.workflow_id)
+                    if ctx.capability_token:
+                        ctx.capability_token["artifact_sha256"] = "forged_sha256_hash_tampered"
                     if ctx.generated_artifacts:
                         ctx.generated_artifacts[0]["artifact_sha256"] = "forged_sha256_hash_tampered"
-                        ctx.version += 1
-                        kernel.repository.save_workflow(ctx)
+                    ctx.version += 1
+                    kernel.repository.save_workflow(ctx)
 
                 prev_state = ctx.current_state
                 ctx = kernel.step(ctx.workflow_id)

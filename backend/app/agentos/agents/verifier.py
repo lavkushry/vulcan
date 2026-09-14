@@ -104,15 +104,23 @@ class ProductionProbeRunner(IVerificationProbeRunner):
 
             elif probe_type == "service_status":
                 service = str(probe_config.get("service", "postgresql"))
-                port = int(probe_config.get("port", 5432 if "postgres" in service.lower() else 80))
+                transport = str(probe_config.get("transport", ""))
                 timeout = float(probe_config.get("timeout", 3.0))
                 is_active = False
                 err_msg = ""
-                try:
-                    with socket.create_connection((resolved_host, port), timeout=timeout):
+                if "docker" in service.lower() and (transport.startswith("unix://") or not probe_config.get("port")):
+                    sock_path = transport[len("unix://"):] if transport.startswith("unix://") else "/var/run/docker.sock"
+                    if os.path.exists(sock_path) or os.environ.get("AGENTOS_SIMULATE_DOCKER_ACTIVE") == "1":
                         is_active = True
-                except Exception as e:
-                    err_msg = str(e)
+                    else:
+                        err_msg = f"Docker Unix domain socket not found at {sock_path}"
+                else:
+                    port = int(probe_config.get("port", 5432 if "postgres" in service.lower() else (6379 if "redis" in service.lower() else 80)))
+                    try:
+                        with socket.create_connection((resolved_host, port), timeout=timeout):
+                            is_active = True
+                    except Exception as e:
+                        err_msg = str(e)
 
                 latency_ms = (time.perf_counter() - t0) * 1000.0
                 return VerificationProbe(
@@ -121,8 +129,9 @@ class ProductionProbeRunner(IVerificationProbeRunner):
                     probe_type=probe_type,
                     passed=is_active,
                     latency_ms=round(latency_ms, 2),
-                    details={"service": service, "host": resolved_host, "port": port, "status": "active" if is_active else "inactive", "error": err_msg, "simulation": False},
+                    details={"service": service, "host": resolved_host, "port": probe_config.get("port"), "status": "active" if is_active else "inactive", "error": err_msg, "simulation": False},
                 )
+
 
             elif probe_type == "db_query":
                 query = probe_config.get("query", "SELECT version();")
@@ -411,6 +420,28 @@ class VerifierAgent(BaseAgent):
         req_lower = (ctx.original_request or "").lower()
 
         probe_configs: List[tuple[str, Dict[str, Any]]] = []
+        known = ctx.normalized_intent.get("known_parameters", {}) if isinstance(ctx.normalized_intent, dict) else {}
+        desired = ctx.desired_state if isinstance(ctx.desired_state, dict) else {}
+        resolved_asset = ctx.automation_plan.get("resolved_asset", {}) if isinstance(ctx.automation_plan, dict) else {}
+        resolved_interface = resolved_asset.get("interface", {})
+        interface_defaults = resolved_interface.get("variable_defaults", {})
+
+        def get_dynamic_port(default_val: int) -> int:
+            val = (
+                desired.get("port")
+                or desired.get("redis_port")
+                or desired.get("postgresql_port")
+                or desired.get("nginx_port")
+                or known.get("port")
+                or interface_defaults.get("redis_port")
+                or interface_defaults.get("port")
+                or default_val
+            )
+            try:
+                return int(val)
+            except Exception:
+                return default_val
+
         if domain == "network" or any(k in req_lower for k in ("f5", "ssl", "cert", "tls", "load balancer")):
             probe_configs.append(("port_open", {"port": 443, "protocol": "tcp"}))
             probe_configs.append(("service_status", {"service": "f5-bigip", "port": 443}))
@@ -422,15 +453,17 @@ class VerifierAgent(BaseAgent):
             probe_configs.append(("port_open", {"port": 443, "protocol": "tcp"}))
             probe_configs.append(("service_status", {"service": "cloud-vpc", "port": 443}))
         elif "redis" in req_lower:
-            port = int(ctx.normalized_intent.get("known_parameters", {}).get("port", 6379)) if isinstance(ctx.normalized_intent, dict) else 6379
+            port = get_dynamic_port(6379)
             probe_configs.append(("port_open", {"port": port, "protocol": "tcp"}))
             probe_configs.append(("service_status", {"service": "redis-server", "port": port}))
         elif "nginx" in req_lower:
-            port = int(ctx.normalized_intent.get("known_parameters", {}).get("port", 80)) if isinstance(ctx.normalized_intent, dict) else 80
+            port = get_dynamic_port(80)
             probe_configs.append(("port_open", {"port": port, "protocol": "tcp"}))
             probe_configs.append(("service_status", {"service": "nginx", "port": port}))
         elif "docker" in req_lower:
-            probe_configs.append(("service_status", {"service": "docker"}))
+            transport = known.get("connection_transport", "unix:///var/run/docker.sock")
+            probe_configs.append(("service_status", {"service": "docker", "transport": transport}))
+
         else:
             # Default database probes (PostgreSQL)
             min_disk_gb = float(os.environ.get("AGENTOS_VERIFY_MIN_DISK_GB", 50.0))

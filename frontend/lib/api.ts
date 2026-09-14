@@ -147,7 +147,7 @@ export const api = {
     syncExternalResource: (id: string) =>
       req<any>("POST", `/api/v1/external-resources/${encodeURIComponent(id)}/sync`),
     // AgentOS Ultra Multi-Agent Endpoints (AGENT-13)
-    createAgentWorkflow: (payload: { original_request: string; requester_id?: string; environment?: string }) =>
+    createAgentWorkflow: (payload: { original_request: string; requester_id?: string; environment?: string; auto_prepare?: boolean }) =>
       req<import("./types").AgentWorkflowContext>("POST", "/api/v1/agentos/workflows", payload),
     listAgentWorkflows: (filters?: { limit?: number; offset?: number; state?: string }) => {
       const params = new URLSearchParams();
@@ -176,12 +176,19 @@ export const api = {
       req<import("./types").AgentWorkflowContext>("POST", `/api/v1/agentos/workflows/${encodeURIComponent(id)}/rollback`),
     getAgentWorkflowEvents: (id: string) =>
       req<import("./types").AgentWorkflowEvent[]>("GET", `/api/v1/agentos/workflows/${encodeURIComponent(id)}/events`),
+    deployAgentWorkflow: (id: string, reason = "User authorized deployment") =>
+      req<import("./types").AgentWorkflowContext>("POST", `/api/v1/agentos/workflows/${encodeURIComponent(id)}/deploy?reason=${encodeURIComponent(reason)}`),
     listAgents: () =>
       req<import("./types").AgentVersionInfo[]>("GET", "/api/v1/agentos/agents"),
     listEvals: (limit = 50) =>
       req<import("./types").EvalRunRecord[]>("GET", `/api/v1/agentos/evals?limit=${limit}`),
     runEval: (tier = 0) =>
       req<import("./types").EvalRunRecord>("POST", "/api/v1/agentos/evals/run", { tier }),
+    auth: {
+      getSession: () => req<{ authenticated: boolean; user_id: string | null; role: string | null; role_badge: string | null; permissions: string[]; status: string }>("GET", "/api/v1/auth/session"),
+      verifyToken: (token: string) => req<{ authenticated: boolean; user_id: string; role: string; role_badge: string; permissions: string[]; token: string }>("POST", "/api/v1/auth/verify-token", { token }),
+      listTestPersonas: () => req<Array<{ id: string; name: string; role: string; role_badge: string; token: string; description: string }>>("GET", "/api/v1/auth/test-personas"),
+    },
   };
 
 

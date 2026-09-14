@@ -510,6 +510,14 @@ export interface AgentWorkflowContext {
   eval_result: Record<string, any>;
   evidence_records: any[];
   trust_scores: Record<string, any>;
+  plan_summary?: {
+    synopsis?: string;
+    target_server?: string;
+    package?: string;
+    planned_probes?: string[];
+    state?: string;
+  };
+  composed_playbook?: Record<string, any>;
   version: number;
   created_at: string;
   updated_at: string;

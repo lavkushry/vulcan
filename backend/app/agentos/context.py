@@ -393,8 +393,10 @@ class WorkflowContext:
     rollback_state: Dict[str, Any] = field(default_factory=dict)
     curation_state: Dict[str, Any] = field(default_factory=dict)
     eval_result: Dict[str, Any] = field(default_factory=dict)
+    capability_token: Optional[Dict[str, Any]] = None
 
     error_message: Optional[str] = None
+
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 

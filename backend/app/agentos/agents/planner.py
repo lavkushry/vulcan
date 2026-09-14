@@ -5,16 +5,29 @@ Author: Architectural Review Board & AgentOS Core Team
 Responsibility:
 - Formulate automation strategy prioritizing existing trusted automation:
   Retrieve -> Compose -> Adapt -> Generate
-- Generation is strictly the last resort
+- Provisional Ranking & Re-Resolution Loop:
+  Ranks candidates provisionally, then iterates through candidates resolving,
+  downloading, and inspecting interfaces.
+  If an asset is incompatible (OS mismatch or digest failure), records explicit
+  reason in rejected_candidates and tries the next candidate!
 """
 from __future__ import annotations
 
+import logging
 import re
 from typing import Any, Dict, List, Optional, Tuple, Type
 from app.agentos.agents.base import BaseAgent
+from app.agentos.artifacts.resolver import (
+    ArtifactResolver,
+    DigestMismatchError,
+    IncompatiblePlatformError,
+    RegistryUnavailableError,
+)
 from app.agentos.context import WorkflowContext, WorkflowState
 from app.agentos.schemas import AgentRole, BaseAgentOutput, ExecutionMode, PlannerDecision, PlannerOutput, RejectedCandidate
 from app.agentos.confidence import ConfidenceEngine
+
+logger = logging.getLogger("vulcan.planner")
 
 
 class PlannerAgent(BaseAgent):
@@ -33,7 +46,7 @@ class PlannerAgent(BaseAgent):
 
     def _score_candidate(self, candidate: Dict[str, Any], ctx: WorkflowContext) -> Tuple[Optional[float], Optional[str]]:
         """
-        Scores a candidate asset across 4 dimensions:
+        Scores a candidate asset provisionally across 4 dimensions:
         1. Capability Match (0.35)
         2. Trust State & Security (0.25)
         3. Platform Version Compatibility (0.20)
@@ -73,7 +86,11 @@ class PlannerAgent(BaseAgent):
         name_lower = str(candidate.get("name", "")).lower()
 
         capability_score = relevance
-        keywords = ["postgres", "postgresql", "redis", "mysql", "mongodb", "docker", "nginx", "jenkins", "gitlab", "ssl", "f5", "tablespace", "rhel", "patch", "vpc", "aws"]
+        keywords = [
+            "postgres", "postgresql", "redis", "mysql", "mongodb",
+            "docker", "nginx", "jenkins", "gitlab", "ssl", "f5",
+            "tablespace", "rhel", "patch", "vpc", "aws"
+        ]
         matches = [kw for kw in keywords if kw in req_lower and (kw in ident_lower or kw in name_lower)]
         if matches:
             capability_score = min(1.0, capability_score + 0.2)
@@ -90,18 +107,10 @@ class PlannerAgent(BaseAgent):
             elif any(f"version_{v}" in ident_lower or f"postgres_{v}" in ident_lower for v in ["12", "13", "14", "15", "16"] if v != target_v):
                 return None, f"Incompatible platform version: candidate is for different major version than requested {target_v}."
 
-        # 5b. OS Platform Compatibility
+        # 5b. Catalog metadata OS Platform heuristic (if explicitly declared)
         requested_os = ctx.normalized_intent.get("known_parameters", {}).get("os_platform") if isinstance(ctx.normalized_intent, dict) else None
-        if requested_os:
-            from app.agentos.artifacts.resolver import ArtifactResolver
+        if requested_os and metadata:
             supported_platforms = metadata.get("supported_platforms", [])
-            if not supported_platforms:
-                resolver = ArtifactResolver()
-                try:
-                    resolved = resolver.resolve_and_download(identifier, requested_os=requested_os)
-                    supported_platforms = resolved.interface.supported_platforms
-                except Exception:
-                    pass
             if supported_platforms and not ArtifactResolver.is_os_compatible(requested_os, supported_platforms):
                 return None, f"Incompatible OS platform: candidate does not support requested OS '{requested_os}'."
 
@@ -126,6 +135,7 @@ class PlannerAgent(BaseAgent):
         rejected_candidates: List[RejectedCandidate] = []
         ranked_candidates: List[Dict[str, Any]] = []
 
+        # 1. Provisional Scoring & Ranking
         for candidate in discovered:
             score, rejection_reason = self._score_candidate(candidate, ctx)
             ident = candidate.get("identifier", "unknown")
@@ -143,24 +153,97 @@ class PlannerAgent(BaseAgent):
                 cand_entry["composite_score"] = score
                 ranked_candidates.append(cand_entry)
 
-        # Sort ranked candidates by score descending
+        # Sort provisionally by score descending
         ranked_candidates.sort(key=lambda c: c["composite_score"], reverse=True)
 
-        if ranked_candidates:
-            top = ranked_candidates[0]
-            selected = [top.get("identifier")]
-            top_score = top["composite_score"]
-            is_curated = bool(top.get("is_curated") or top.get("trust_state") == "CURATED")
+        # 2. Provisional Ranking & Re-Resolution Loop
+        # Resolver inspects metadata, argument_specs.yml, and OS compatibility.
+        # If incompatible, record reason in rejected_candidates and try the next candidate!
+        resolver = ArtifactResolver()
+        known_params = ctx.normalized_intent.get("known_parameters", {}) if isinstance(ctx.normalized_intent, dict) else {}
+        requested_os = known_params.get("os_platform")
+        test_expected_sha = known_params.get("expected_artifact_sha")
 
-            for alt in ranked_candidates[1:]:
+        selected: List[str] = []
+        selected_cand: Optional[Dict[str, Any]] = None
+        resolved_asset_dict: Optional[Dict[str, Any]] = None
+
+        for idx, cand in enumerate(ranked_candidates):
+            cand_id = cand.get("identifier", "")
+            cand_meta = cand.get("metadata", {})
+            cand_sha = cand.get("commit_sha")
+
+            try:
+                resolved = resolver.resolve_and_download(
+                    identifier=cand_id,
+                    expected_sha=test_expected_sha or cand_sha,
+                    commit_sha=cand_sha,
+                    requested_os=requested_os,
+                    workflow_id=ctx.workflow_id,
+                    raw_catalog_item=cand_meta,
+                    provided_parameters=known_params,
+                )
+
+                if not resolved.is_compatible:
+                    rejected_candidates.append(
+                        RejectedCandidate(
+                            identifier=cand_id,
+                            reason=resolved.incompatibility_reason or f"Candidate '{cand_id}' is incompatible with requested OS '{requested_os}'",
+                            score=cand["composite_score"],
+                            trust_state=cand.get("trust_state"),
+                        )
+                    )
+                    continue
+
+                # Compatible and verified candidate found!
+                selected = [cand_id]
+                selected_cand = cand
+                resolved_asset_dict = resolved.to_dict()
+
+                # Record any remaining lower-ranked candidates as not selected
+                for alt in ranked_candidates[idx + 1:]:
+                    rejected_candidates.append(
+                        RejectedCandidate(
+                            identifier=alt.get("identifier", ""),
+                            reason=f"Ranked lower than selected candidate '{cand_id}' (score {alt['composite_score']:.2f} vs {cand['composite_score']:.2f})",
+                            score=alt["composite_score"],
+                            trust_state=alt.get("trust_state"),
+                        )
+                    )
+                break
+
+            except (IncompatiblePlatformError, DigestMismatchError, RegistryUnavailableError) as err:
                 rejected_candidates.append(
                     RejectedCandidate(
-                        identifier=alt.get("identifier", ""),
-                        reason=f"Ranked lower than top candidate '{selected[0]}' (score {alt['composite_score']:.2f} vs {top_score:.2f})",
-                        score=alt["composite_score"],
-                        trust_state=alt.get("trust_state"),
+                        identifier=cand_id,
+                        reason=str(err),
+                        score=cand["composite_score"],
+                        trust_state=cand.get("trust_state"),
                     )
                 )
+                continue
+            except Exception as err:
+                logger.warning("Resolution error on candidate %s: %s", cand_id, err)
+                rejected_candidates.append(
+                    RejectedCandidate(
+                        identifier=cand_id,
+                        reason=f"Resolution error: {err}",
+                        score=cand["composite_score"],
+                        trust_state=cand.get("trust_state"),
+                    )
+                )
+                continue
+
+        # Save resolved asset into context if selected
+        if resolved_asset_dict:
+            if not isinstance(ctx.automation_plan, dict):
+                ctx.automation_plan = {}
+            ctx.automation_plan["resolved_asset"] = resolved_asset_dict
+
+        # 3. Decision & Next State Formulation
+        if selected and selected_cand:
+            top_score = selected_cand["composite_score"]
+            is_curated = bool(selected_cand.get("is_curated") or selected_cand.get("trust_state") == "CURATED")
 
             if is_curated and top_score >= 0.75:
                 decision = PlannerDecision.COMPOSE
@@ -173,7 +256,11 @@ class PlannerAgent(BaseAgent):
                 strategy = f"Adapt candidate '{selected[0]}' by injecting enterprise hardening and rollback."
                 next_state = WorkflowState.GENERATING.value
 
-            second_score = ranked_candidates[1]["composite_score"] if len(ranked_candidates) > 1 else (top_score - 0.2 if is_curated else 0.0)
+            second_score = (
+                ranked_candidates[1]["composite_score"]
+                if len(ranked_candidates) > 1 and ranked_candidates[1]["identifier"] != selected[0]
+                else (top_score - 0.2 if is_curated else 0.0)
+            )
             margin = max(0.0, top_score - second_score)
 
             assessment = ConfidenceEngine.calculate_confidence(
@@ -222,7 +309,9 @@ class PlannerAgent(BaseAgent):
             proposed_next_state=next_state,
             rejected_candidates=rejected_candidates,
             candidate_rankings=[{"identifier": c["identifier"], "score": c["composite_score"]} for c in ranked_candidates],
+            resolved_asset=resolved_asset_dict,
             confidence=confidence,
             execution_mode=ExecutionMode.SIMULATED,
-            rationale=f"Strategy '{decision.value}' selected. Ranked {len(ranked_candidates)} candidates, rejected {len(rejected_candidates)}.",
+            rationale=f"Strategy '{decision.value}' selected. Evaluated {len(ranked_candidates)} candidates, rejected {len(rejected_candidates)}.",
         )
+

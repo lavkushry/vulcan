@@ -9,10 +9,12 @@ import {
   Eye, EyeOff, Save, X, Radio, Clock, Check, Sparkles,
   Database, Server, Compass, ChevronRight, Terminal,
   AlertTriangle, Cloud, Zap, ShieldAlert, FileCode2,
-  HardDrive, Sliders, CheckSquare, Square, ToggleLeft, ToggleRight
+  HardDrive, Sliders, CheckSquare, Square, ToggleLeft, ToggleRight,
+  Plus
 } from 'lucide-react';
 import { useVulcan } from '@/lib/context';
 import { api, DEMO_USERS } from '@/lib/api';
+import AddConnectionModal from './AddConnectionModal';
 import type {
   ExternalResource,
   ResourceCategory,
@@ -460,6 +462,13 @@ export function ExternalResourcesConsole() {
   const [testResult, setTestResult] = useState<ConnectionTestResult | null>(null);
   const [syncingId, setSyncingId] = useState<string | null>(null);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (searchParams?.get('action') === 'add') {
+      setIsAddModalOpen(true);
+    }
+  }, [searchParams]);
 
   // Configuration Form State (Generic & Microsoft Foundry Specialized)
   const [formDisplayName, setFormDisplayName] = useState<string>('');
@@ -866,9 +875,20 @@ export function ExternalResourcesConsole() {
                 </p>
               </div>
             </div>
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-900 border border-glass-border text-slate-400">
-              {resources.length} Total
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-900 border border-glass-border text-slate-400">
+                {resources.length} Total
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsAddModalOpen(true)}
+                className="flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 text-cyan-300 font-semibold transition-all cursor-pointer"
+                title="Add connection"
+              >
+                <Plus size={11} />
+                <span>Add</span>
+              </button>
+            </div>
           </div>
 
           <div className="relative">
@@ -924,13 +944,23 @@ export function ExternalResourcesConsole() {
               <p className="text-[11px] text-slate-500 leading-relaxed font-sans">
                 Connect external cloud providers, models, or credential vaults, or view sample configurations in demo mode.
               </p>
-              <button
-                type="button"
-                onClick={() => toggleDemoMode(true)}
-                className="px-3 py-1.5 rounded-lg bg-cyan-500/15 border border-cyan-500/30 text-cyan-300 text-xs font-mono hover:bg-cyan-500/25 transition-colors"
-              >
-                Load Sample Demo Connections
-              </button>
+              <div className="flex flex-col gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setIsAddModalOpen(true)}
+                  className="px-3 py-1.5 rounded-lg bg-cyan-500 text-slate-950 font-bold text-xs font-mono hover:bg-cyan-400 transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-lg shadow-cyan-500/20"
+                >
+                  <Plus size={13} />
+                  <span>Add Connection</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => toggleDemoMode(true)}
+                  className="px-3 py-1.5 rounded-lg bg-slate-900 border border-glass-border text-slate-400 text-xs font-mono hover:text-slate-200 transition-colors"
+                >
+                  Load Sample Demo Connections
+                </button>
+              </div>
             </div>
           )}
           {categories.map((cat) => {
@@ -1032,6 +1062,14 @@ export function ExternalResourcesConsole() {
               No live cloud, AI model, or vault connections are active. Configure your enterprise endpoints or enable Demo Mode to explore simulated configurations.
             </p>
             <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setIsAddModalOpen(true)}
+                className="px-4 py-2 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-mono text-xs font-bold flex items-center gap-2 transition-all cursor-pointer shadow-lg shadow-cyan-500/20"
+              >
+                <Plus size={14} />
+                <span>Add Connection</span>
+              </button>
               <button
                 type="button"
                 onClick={() => toggleDemoMode(true)}
@@ -1994,6 +2032,25 @@ export function ExternalResourcesConsole() {
           </>
         )}
       </div>
+
+      {/* Add Connection Modal */}
+      <AddConnectionModal
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+        onSaved={(newRes) => {
+          setResources((prev) => {
+            const exists = prev.some(r => r.resource_id === newRes.resource_id);
+            if (exists) {
+              return prev.map(r => r.resource_id === newRes.resource_id ? newRes : r);
+            }
+            return [newRes, ...prev];
+          });
+          setSelectedId(newRes.resource_id);
+        }}
+        initialProvider={searchParams?.get('provider') || undefined}
+        workflowIdToResume={searchParams?.get('workflow_id') || undefined}
+        returnTo={returnTo}
+      />
     </div>
   );
 }

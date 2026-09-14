@@ -156,6 +156,8 @@ class PlannerOutput(BaseAgentOutput):
     target_engine: str = "ansible"
     rejected_candidates: List[RejectedCandidate] = Field(default_factory=list)
     candidate_rankings: List[Dict[str, Any]] = Field(default_factory=list)
+    resolved_asset: Optional[Dict[str, Any]] = None
+
 
 
 # 7. Composer Output

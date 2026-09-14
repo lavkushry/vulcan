@@ -6,11 +6,12 @@ Responsibilities:
 1. Maintain explicit artifact lifecycle states:
    DISCOVERED -> DOWNLOADED -> VERIFIED (or INCOMPATIBLE / REJECTED)
 2. Verify cryptographic commit digest / SHA256 integrity (DigestMismatchError).
-3. Stage artifact into an isolated execution workspace.
+3. Stage artifact into an isolated execution workspace using ContentAddressableCache.
 4. Inspect real role interfaces:
+   - meta/argument_specs.yml: formal option schema (types, required, defaults, choices)
+   - catalog input_schema: formal fallback specification
    - meta/main.yml: supported platforms, dependencies
-   - defaults/main.yml: variables, default values
-   - input_schema: documented parameter contracts
+   - defaults/main.yml: fallback variable defaults
 5. Evaluate OS platform compatibility against user specifications.
 """
 from __future__ import annotations
@@ -21,9 +22,20 @@ import json
 import logging
 import os
 from pathlib import Path
+import shutil
 from typing import Any, Dict, List, Optional
 
 from app.agentos.artifacts.yaml_parser import parse_yaml
+from app.agentos.artifacts.downloader import (
+    ArchiveSafetyValidator,
+    ContentAddressableCache,
+    GalaxyDownloadAdapter,
+    GitDownloadAdapter,
+    LocalCatalogAdapter,
+    RegistryDownloadAdapter,
+    RegistryUnavailableError,
+    SecurityError,
+)
 
 logger = logging.getLogger("vulcan.artifact_resolver")
 
@@ -41,13 +53,13 @@ class DigestMismatchError(Exception):
     pass
 
 
-class RegistryUnavailableError(Exception):
-    """Raised when an external or upstream registry cannot be reached."""
+class IncompatiblePlatformError(Exception):
+    """Raised when an asset's supported platforms do not satisfy the requested OS."""
     pass
 
 
-class IncompatiblePlatformError(Exception):
-    """Raised when an asset's supported platforms do not satisfy the requested OS."""
+class MissingRequiredVariableError(Exception):
+    """Raised when an asset requires parameters that were neither supplied nor have defaults."""
     pass
 
 
@@ -64,7 +76,9 @@ class RoleInterface:
         dependencies: List[str],
         tasks_summary: List[str],
         input_schema: Optional[Dict[str, Any]] = None,
+        argument_specs: Optional[Dict[str, Any]] = None,
         playbook_path: Optional[str] = None,
+        missing_required_variables: Optional[List[str]] = None,
     ):
         self.identifier = identifier
         self.name = name
@@ -74,7 +88,9 @@ class RoleInterface:
         self.dependencies = dependencies
         self.tasks_summary = tasks_summary
         self.input_schema = input_schema or {}
+        self.argument_specs = argument_specs or {}
         self.playbook_path = playbook_path
+        self.missing_required_variables = missing_required_variables or []
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -86,7 +102,9 @@ class RoleInterface:
             "dependencies": self.dependencies,
             "tasks_summary": self.tasks_summary,
             "input_schema": self.input_schema,
+            "argument_specs": self.argument_specs,
             "playbook_path": self.playbook_path,
+            "missing_required_variables": self.missing_required_variables,
         }
 
 
@@ -150,12 +168,21 @@ class ResolvedAsset:
 class ArtifactResolver:
     """
     Resolves, downloads, stages, and verifies automation assets from catalogs and registries.
+    Backboned by ContentAddressableCache and RegistryDownloadAdapters.
     """
 
-    def __init__(self, base_repo_dir: Optional[Path] = None):
+    def __init__(
+        self,
+        base_repo_dir: Optional[Path] = None,
+        cache_root: Optional[Path] = None,
+    ):
         self.base_dir = base_repo_dir or Path(__file__).resolve().parent.parent.parent.parent
         self.roles_dir = self.base_dir / "ansible" / "roles"
         self.playbooks_dir = self.base_dir / "ansible" / "playbooks"
+        self.cache = ContentAddressableCache(cache_root=cache_root)
+        self.local_adapter = LocalCatalogAdapter(self.base_dir)
+        self.galaxy_adapter = GalaxyDownloadAdapter(local_fallback=self.local_adapter)
+        self.git_adapter = GitDownloadAdapter()
 
     @classmethod
     def is_os_compatible(
@@ -170,13 +197,10 @@ class ArtifactResolver:
         if not requested_os:
             return True
         if not supported_platforms:
-            # If no platform restrictions declared, assume general Linux compatibility
-            # unless the request explicitly targets non-Linux
             return requested_os.lower() not in ("windows", "win", "macos", "darwin")
 
         req = requested_os.lower().replace(" ", "").replace("_", "").replace("-", "")
 
-        # Target classification
         is_redhat_family = any(rh in req for rh in ["rhel", "redhat", "rocky", "almalinux", "centos", "fedora", "el"])
         is_debian_family = any(deb in req for deb in ["ubuntu", "debian", "mint", "popos"])
         is_windows = any(w in req for w in ["windows", "win"])
@@ -198,7 +222,6 @@ class ArtifactResolver:
                 for p_name in supported_names
             )
 
-        # Direct string matching fallback
         return any(req in p_name or p_name in req for p_name in supported_names)
 
     def resolve_and_download(
@@ -212,85 +235,95 @@ class ArtifactResolver:
         workflow_id: str = "wf-default",
         workspace_parent: Optional[Path] = None,
         raw_catalog_item: Optional[Dict[str, Any]] = None,
+        provided_parameters: Optional[Dict[str, Any]] = None,
     ) -> ResolvedAsset:
         """
         Orchestrates DISCOVERED -> DOWNLOADED -> VERIFIED pipeline.
+        Enforces:
+        - Registry health check
+        - ContentAddressableCache lookup
+        - Cryptographic SHA-256 / commit digest verification
+        - meta/argument_specs.yml priority inspection
+        - Fallback defaults and missing required variable detection
+        - Operating system platform compatibility
         """
         # 1. State: DISCOVERED
         current_state = ArtifactState.DISCOVERED
 
-        # Resolve role directory or playbook path
-        role_dir: Optional[Path] = None
-        playbook_file: Optional[Path] = None
+        if os.environ.get("VULCAN_REGISTRY_UNAVAILABLE") == "1":
+            raise RegistryUnavailableError(f"External registry is unreachable for asset '{identifier}'.")
 
-        # Check local roles directory
-        candidate_role_names = [
-            identifier,
-            identifier.split(".")[-1],
-            f"geerlingguy.{identifier.split('.')[-1]}",
-        ]
-        for rname in candidate_role_names:
-            p = self.roles_dir / rname
-            if p.exists() and p.is_dir():
-                role_dir = p
-                break
-
-        # Check catalog playbook path
-        if raw_catalog_item and raw_catalog_item.get("playbook_or_module_path"):
-            pb_rel = raw_catalog_item["playbook_or_module_path"]
-            if pb_rel.startswith("ansible/"):
-                pb_rel = pb_rel[len("ansible/"):]
-            p = self.base_dir / "ansible" / pb_rel
-            if p.exists() and p.is_file():
-                playbook_file = p
-
-        # Check direct playbooks_dir
-        if not playbook_file:
-            for fname in [f"{identifier}.yml", f"{identifier.replace('-', '_')}.yml", f"{identifier.split('.')[-1]}_deploy.yml"]:
-                p = self.playbooks_dir / fname
-                if p.exists():
-                    playbook_file = p
-                    break
-
-        # 2. Stage files into isolated workspace
         staging_parent = workspace_parent or Path(f"/tmp/vulcan_staging/{workflow_id}")
         staged_dir = staging_parent / identifier.replace(".", "_")
         staged_dir.mkdir(parents=True, exist_ok=True)
-
         staged_files: Dict[str, str] = {}
 
-        if role_dir:
-            for root, _, files in os.walk(role_dir):
-                for f in sorted(files):
-                    fp = Path(root) / f
-                    rel_path = fp.relative_to(role_dir)
-                    try:
-                        content = fp.read_text(encoding="utf-8")
-                        staged_files[str(rel_path)] = content
-                        dest = staged_dir / rel_path
-                        dest.parent.mkdir(parents=True, exist_ok=True)
-                        dest.write_text(content, encoding="utf-8")
-                    except Exception:
-                        pass
-        elif playbook_file:
-            content = playbook_file.read_text(encoding="utf-8")
-            staged_files[playbook_file.name] = content
-            (staged_dir / playbook_file.name).write_text(content, encoding="utf-8")
-        else:
-            # Synthetic / generated staging fallback
-            synthetic_content = f"# Managed by Vulcan AgentOS\n# Identifier: {identifier}\n"
-            staged_files["main.yml"] = synthetic_content
-            (staged_dir / "main.yml").write_text(synthetic_content, encoding="utf-8")
+        # 2. Check ContentAddressableCache first if expected_sha matches a cached digest
+        used_cached = False
+        if expected_sha and self.cache.contains(expected_sha):
+            cached_path = self.cache.get(expected_sha)
+            if cached_path:
+                for root, _, files in os.walk(cached_path):
+                    for f in sorted(files):
+                        fp = Path(root) / f
+                        rel_path = fp.relative_to(cached_path)
+                        try:
+                            content = fp.read_text(encoding="utf-8")
+                            staged_files[str(rel_path)] = content
+                            dest = staged_dir / rel_path
+                            dest.parent.mkdir(parents=True, exist_ok=True)
+                            dest.write_text(content, encoding="utf-8")
+                        except Exception:
+                            pass
+                used_cached = True
 
-        # 2. State: DOWNLOADED
+        if not used_cached:
+            # Download via appropriate adapter
+            # Determine source: if git_repo declared in raw_catalog_item or git in source_uri
+            adapter: RegistryDownloadAdapter = self.local_adapter
+            if "galaxy" in source_uri or (raw_catalog_item and raw_catalog_item.get("source_type") == "galaxy"):
+                adapter = self.galaxy_adapter
+            elif "git" in source_uri or (raw_catalog_item and raw_catalog_item.get("source_type") == "git"):
+                adapter = self.git_adapter
+
+            downloaded_root = adapter.download_artifact(identifier, version, staging_parent)
+
+            # Copy downloaded contents to staged_dir if distinct
+            if downloaded_root != staged_dir:
+                for root, _, files in os.walk(downloaded_root):
+                    for f in sorted(files):
+                        fp = Path(root) / f
+                        rel_path = fp.relative_to(downloaded_root)
+                        try:
+                            content = fp.read_text(encoding="utf-8")
+                            staged_files[str(rel_path)] = content
+                            dest = staged_dir / rel_path
+                            dest.parent.mkdir(parents=True, exist_ok=True)
+                            dest.write_text(content, encoding="utf-8")
+                        except Exception:
+                            pass
+            else:
+                for root, _, files in os.walk(staged_dir):
+                    for f in sorted(files):
+                        fp = Path(root) / f
+                        rel_path = fp.relative_to(staged_dir)
+                        try:
+                            staged_files[str(rel_path)] = fp.read_text(encoding="utf-8")
+                        except Exception:
+                            pass
+
+        # 3. State: DOWNLOADED
         current_state = ArtifactState.DOWNLOADED
 
-        # 3. Compute artifact content digest SHA-256
+        # 4. Compute artifact content digest SHA-256
         combined = []
         for path in sorted(staged_files.keys()):
             combined.append(f"{path}:{staged_files[path]}")
         raw_bytes = "\n---FILE---\n".join(combined).encode("utf-8")
         computed_digest = hashlib.sha256(raw_bytes).hexdigest()
+
+        # Cache valid artifact
+        self.cache.put(computed_digest, staged_dir)
 
         actual_commit_sha = (
             commit_sha
@@ -308,17 +341,60 @@ class ArtifactResolver:
                     f"Artifact digest mismatch for '{identifier}'! Expected '{expected_sha}', but computed '{computed_digest}' (commit '{actual_commit_sha}')."
                 )
 
-        # 4. Inspect real interface
+        # 5. Interface Inspection: argument_specs.yml priority -> input_schema -> defaults/main.yml fallback
         platforms: List[Dict[str, Any]] = []
         dependencies: List[str] = []
         defaults: Dict[str, Any] = {}
         required_vars: List[str] = []
+        argument_specs: Dict[str, Any] = {}
         tasks: List[str] = []
         input_schema: Dict[str, Any] = (
             raw_catalog_item.get("input_schema", {}) if raw_catalog_item else {}
         )
 
-        # Read meta/main.yml
+        # 5a. Read meta/argument_specs.yml (Ansible 2.11+ formal standard)
+        arg_specs_raw = (
+            staged_files.get("meta/argument_specs.yml")
+            or staged_files.get("meta/argument_specs.yaml")
+        )
+        if arg_specs_raw:
+            try:
+                parsed_specs = parse_yaml(arg_specs_raw) or {}
+                if isinstance(parsed_specs, dict) and "argument_specs" in parsed_specs:
+                    argument_specs = parsed_specs["argument_specs"]
+                    main_options = argument_specs.get("main", {}).get("options", {})
+                    for opt_k, opt_v in main_options.items():
+                        if isinstance(opt_v, dict):
+                            if opt_v.get("required") is True:
+                                if opt_k not in required_vars:
+                                    required_vars.append(opt_k)
+                            if "default" in opt_v:
+                                defaults[opt_k] = opt_v["default"]
+            except Exception as e:
+                logger.warning("Failed to parse meta/argument_specs.yml for %s: %s", identifier, e)
+
+        # 5b. Catalog input_schema fallback specification
+        if input_schema and isinstance(input_schema, dict):
+            for req in input_schema.get("required", []):
+                if req not in required_vars:
+                    required_vars.append(req)
+            for k, v in input_schema.get("properties", {}).items():
+                if "default" in v and k not in defaults:
+                    defaults[k] = v["default"]
+
+        # 5c. defaults/main.yml ONLY as fallback for undeclared option defaults
+        defaults_content = staged_files.get("defaults/main.yml")
+        if defaults_content:
+            try:
+                parsed_defaults = parse_yaml(defaults_content) or {}
+                if isinstance(parsed_defaults, dict):
+                    for k, v in parsed_defaults.items():
+                        if k not in defaults:
+                            defaults[k] = v
+            except Exception as e:
+                logger.warning("Failed to parse defaults/main.yml for %s: %s", identifier, e)
+
+        # 5d. meta/main.yml for platforms and dependencies
         meta_content = staged_files.get("meta/main.yml")
         if meta_content:
             try:
@@ -329,17 +405,7 @@ class ArtifactResolver:
             except Exception as e:
                 logger.warning("Failed to parse meta/main.yml for %s: %s", identifier, e)
 
-        # Read defaults/main.yml
-        defaults_content = staged_files.get("defaults/main.yml")
-        if defaults_content:
-            try:
-                parsed_defaults = parse_yaml(defaults_content) or {}
-                if isinstance(parsed_defaults, dict):
-                    defaults = parsed_defaults
-            except Exception as e:
-                logger.warning("Failed to parse defaults/main.yml for %s: %s", identifier, e)
-
-        # Read tasks/main.yml
+        # 5e. tasks/main.yml for summary
         tasks_content = staged_files.get("tasks/main.yml")
         if tasks_content:
             try:
@@ -351,20 +417,19 @@ class ArtifactResolver:
             except Exception:
                 pass
 
-        # If playbook_file was used, extract vars and required fields
-        if playbook_file and not defaults:
-            try:
-                pb_data = parse_yaml(playbook_file.read_text(encoding="utf-8")) or []
-                if isinstance(pb_data, list) and pb_data and isinstance(pb_data[0], dict):
-                    defaults.update(pb_data[0].get("vars", {}))
-            except Exception:
-                pass
+        # 5f. Track missing required variables
+        provided = provided_parameters or {}
+        missing_required = [
+            rv for rv in required_vars
+            if rv not in provided and rv not in defaults
+        ]
 
-        if input_schema and isinstance(input_schema, dict):
-            required_vars = input_schema.get("required", [])
-            for k, v in input_schema.get("properties", {}).items():
-                if "default" in v and k not in defaults:
-                    defaults[k] = v["default"]
+        # Determine playbook path if available
+        playbook_path = None
+        for cand_pb in staged_files:
+            if cand_pb.endswith(".yml") and ("playbook" in cand_pb or "deploy" in cand_pb or cand_pb == "main.yml"):
+                playbook_path = str(staged_dir / cand_pb)
+                break
 
         interface = RoleInterface(
             identifier=identifier,
@@ -375,10 +440,12 @@ class ArtifactResolver:
             dependencies=dependencies,
             tasks_summary=tasks,
             input_schema=input_schema,
-            playbook_path=str(playbook_file) if playbook_file else None,
+            argument_specs=argument_specs,
+            playbook_path=playbook_path,
+            missing_required_variables=missing_required,
         )
 
-        # 5. Check platform compatibility
+        # 6. Check platform compatibility
         is_compatible = self.is_os_compatible(requested_os, platforms)
         incompatibility_reason = ""
         if not is_compatible:

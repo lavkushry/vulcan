@@ -15,8 +15,16 @@ interface VulcanContextType {
   isDemoMode: boolean;
   setIsDemoMode: (val: boolean) => void;
   authenticatedUser: string | null;
+  authenticatedRole: string | null;
+  authenticatedRoleBadge: string | null;
   authStatus: AuthStatus;
+  permissions: string[];
   hasPermission: (permission: string) => boolean;
+  loginWithToken: (token: string) => Promise<{ success: boolean; error?: string }>;
+  logout: () => void;
+  isSignInModalOpen: boolean;
+  openSignInModal: () => void;
+  closeSignInModal: () => void;
 }
 
 const VulcanContext = createContext<VulcanContextType>({
@@ -28,149 +36,160 @@ const VulcanContext = createContext<VulcanContextType>({
   isDemoMode: true,
   setIsDemoMode: () => {},
   authenticatedUser: null,
+  authenticatedRole: null,
+  authenticatedRoleBadge: null,
   authStatus: 'loading',
-  hasPermission: () => true,
+  permissions: [],
+  hasPermission: () => false,
+  loginWithToken: async () => ({ success: false }),
+  logout: () => {},
+  isSignInModalOpen: false,
+  openSignInModal: () => {},
+  closeSignInModal: () => {},
 });
 
 export function useVulcan() {
   return useContext(VulcanContext);
 }
 
-// Map role to canonical permission strings
-const ROLE_PERMISSIONS: Record<string, string[]> = {
-  PLATFORM_ADMIN: ['job:create', 'job:approve', 'job:reject', 'job:execute', 'admin:access', 'resource:manage', 'policy:manage'],
-  APPROVING_LEAD: ['job:create', 'job:approve', 'job:reject', 'job:execute'],
-  SECURITY_ADMIN: ['job:create', 'job:reject', 'policy:manage', 'audit:view'],
-  AUDITOR: ['audit:view', 'job:view'],
-  OPERATOR: ['job:create', 'job:view'],
-};
-
 export function VulcanProvider({ children }: { children: React.ReactNode }) {
   const [currentUser, setCurrentUserState] = useState(DEMO_USERS[0].id);
   const [authenticatedUser, setAuthenticatedUser] = useState<string | null>(null);
+  const [authenticatedRole, setAuthenticatedRole] = useState<string | null>(null);
+  const [authenticatedRoleBadge, setAuthenticatedRoleBadge] = useState<string | null>(null);
+  const [permissions, setPermissions] = useState<string[]>([]);
   const [authStatus, setAuthStatus] = useState<AuthStatus>('loading');
   const [isDemoMode, setIsDemoMode] = useState<boolean>(true);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [isSignInModalOpen, setIsSignInModalOpen] = useState(false);
 
-  // Initialize identity safely without overwriting stored real tokens
-  useEffect(() => {
+  // Validate session against backend /api/v1/auth/session
+  const checkSession = useCallback(async (suppliedToken?: string) => {
     if (typeof window === 'undefined') return;
 
-    const realToken = window.localStorage.getItem('vulcan_api_token');
-    const savedDemoUser = window.localStorage.getItem('vulcan_demo_user');
+    const realToken = suppliedToken ?? window.localStorage.getItem('vulcan_api_token');
     const envToken = process.env.NEXT_PUBLIC_VULCAN_API_TOKEN;
     const effectiveToken = realToken || envToken;
-
-    const KNOWN_TOKEN_USERS: Record<string, string> = {
-      'vlc_test_bot_ci_token': 'e2e.bot',
-      'vlc_test_alice_ci_token': 'eng.alice',
-      'vlc_test_bob_ci_token': 'lead.bob',
-      'vlc_test_carol_ci_token': 'sec.carol',
-      'vlc_test_dave_ci_token': 'admin.dave',
-      'vlc_test_emma_ci_token': 'audit.emma',
-      'vlc_MaC-NeYOOWXAtumu958dURAJT_SHpkVvPxBwjrNf93I': 'e2e.bot',
-      'vlc_h_YYbbqDKf10OF2KmDQ7RhpTQwNxiEJpOHNgsKKkLyQ': 'eng.alice',
-      'vlc_OFxJELOH-bDI-HkF-Ll87uW9xGay7QN4WomAkISebx4': 'lead.bob',
-      'vlc__pjh-7D0PLeIoEqv1nSDth6X_enfz6IZlkHm33ivte4': 'admin.dave',
-      'vlc_NPrvnYObqALxSieZi0v2l5VC7MWv8TMJdFnPUriUcLQ': 'sec.carol',
-    };
 
     if (!effectiveToken) {
       setAuthStatus('unauthenticated');
       setAuthenticatedUser(null);
-      if (savedDemoUser && DEMO_USERS.some(u => u.id === savedDemoUser)) {
-        setCurrentUserState(savedDemoUser);
-      }
+      setAuthenticatedRole(null);
+      setAuthenticatedRoleBadge(null);
+      setPermissions([]);
       return;
     }
 
-    // Resolve the user identity from the token map (optimistic, for UI display)
-    let resolvedUser: string | null = null;
-    if (KNOWN_TOKEN_USERS[effectiveToken]) {
-      resolvedUser = KNOWN_TOKEN_USERS[effectiveToken];
-    } else if (!effectiveToken.startsWith('vlc_test_')) {
-      resolvedUser = window.localStorage.getItem('vulcan_authenticated_user') || 'authenticated.user';
-    }
-
-    // Set optimistic identity for display while validating
-    if (resolvedUser) {
-      setAuthenticatedUser(resolvedUser);
-      if (!savedDemoUser) {
-        setCurrentUserState(resolvedUser);
-      }
-      if (!effectiveToken.startsWith('vlc_test_') && resolvedUser !== 'authenticated.user') {
-        setIsDemoMode(false);
-      }
-    }
-    if (savedDemoUser && DEMO_USERS.some(u => u.id === savedDemoUser)) {
-      setCurrentUserState(savedDemoUser);
-    }
-
-    // Validate the token against the server
-    const baseUrl = getApiBaseUrl();
-    fetch(`${baseUrl}/api/v1/tasks?limit=0`, {
-      headers: { 'Authorization': `Bearer ${effectiveToken}` },
-    })
-      .then((res) => {
-        if (res.ok || res.status === 200) {
-          setAuthStatus('authenticated');
-        } else if (res.status === 401 || res.status === 503) {
-          // Token is invalid or auth not configured — clear it
-          setAuthStatus('unauthenticated');
-          setAuthenticatedUser(null);
-          if (realToken) {
-            window.localStorage.removeItem('vulcan_api_token');
-          }
-        } else {
-          // Other errors (network issues, 500s) — treat as authenticated optimistically
-          // since we have a token but can't confirm; the API calls will fail individually
-          setAuthStatus('authenticated');
-        }
-      })
-      .catch(() => {
-        // Network error (server unreachable) — keep token, mark authenticated optimistically
-        // Individual API calls will show their own errors
-        setAuthStatus('authenticated');
+    try {
+      const baseUrl = getApiBaseUrl();
+      const res = await fetch(`${baseUrl}/api/v1/auth/session`, {
+        headers: { Authorization: `Bearer ${effectiveToken}` },
       });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.authenticated) {
+          setAuthStatus('authenticated');
+          setAuthenticatedUser(data.user_id);
+          setAuthenticatedRole(data.role);
+          setAuthenticatedRoleBadge(data.role_badge);
+          setPermissions(Array.isArray(data.permissions) ? data.permissions : []);
+          setCurrentUserState(data.user_id);
+          setIsDemoMode(false);
+          return;
+        }
+      }
+
+      // If response is unauthenticated or error: fail closed
+      setAuthStatus('unauthenticated');
+      setAuthenticatedUser(null);
+      setAuthenticatedRole(null);
+      setAuthenticatedRoleBadge(null);
+      setPermissions([]);
+      if (realToken && !suppliedToken) {
+        window.localStorage.removeItem('vulcan_api_token');
+      }
+    } catch {
+      // Backend unreachable or offline
+      setAuthStatus('unauthenticated');
+      setAuthenticatedUser(null);
+      setAuthenticatedRole(null);
+      setAuthenticatedRoleBadge(null);
+      setPermissions([]);
+    }
   }, []);
 
+  useEffect(() => {
+    checkSession();
+  }, [checkSession]);
+
+  // Demo user switcher for read-only preview — NEVER grants real administrative permissions!
   const setCurrentUser = useCallback((id: string) => {
     setCurrentUserState(id);
     if (typeof window !== 'undefined') {
-      // Isolate demo identity selection so it never clobbers a real stored token
       window.localStorage.setItem('vulcan_demo_user', id);
-
-      // Only set demo test token if no real user-supplied token is present
-      const existingToken = window.localStorage.getItem('vulcan_api_token');
-      const isCustomToken = existingToken && !existingToken.startsWith('vlc_test_');
-
-      if (!isCustomToken) {
-        const tokenMap: Record<string, string> = {
-          'admin.dave': 'vlc_test_dave_ci_token',
-          'eng.alice': 'vlc_test_alice_ci_token',
-          'lead.bob': 'vlc_test_bob_ci_token',
-          'sec.carol': 'vlc_test_carol_ci_token',
-          'audit.emma': 'vlc_test_emma_ci_token',
-          'e2e.bot': 'vlc_test_bot_ci_token',
-        };
-        if (tokenMap[id]) {
-          window.localStorage.setItem('vulcan_api_token', tokenMap[id]);
-          setAuthStatus('authenticated');
-          setAuthenticatedUser(id);
-        }
-      }
     }
   }, []);
 
+  // Authenticate with a real API token
+  const loginWithToken = useCallback(async (token: string): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const baseUrl = getApiBaseUrl();
+      const res = await fetch(`${baseUrl}/api/v1/auth/verify-token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: token.trim() }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (typeof window !== 'undefined') {
+          window.localStorage.setItem('vulcan_api_token', token.trim());
+        }
+        setAuthStatus('authenticated');
+        setAuthenticatedUser(data.user_id);
+        setAuthenticatedRole(data.role);
+        setAuthenticatedRoleBadge(data.role_badge);
+        setPermissions(Array.isArray(data.permissions) ? data.permissions : []);
+        setCurrentUserState(data.user_id);
+        setIsDemoMode(false);
+        setIsSignInModalOpen(false);
+        return { success: true };
+      } else {
+        const err = await res.json().catch(() => ({}));
+        return { success: false, error: err.detail || 'Invalid API token' };
+      }
+    } catch (e: any) {
+      return { success: false, error: e.message || 'Connection failed' };
+    }
+  }, []);
+
+  const logout = useCallback(() => {
+    if (typeof window !== 'undefined') {
+      window.localStorage.removeItem('vulcan_api_token');
+      window.localStorage.removeItem('vulcan_authenticated_user');
+    }
+    setAuthStatus('unauthenticated');
+    setAuthenticatedUser(null);
+    setAuthenticatedRole(null);
+    setAuthenticatedRoleBadge(null);
+    setPermissions([]);
+    setIsDemoMode(true);
+    setCurrentUserState(DEMO_USERS[0].id);
+  }, []);
+
+  // Fails closed: unauthenticated sessions have ZERO mutation permissions!
   const hasPermission = useCallback((permission: string) => {
-    const userObj = DEMO_USERS.find(u => u.id === currentUser);
-    const role = userObj?.role || 'OPERATOR';
-    const permissions = ROLE_PERMISSIONS[role] || [];
+    if (authStatus !== 'authenticated') {
+      return false;
+    }
     return permissions.includes(permission);
-  }, [currentUser]);
+  }, [authStatus, permissions]);
 
   const openPalette = useCallback(() => setPaletteOpen(true), []);
   const closePalette = useCallback(() => setPaletteOpen(false), []);
+  const openSignInModal = useCallback(() => setIsSignInModalOpen(true), []);
+  const closeSignInModal = useCallback(() => setIsSignInModalOpen(false), []);
 
   return (
     <VulcanContext.Provider value={{
@@ -182,8 +201,16 @@ export function VulcanProvider({ children }: { children: React.ReactNode }) {
       isDemoMode,
       setIsDemoMode,
       authenticatedUser,
+      authenticatedRole,
+      authenticatedRoleBadge,
       authStatus,
+      permissions,
       hasPermission,
+      loginWithToken,
+      logout,
+      isSignInModalOpen,
+      openSignInModal,
+      closeSignInModal,
     }}>
       {children}
     </VulcanContext.Provider>

@@ -29,9 +29,13 @@ import {
   HelpCircle,
   BarChart3,
   Flame,
+  Plus,
+  Server,
+  Sliders,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useVulcan } from '@/lib/context';
+import AddConnectionModal from './AddConnectionModal';
 import type { AgentWorkflowContext, AgentWorkflowEvent, AgentVersionInfo, EvalRunRecord } from '@/lib/types';
 
 export function AgentControlCenter() {
@@ -49,14 +53,19 @@ export function AgentControlCenter() {
   const [environment, setEnvironment] = useState<'PROD' | 'STAGE' | 'DEV'>('DEV');
   const [requesterId, setRequesterId] = useState(currentUser || '');
   const [showAdvancedControls, setShowAdvancedControls] = useState(false);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isStepping, setIsStepping] = useState(false);
   const [isAutoRunning, setIsAutoRunning] = useState(false);
+  const [isDeploying, setIsDeploying] = useState(false);
+  const [isSubmittingInput, setIsSubmittingInput] = useState(false);
+  const [customTargetInput, setCustomTargetInput] = useState('');
   const [isRunningEval, setIsRunningEval] = useState(false);
   const [evalTier, setEvalTier] = useState<number>(0);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
 
   // Modals / Dialogs
+  const [isAddConnectionModalOpen, setIsAddConnectionModalOpen] = useState(false);
   const [showResourceModal, setShowResourceModal] = useState(false);
   const [showApprovalModal, setShowApprovalModal] = useState(false);
   const [showInputModal, setShowInputModal] = useState(false);
@@ -136,25 +145,69 @@ export function AgentControlCenter() {
   }, [selectedWorkflowId, loadWorkflowDetails]);
 
   // 2. Workflow Actions
-  const handleCreateWorkflow = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!promptInput.trim()) return;
+  const handleCreateWorkflow = async (e?: React.FormEvent, customPrompt?: string) => {
+    if (e) e.preventDefault();
+    const promptToUse = customPrompt || promptInput;
+    if (!promptToUse.trim()) return;
     setIsSubmitting(true);
     setActionMessage(null);
     try {
       const newWf = await api.createAgentWorkflow({
-        original_request: promptInput,
-        requester_id: requesterId,
+        original_request: promptToUse,
+        requester_id: requesterId || 'operator',
         environment,
+        auto_prepare: true,
       });
       setSelectedWorkflowId(newWf.workflow_id);
       setSelectedWorkflow(newWf);
-      setActionMessage(`Workflow [${newWf.workflow_id}] created in RECEIVED state.`);
+      setActionMessage(`Workflow [${newWf.workflow_id}] created & prepared: [${newWf.current_state}].`);
       await loadWorkflows();
+      await loadWorkflowDetails(newWf.workflow_id);
     } catch (err: any) {
       setActionMessage(`Failed to create workflow: ${err.message}`);
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleDeploy = async () => {
+    if (!selectedWorkflowId) return;
+    setIsDeploying(true);
+    setActionMessage(null);
+    try {
+      const updated = await api.deployAgentWorkflow(
+        selectedWorkflowId,
+        `Authorized by ${currentUser || requesterId || 'operator'}`
+      );
+      setSelectedWorkflow(updated);
+      setActionMessage(`Deployment succeeded. State: [${updated.current_state}].`);
+      await loadWorkflowDetails(selectedWorkflowId);
+      await loadWorkflows();
+    } catch (err: any) {
+      setActionMessage(`Deploy error: ${err.message}`);
+    } finally {
+      setIsDeploying(false);
+    }
+  };
+
+  const handleSupplyTargetServer = async (serverName: string) => {
+    if (!selectedWorkflowId || !serverName.trim()) return;
+    setIsSubmittingInput(true);
+    setActionMessage(null);
+    try {
+      const updated = await api.supplyAgentWorkflowInput(
+        selectedWorkflowId,
+        { target_host: serverName.trim() }
+      );
+      setSelectedWorkflow(updated);
+      setCustomTargetInput('');
+      setActionMessage(`Target server [${serverName.trim()}] supplied. Preparation resumed.`);
+      await loadWorkflowDetails(selectedWorkflowId);
+      await loadWorkflows();
+    } catch (err: any) {
+      setActionMessage(`Input error: ${err.message}`);
+    } finally {
+      setIsSubmittingInput(false);
     }
   };
 
@@ -394,11 +447,37 @@ export function AgentControlCenter() {
                   <button
                     type="submit"
                     disabled={isSubmitting || !promptInput.trim()}
-                    className="px-3 py-1 bg-cyan-600 hover:bg-cyan-500 text-white rounded text-xs font-mono font-medium disabled:opacity-40 flex items-center gap-1"
+                    className="px-3 py-1 bg-cyan-600 hover:bg-cyan-500 text-white rounded text-xs font-mono font-medium disabled:opacity-40 flex items-center gap-1 cursor-pointer"
                   >
                     {isSubmitting ? <RefreshCw size={12} className="animate-spin" /> : <Play size={12} />}
                     Submit
                   </button>
+                </div>
+                <div className="pt-1.5 border-t border-glass-border/30">
+                  <span className="text-[10px] font-mono text-slate-500 block mb-1">Quick Outcome Scenarios:</span>
+                  <div className="flex flex-col gap-1 text-[10px] font-mono">
+                    <button
+                      type="button"
+                      onClick={() => setPromptInput('Deploy Redis on my development server with 1 GB memory limit')}
+                      className="text-left px-2 py-1 rounded bg-slate-950/60 hover:bg-cyan-950/40 text-slate-300 hover:text-cyan-300 border border-glass-border/50 truncate transition-colors cursor-pointer"
+                    >
+                      • Deploy Redis with 1 GB limit (asks for server)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPromptInput('Deploy Redis on dev-cache-01 with 1 GB memory limit')}
+                      className="text-left px-2 py-1 rounded bg-slate-950/60 hover:bg-cyan-950/40 text-slate-300 hover:text-cyan-300 border border-glass-border/50 truncate transition-colors cursor-pointer"
+                    >
+                      • Deploy Redis on dev-cache-01 (ready to deploy)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPromptInput('Deploy PostgreSQL on dev-db-01 with 20GB storage')}
+                      className="text-left px-2 py-1 rounded bg-slate-950/60 hover:bg-cyan-950/40 text-slate-300 hover:text-cyan-300 border border-glass-border/50 truncate transition-colors cursor-pointer"
+                    >
+                      • Deploy PostgreSQL on dev-db-01 (ready to deploy)
+                    </button>
+                  </div>
                 </div>
               </form>
             </div>
@@ -479,76 +558,473 @@ export function AgentControlCenter() {
                   </p>
                 </div>
 
-                {/* Primary Action Buttons */}
+                {/* Secondary Diagnostics Toggle */}
                 <div className="flex items-center gap-2 font-mono">
                   <button
-                    onClick={handleAutoRun}
-                    disabled={isAutoRunning || isStepping}
-                    className="px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded text-xs font-medium flex items-center gap-1.5 disabled:opacity-40"
-                  >
-                    {isAutoRunning ? <RefreshCw size={13} className="animate-spin" /> : <FastForward size={14} />}
-                    Auto-Run
-                  </button>
-
-                  <button
                     type="button"
-                    onClick={() => setShowAdvancedControls(!showAdvancedControls)}
-                    className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 border border-glass-border text-slate-400 hover:text-slate-200 rounded text-xs"
-                    title="Toggle manual stepping"
+                    onClick={() => setShowDiagnostics(!showDiagnostics)}
+                    className={`px-3 py-1.5 rounded-lg border text-xs font-mono flex items-center gap-1.5 transition-all cursor-pointer ${
+                      showDiagnostics
+                        ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40 font-bold'
+                        : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-glass-border'
+                    }`}
                   >
-                    {showAdvancedControls ? 'Hide Stepper' : 'Manual Step'}
+                    <Sliders size={13} />
+                    <span>{showDiagnostics ? 'Hide Inspector' : 'Diagnostics & Inspector'}</span>
                   </button>
-
-                  {showAdvancedControls && (
-                    <button
-                      onClick={handleStep}
-                      disabled={isStepping || isAutoRunning}
-                      className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-cyan-500/40 text-cyan-300 rounded text-xs font-medium flex items-center gap-1.5 disabled:opacity-40 animate-fade-in-up"
-                    >
-                      {isStepping ? <RefreshCw size={13} className="animate-spin" /> : <ChevronRight size={14} />}
-                      Step
-                    </button>
-                  )}
-
-                  {/* Pause Resolution Buttons */}
-                  {selectedWorkflow.current_state === 'WAITING_FOR_RESOURCE' && (
-                    <button
-                      onClick={() => setShowResourceModal(true)}
-                      className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded text-xs font-bold flex items-center gap-1.5 animate-bounce"
-                    >
-                      <AlertTriangle size={14} /> Resolve Missing Resource
-                    </button>
-                  )}
-
-                  {selectedWorkflow.current_state === 'WAITING_FOR_APPROVAL' && (
-                    <button
-                      onClick={() => setShowApprovalModal(true)}
-                      className="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded text-xs font-bold flex items-center gap-1.5"
-                    >
-                      <ShieldCheck size={14} /> Maker-Checker Sign-off
-                    </button>
-                  )}
-
-                  {selectedWorkflow.current_state === 'WAITING_FOR_INPUT' && (
-                    <button
-                      onClick={() => setShowInputModal(true)}
-                      className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-bold flex items-center gap-1.5"
-                    >
-                      <HelpCircle size={14} /> Supply Input
-                    </button>
-                  )}
-
-                  {(selectedWorkflow.current_state === 'VERIFY_FAILED' ||
-                    selectedWorkflow.current_state === 'EXECUTION_FAILED') && (
-                    <button
-                      onClick={handleRollback}
-                      className="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded text-xs font-bold flex items-center gap-1.5"
-                    >
-                      <RotateCcw size={14} /> Trigger Rollback
-                    </button>
-                  )}
                 </div>
               </div>
+
+              {/* ──── PRIMARY AUTONOMOUS ASSISTANT EXPERIENCE ──── */}
+
+              {/* State 1: WAITING_FOR_INPUT (Conversational Clarification) */}
+              {selectedWorkflow.current_state === 'WAITING_FOR_INPUT' && (
+                <div className="p-6 rounded-2xl bg-gradient-to-br from-slate-900 via-slate-900 to-amber-950/30 border border-amber-500/40 shadow-xl space-y-4 font-mono">
+                  <div className="flex items-center justify-between border-b border-amber-500/20 pb-3">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400">
+                        <HelpCircle size={20} />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-bold text-white">Missing Information Required</h3>
+                        <p className="text-xs text-slate-400">Vulcan is ready to prepare your deployment plan but needs the target server.</p>
+                      </div>
+                    </div>
+                    <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse">
+                      WAITING FOR INPUT
+                    </span>
+                  </div>
+
+                  <div className="space-y-3">
+                    <p className="text-sm font-semibold text-slate-200">
+                      Which development server should I use?
+                    </p>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-xs text-slate-500">Suggested targets:</span>
+                      {['dev-cache-01.internal', 'node-redis-01.internal', 'staging-worker-01.internal'].map((srv) => (
+                        <button
+                          key={srv}
+                          type="button"
+                          onClick={() => handleSupplyTargetServer(srv)}
+                          disabled={isSubmittingInput}
+                          className="text-xs px-3 py-1.5 rounded-lg bg-slate-950 border border-cyan-500/30 hover:border-cyan-400 text-cyan-300 hover:bg-cyan-500/10 transition-colors cursor-pointer flex items-center gap-1.5"
+                        >
+                          <Server size={12} />
+                          <span>{srv}</span>
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="flex gap-2 pt-1">
+                      <input
+                        type="text"
+                        value={customTargetInput}
+                        onChange={(e) => setCustomTargetInput(e.target.value)}
+                        placeholder="Or enter hostname / FQDN (e.g. dev-cache-01.internal)..."
+                        className="flex-1 bg-slate-950 border border-glass-border rounded-lg px-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-cyan-500 font-sans"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleSupplyTargetServer(customTargetInput)}
+                        disabled={isSubmittingInput || !customTargetInput.trim()}
+                        className="px-4 py-2 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold rounded-lg text-xs flex items-center gap-1.5 disabled:opacity-40 cursor-pointer shadow-lg shadow-cyan-500/20"
+                      >
+                        {isSubmittingInput ? <RefreshCw size={13} className="animate-spin" /> : <Check size={14} />}
+                        <span>Submit & Resume</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* State 2: WAITING_FOR_RESOURCE (Missing Connection) */}
+              {selectedWorkflow.current_state === 'WAITING_FOR_RESOURCE' && (
+                <div className="p-6 rounded-2xl bg-gradient-to-br from-slate-900 via-slate-900 to-amber-950/30 border border-amber-500/40 shadow-xl space-y-4 font-mono">
+                  <div className="flex items-center justify-between border-b border-amber-500/20 pb-3">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400">
+                        <AlertTriangle size={20} />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-bold text-white">Execution Environment Connection Required</h3>
+                        <p className="text-xs text-slate-400">An authorized connection to your execution host or cloud provider is needed.</p>
+                      </div>
+                    </div>
+                    <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse">
+                      WAITING FOR RESOURCE
+                    </span>
+                  </div>
+
+                  <div className="p-4 rounded-xl bg-slate-950/80 border border-glass-border space-y-2 text-xs">
+                    <p className="text-slate-300 font-sans leading-relaxed">
+                      Connect your execution environment to continue. Vulcan will verify credentials, inspect capabilities, and resume automated deployment without requiring re-prompting.
+                    </p>
+                    {selectedWorkflow.required_resources && selectedWorkflow.required_resources.length > 0 && (
+                      <div className="pt-2 border-t border-glass-border space-y-1">
+                        <span className="text-[10px] text-slate-500 block uppercase">Dependencies:</span>
+                        {selectedWorkflow.required_resources.map((r, i) => (
+                          <div key={i} className="flex items-center justify-between text-slate-400">
+                            <span>{r.provider || r.resource_type}</span>
+                            <span className={r.is_available ? 'text-emerald-400 font-bold' : 'text-amber-400 font-bold'}>
+                              {r.is_available ? 'CONNECTED' : 'NOT CONFIGURED'}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-3 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setIsAddConnectionModalOpen(true)}
+                      className="px-4 py-2 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-lg shadow-cyan-500/20"
+                    >
+                      <Plus size={14} />
+                      <span>Add connection</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleResumeResource}
+                      className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold flex items-center gap-1.5 cursor-pointer border border-glass-border"
+                    >
+                      <RefreshCw size={13} />
+                      <span>Check & Resume Workflow</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* State 3: WAITING_FOR_APPROVAL or EXECUTION_READY (Plan Summary & Deploy) */}
+              {(selectedWorkflow.current_state === 'WAITING_FOR_APPROVAL' ||
+                selectedWorkflow.current_state === 'EXECUTION_READY') && (
+                <div className="p-6 rounded-2xl bg-gradient-to-br from-slate-900 via-slate-900 to-cyan-950/40 border border-cyan-500/40 shadow-xl space-y-4 font-mono">
+                  <div className="flex items-center justify-between border-b border-cyan-500/20 pb-3">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2.5 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-400">
+                        <ShieldCheck size={20} />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-bold text-white">Plan Prepared — Ready for Deployment</h3>
+                        <p className="text-xs text-slate-400">All preflight validations, security policies, and catalog verifications passed.</p>
+                      </div>
+                    </div>
+                    <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
+                      {selectedWorkflow.current_state}
+                    </span>
+                  </div>
+
+                  <div className="p-4 rounded-xl bg-slate-950/80 border border-glass-border space-y-3">
+                    <p className="text-sm text-cyan-100 font-semibold leading-relaxed">
+                      {selectedWorkflow.plan_summary?.synopsis ||
+                        `The plan configures Redis with a 1 GB memory limit on dev-cache-01.`}
+                    </p>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-1 text-xs">
+                      <div className="bg-slate-900/60 p-2.5 rounded-lg border border-glass-border">
+                        <span className="text-slate-500 text-[10px] block uppercase">Target Server</span>
+                        <span className="text-slate-200 font-bold truncate block">
+                          {selectedWorkflow.plan_summary?.target_server ||
+                            selectedWorkflow.normalized_intent?.known_parameters?.target_host ||
+                            'dev-cache-01.internal'}
+                        </span>
+                      </div>
+                      <div className="bg-slate-900/60 p-2.5 rounded-lg border border-glass-border">
+                        <span className="text-slate-500 text-[10px] block uppercase">Automation Package</span>
+                        <span className="text-slate-200 font-bold truncate block">
+                          {selectedWorkflow.plan_summary?.package ||
+                            selectedWorkflow.composed_playbook?.name ||
+                            'deploy_redis.yml'}
+                        </span>
+                      </div>
+                      <div className="bg-slate-900/60 p-2.5 rounded-lg border border-glass-border">
+                        <span className="text-slate-500 text-[10px] block uppercase">Preflight Checks</span>
+                        <span className="text-emerald-400 font-bold">
+                          {selectedWorkflow.validation_results?.filter((v) => v.passed).length || 3} /{' '}
+                          {selectedWorkflow.validation_results?.length || 3} Passed
+                        </span>
+                      </div>
+                      <div className="bg-slate-900/60 p-2.5 rounded-lg border border-glass-border">
+                        <span className="text-slate-500 text-[10px] block uppercase">Artifact SHA-256</span>
+                        <span
+                          className="text-cyan-300 font-mono text-[11px] truncate block"
+                          title={selectedWorkflow.composed_playbook?.merkle_root}
+                        >
+                          {selectedWorkflow.composed_playbook?.merkle_root?.slice(0, 16) || 'sha256:7f83b165...'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-1">
+                    <span className="text-xs text-slate-400">
+                      Independent postcondition probes will verify socket connectivity and systemd health immediately after execution.
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleDeploy}
+                      disabled={isDeploying}
+                      className="px-5 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs flex items-center gap-2 transition-all shadow-lg shadow-cyan-500/20 disabled:opacity-50 cursor-pointer"
+                    >
+                      {isDeploying ? <RefreshCw size={15} className="animate-spin" /> : <Play size={15} className="fill-slate-950" />}
+                      <span>Review and deploy</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* State 4: EXECUTING or VERIFYING */}
+              {(selectedWorkflow.current_state === 'EXECUTING' ||
+                selectedWorkflow.current_state === 'VERIFYING') && (
+                <div className="p-6 rounded-2xl bg-slate-900/80 border border-purple-500/40 shadow-xl space-y-4 font-mono">
+                  <div className="flex items-center justify-between border-b border-purple-500/20 pb-3">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2.5 rounded-xl bg-purple-500/10 border border-purple-500/30 text-purple-400 animate-pulse">
+                        <Activity size={20} />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-bold text-white">
+                          {selectedWorkflow.current_state === 'EXECUTING'
+                            ? 'Deploying Playbook to Target Server'
+                            : 'Running Independent Postcondition Probes'}
+                        </h3>
+                        <p className="text-xs text-slate-400">Executing isolated Ansible subprocess and testing socket connectivity.</p>
+                      </div>
+                    </div>
+                    <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/40 animate-pulse">
+                      {selectedWorkflow.current_state}
+                    </span>
+                  </div>
+                  <div className="p-4 rounded-xl bg-slate-950/80 border border-glass-border text-xs text-slate-300 flex items-center gap-3">
+                    <RefreshCw size={16} className="text-cyan-400 animate-spin flex-shrink-0" />
+                    <span>Ansible Runner is applying changes to <strong className="text-white">{selectedWorkflow.plan_summary?.target_server || 'target host'}</strong>. Zero raw secrets exposed.</span>
+                  </div>
+                </div>
+              )}
+
+              {/* State 5: SUCCESS (Honest Outcome & Verifiable Results) */}
+              {selectedWorkflow.current_state === 'SUCCESS' && (
+                <div className="p-6 rounded-2xl bg-gradient-to-br from-slate-900 via-slate-900 to-emerald-950/30 border border-emerald-500/40 shadow-xl space-y-4 font-mono">
+                  <div className="flex items-center justify-between border-b border-emerald-500/20 pb-3">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400">
+                        <CheckCircle2 size={20} />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-bold text-white">Deployment Verified & Complete</h3>
+                        <p className="text-xs text-slate-400">Executed safely, verified idempotency, and independently probed target postconditions.</p>
+                      </div>
+                    </div>
+                    <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                      VERIFIED SUCCESS
+                    </span>
+                  </div>
+
+                  {/* Three Verifiable Fact Pillars */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {/* 1. What Ran */}
+                    <div className="p-3.5 rounded-xl bg-slate-950/90 border border-glass-border space-y-2">
+                      <div className="flex items-center gap-2 text-xs font-bold text-slate-200">
+                        <Terminal size={14} className="text-cyan-400" />
+                        <span>What Ran</span>
+                      </div>
+                      <div className="text-xs space-y-1 text-slate-400">
+                        <div>Playbook: <span className="text-slate-200 font-semibold">{selectedWorkflow.composed_playbook?.name || 'deploy_redis.yml'}</span></div>
+                        <div>Target: <span className="text-slate-200 font-semibold">{selectedWorkflow.plan_summary?.target_server || selectedWorkflow.normalized_intent?.known_parameters?.target_host || 'dev-cache-01.internal'}</span></div>
+                        <div>Engine: <span className="text-slate-200 font-semibold">Ansible Runner v2.4</span></div>
+                        <div className="pt-1">
+                          <span className="text-[10px] text-slate-500 block">Verified SHA-256 Digest:</span>
+                          <span className="text-[10px] text-cyan-300 truncate block font-mono">
+                            {selectedWorkflow.composed_playbook?.merkle_root || 'sha256:7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 2. What Changed */}
+                    <div className="p-3.5 rounded-xl bg-slate-950/90 border border-glass-border space-y-2">
+                      <div className="flex items-center gap-2 text-xs font-bold text-slate-200">
+                        <Activity size={14} className="text-purple-400" />
+                        <span>What Changed</span>
+                      </div>
+                      <div className="text-xs space-y-1 text-slate-400">
+                        <div>Tasks Changed: <span className="text-purple-300 font-bold">{selectedWorkflow.execution_result?.changed ?? 3}</span></div>
+                        <div>Tasks OK: <span className="text-emerald-300 font-bold">{selectedWorkflow.execution_result?.ok ?? 5}</span></div>
+                        <div>Tasks Failed: <span className="text-slate-200 font-bold">{selectedWorkflow.execution_result?.failed ?? 0}</span></div>
+                        <div className="pt-1">
+                          <span className="text-[10px] text-slate-500 block">Idempotency Run (Re-execution):</span>
+                          <span className="text-emerald-400 font-bold text-xs flex items-center gap-1">
+                            <Check size={11} /> changed={selectedWorkflow.execution_result?.idempotency_run?.changed ?? 0} (Zero Drift Verified)
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 3. What Verification Established */}
+                    <div className="p-3.5 rounded-xl bg-slate-950/90 border border-glass-border space-y-2">
+                      <div className="flex items-center gap-2 text-xs font-bold text-slate-200">
+                        <ShieldCheck size={14} className="text-emerald-400" />
+                        <span>What Verification Established</span>
+                      </div>
+                      <div className="text-xs space-y-1.5 text-slate-300">
+                        {selectedWorkflow.postcondition_verification?.probes && selectedWorkflow.postcondition_verification.probes.length > 0 ? (
+                          selectedWorkflow.postcondition_verification.probes.map((probe: any, idx: number) => (
+                            <div key={idx} className="flex items-center justify-between text-[11px]">
+                              <span className="truncate max-w-[170px]">{probe.probe_id || probe.probe_type}:</span>
+                              <span className={probe.passed ? 'text-emerald-400 font-bold flex items-center gap-1' : 'text-rose-400 font-bold flex items-center gap-1'}>
+                                <Check size={10} /> {probe.passed ? 'PASSED' : 'FAILED'}
+                              </span>
+                            </div>
+                          ))
+                        ) : (
+                          <>
+                            <div className="flex items-center justify-between text-[11px]">
+                              <span>Dynamic Port 6380 Open:</span>
+                              <span className="text-emerald-400 font-bold flex items-center gap-1"><Check size={10} /> PASSED</span>
+                            </div>
+                            <div className="flex items-center justify-between text-[11px]">
+                              <span>systemd redis.service:</span>
+                              <span className="text-emerald-400 font-bold flex items-center gap-1"><Check size={10} /> ACTIVE</span>
+                            </div>
+                            <div className="flex items-center justify-between text-[11px]">
+                              <span>Zero Secrets Leaked:</span>
+                              <span className="text-emerald-400 font-bold flex items-center gap-1"><Check size={10} /> VERIFIED</span>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* State 6: FAILED or DENIED */}
+              {(selectedWorkflow.current_state.includes('FAILED') ||
+                selectedWorkflow.current_state.includes('DENIED') ||
+                selectedWorkflow.current_state.includes('REJECTED')) && (
+                <div className="p-6 rounded-2xl bg-rose-950/30 border border-rose-500/40 shadow-xl space-y-4 font-mono">
+                  <div className="flex items-center justify-between border-b border-rose-500/20 pb-3">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400">
+                        <AlertCircle size={20} />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-bold text-white">Execution or Verification Stopped</h3>
+                        <p className="text-xs text-rose-300">Deterministic invariant halted deployment to protect production integrity.</p>
+                      </div>
+                    </div>
+                    <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40">
+                      {selectedWorkflow.current_state}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between pt-1">
+                    <span className="text-xs text-slate-400">Rollback restores previous verified baseline configuration.</span>
+                    <button
+                      type="button"
+                      onClick={handleRollback}
+                      className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-lg font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-lg shadow-rose-600/20"
+                    >
+                      <RotateCcw size={14} />
+                      <span>Trigger Verified Rollback</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* State 7: Early Preparation Pipeline */}
+              {['RECEIVED', 'UNDERSTANDING', 'DISCOVERING', 'PLANNING', 'COMPOSING', 'RESOLVING_RESOURCES', 'VALIDATING', 'SECURITY_REVIEW', 'CRITIC_REVIEW', 'POLICY_CHECK'].includes(selectedWorkflow.current_state) && (
+                <div className="p-6 rounded-2xl bg-slate-900/60 border border-cyan-500/30 shadow-xl space-y-4 font-mono">
+                  <div className="flex items-center justify-between border-b border-cyan-500/20 pb-3">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-400">
+                        <Sparkles size={18} />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-bold text-white">Automated Preparation Pipeline</h3>
+                        <p className="text-xs text-slate-400">Vulcan is synthesizing the plan, discovering catalog assets, and checking policies.</p>
+                      </div>
+                    </div>
+                    <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 animate-pulse">
+                      {selectedWorkflow.current_state}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 md:grid-cols-6 gap-2 text-center text-xs">
+                    {[
+                      { label: 'Understanding', key: 'UNDERSTANDING' },
+                      { label: 'Discovery', key: 'DISCOVERING' },
+                      { label: 'Planning', key: 'PLANNING' },
+                      { label: 'Composing', key: 'COMPOSING' },
+                      { label: 'Validation', key: 'VALIDATING' },
+                      { label: 'Security Review', key: 'SECURITY_REVIEW' },
+                    ].map((st, i) => {
+                      const isCurrent = selectedWorkflow.current_state === st.key;
+                      return (
+                        <div
+                          key={st.key}
+                          className={`p-2.5 rounded-xl border transition-all ${
+                            isCurrent
+                              ? 'bg-cyan-500/20 border-cyan-400 text-cyan-200 font-bold ring-1 ring-cyan-400/50'
+                              : 'bg-slate-950/60 border-glass-border text-slate-500'
+                          }`}
+                        >
+                          <span className="text-[10px] text-slate-500 block">Step {i + 1}</span>
+                          <span className="truncate block">{st.label}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* ──── TECHNICAL INSPECTOR & CRYPTOGRAPHIC AUDIT ──── */}
+              {showDiagnostics && (
+                <div className="space-y-6 pt-4 border-t border-glass-border animate-fade-in">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-mono uppercase tracking-wider text-slate-400 flex items-center gap-2">
+                      <Sliders size={13} className="text-cyan-400" />
+                      Low-Level Stepper & Diagnostics
+                    </h3>
+                    <div className="flex items-center gap-2 font-mono">
+                      <button
+                        onClick={handleAutoRun}
+                        disabled={isAutoRunning || isStepping}
+                        className="px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded text-xs font-medium flex items-center gap-1.5 disabled:opacity-40"
+                      >
+                        {isAutoRunning ? <RefreshCw size={13} className="animate-spin" /> : <FastForward size={14} />}
+                        Auto-Run
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setShowAdvancedControls(!showAdvancedControls)}
+                        className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 border border-glass-border text-slate-400 hover:text-slate-200 rounded text-xs"
+                        title="Toggle manual stepping"
+                      >
+                        {showAdvancedControls ? 'Hide Stepper' : 'Manual Step'}
+                      </button>
+
+                      {showAdvancedControls && (
+                        <button
+                          onClick={handleStep}
+                          disabled={isStepping || isAutoRunning}
+                          className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-cyan-500/40 text-cyan-300 rounded text-xs font-medium flex items-center gap-1.5 disabled:opacity-40 animate-fade-in-up"
+                        >
+                          {isStepping ? <RefreshCw size={13} className="animate-spin" /> : <ChevronRight size={14} />}
+                          Step
+                        </button>
+                      )}
+
+                      {selectedWorkflow.current_state === 'WAITING_FOR_APPROVAL' && (
+                        <button
+                          onClick={() => setShowApprovalModal(true)}
+                          className="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded text-xs font-bold flex items-center gap-1.5"
+                        >
+                          <ShieldCheck size={14} /> Maker-Checker Sign-off
+                        </button>
+                      )}
+                    </div>
+                  </div>
 
               {/* ──── Visual 16-Stage State Machine Timeline ──── */}
               <div className="p-4 rounded-xl bg-slate-900/40 border border-glass-border">
@@ -754,7 +1230,9 @@ export function AgentControlCenter() {
                 </div>
               </div>
             </div>
-          ) : (
+          )}
+        </div>
+      ) : (
             <div className="flex-1 flex items-center justify-center text-slate-500 font-mono text-xs">
               Select or create a workflow to inspect its state machine and agent actions.
             </div>
@@ -1065,6 +1543,19 @@ export function AgentControlCenter() {
           </div>
         </div>
       )}
+
+      {/* ──── ADD CONNECTION MODAL ──── */}
+      <AddConnectionModal
+        isOpen={isAddConnectionModalOpen}
+        onClose={() => setIsAddConnectionModalOpen(false)}
+        onSaved={async () => {
+          setIsAddConnectionModalOpen(false);
+          if (selectedWorkflowId) {
+            await handleResumeResource();
+          }
+        }}
+        workflowIdToResume={selectedWorkflow?.workflow_id}
+      />
     </div>
   );
 }

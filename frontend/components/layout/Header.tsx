@@ -1,10 +1,11 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Search, Users, Activity, Shield, Database, Command, Bell, CheckCircle2, Globe2 } from 'lucide-react';
+import { Search, Users, Activity, Shield, Database, Command, Bell, CheckCircle2, Globe2, Lock } from 'lucide-react';
 import { DEMO_USERS, api } from '@/lib/api';
 import { useRouter } from 'next/navigation';
 import { getApiBaseUrl } from '@/lib/env';
+import { useVulcan } from '@/lib/context';
 import ClusterMapModal from '../ClusterMapModal';
 
 interface HeaderProps {
@@ -23,6 +24,7 @@ interface HealthData {
 
 export function Header({ currentUser, onUserChange, onOpenCommandPalette }: HeaderProps) {
   const router = useRouter();
+  const { authStatus, authenticatedUser, authenticatedRole, authenticatedRoleBadge, logout, openSignInModal } = useVulcan();
   const [health, setHealth] = useState<HealthData | null>(null);
   const [pendingCount, setPendingCount] = useState(0);
   const [isClusterMapOpen, setIsClusterMapOpen] = useState(false);
@@ -146,35 +148,48 @@ export function Header({ currentUser, onUserChange, onOpenCommandPalette }: Head
           </button>
         )}
 
-        {/* Persona switcher */}
-        <div className="flex items-center gap-2 border-l border-glass-border pl-3">
-          <span className={`text-[10px] font-mono px-2 py-0.5 rounded border hidden sm:inline ${
-            currentUserObj.role === 'APPROVING_LEAD'
-              ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
-              : currentUserObj.role === 'SECURITY_ADMIN'
-              ? 'border-purple-500/30 bg-purple-500/10 text-purple-300'
-              : currentUserObj.role === 'PLATFORM_ADMIN'
-              ? 'border-amber-500/30 bg-amber-500/10 text-amber-300'
-              : currentUserObj.role === 'AUDITOR'
-              ? 'border-blue-500/30 bg-blue-500/10 text-blue-300'
-              : 'border-cyan-500/30 bg-cyan-500/10 text-cyan-300'
-          }`}>
-            {currentUserObj.roleBadge ?? 'Operator'}
-          </span>
-          <Users size={13} className="text-slate-500" />
-          <select
-            value={currentUser}
-            onChange={(e) => onUserChange(e.target.value)}
-            aria-label="Active user persona"
-            className="bg-transparent text-xs text-slate-300 border-none outline-none cursor-pointer font-mono"
-          >
-            {DEMO_USERS.map((u) => (
-              <option key={u.id} value={u.id} className="bg-canvas-void text-slate-200">
-                {u.label} ({u.roleBadge})
-              </option>
-            ))}
-          </select>
-        </div>
+        {/* Authenticated Identity or Sign In */}
+        {authStatus === 'authenticated' ? (
+          <div className="flex items-center gap-2 border-l border-glass-border pl-3">
+            <span className={`text-[10px] font-mono px-2 py-0.5 rounded border hidden sm:inline ${
+              authenticatedRole === 'APPROVING_LEAD'
+                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                : authenticatedRole === 'SECURITY_ADMIN'
+                ? 'border-purple-500/30 bg-purple-500/10 text-purple-300'
+                : authenticatedRole === 'PLATFORM_ADMIN'
+                ? 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+                : authenticatedRole === 'AUDITOR'
+                ? 'border-blue-500/30 bg-blue-500/10 text-blue-300'
+                : 'border-cyan-500/30 bg-cyan-500/10 text-cyan-300'
+            }`}>
+              {authenticatedRoleBadge ?? authenticatedRole ?? 'OPERATOR'}
+            </span>
+            <span className="text-xs font-mono text-slate-200 font-semibold">
+              {authenticatedUser}
+            </span>
+            <button
+              onClick={logout}
+              title="Sign out of current session"
+              className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-rose-300 transition-colors ml-1 cursor-pointer"
+            >
+              Sign out
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 border-l border-glass-border pl-3">
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded border border-slate-700 bg-slate-900 text-slate-400 hidden sm:inline">
+              UNAUTHENTICATED
+            </span>
+            <button
+              onClick={openSignInModal}
+              data-testid="header-sign-in-btn"
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 text-cyan-300 font-mono text-xs font-semibold transition-all cursor-pointer shadow-glow-cyan"
+            >
+              <Lock size={12} className="text-cyan-400" />
+              <span>Sign In</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Multi-Cluster Topology Radar Modal (UI-25) */}

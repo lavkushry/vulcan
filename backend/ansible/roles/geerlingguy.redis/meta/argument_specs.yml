@@ -1,0 +1,25 @@
+---
+argument_specs:
+  main:
+    short_description: Deploy and configure Redis in-memory cache
+    options:
+      redis_port:
+        type: int
+        required: false
+        default: 6379
+        description: TCP port for Redis server
+      redis_maxmemory_mb:
+        type: int
+        required: false
+        default: 512
+        description: Maximum memory limit in megabytes
+      redis_bind_interface:
+        type: str
+        required: false
+        default: "127.0.0.1"
+        description: Interface address to bind
+      redis_service_name:
+        type: str
+        required: false
+        default: "redis-server"
+        description: Systemd service name

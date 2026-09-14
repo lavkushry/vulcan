@@ -1,13 +1,14 @@
 'use client';
 
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, Lock } from 'lucide-react';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
 import { CommandPalette } from '@/components/layout/CommandPalette';
+import { SignInModal } from '@/components/SignInModal';
 import { VulcanProvider, useVulcan } from '@/lib/context';
 
 function ShellInner({ children }: { children: React.ReactNode }) {
-  const { currentUser, setCurrentUser, paletteOpen, openPalette, closePalette, authStatus } = useVulcan();
+  const { currentUser, setCurrentUser, paletteOpen, openPalette, closePalette, authStatus, openSignInModal } = useVulcan();
 
   return (
     <div className="flex flex-col h-screen overflow-hidden">
@@ -16,12 +17,21 @@ function ShellInner({ children }: { children: React.ReactNode }) {
           <div className="flex items-center gap-2">
             <AlertCircle size={13} className="text-amber-400 flex-shrink-0" />
             <span className="font-mono text-[11px] font-medium">
-              Unauthenticated Session: Operating in read-only / demo mode.
+              Unauthenticated Session: Operating in read-only / simulation mode. Mutations and execution are disabled.
             </span>
           </div>
-          <span className="text-[10px] text-amber-300/80 font-mono hidden sm:inline">
-            Select a demo persona or configure VULCAN_API_TOKEN to authenticate
-          </span>
+          <div className="flex items-center gap-3">
+            <span className="text-[10px] text-amber-300/80 font-mono hidden md:inline">
+              Sign in with an API token to activate live execution & mutations
+            </span>
+            <button
+              onClick={openSignInModal}
+              className="flex items-center gap-1 px-2 py-0.5 rounded bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-200 font-mono text-[10px] font-bold transition-all cursor-pointer"
+            >
+              <Lock size={10} />
+              <span>Sign in</span>
+            </button>
+          </div>
         </div>
       )}
       <Header
@@ -40,6 +50,7 @@ function ShellInner({ children }: { children: React.ReactNode }) {
         onClose={closePalette}
         currentUser={currentUser}
       />
+      <SignInModal />
     </div>
   );
 }

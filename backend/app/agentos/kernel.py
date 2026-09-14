@@ -85,7 +85,14 @@ class AgentOSKernel:
                 raise RuntimeError("VULCAN_CAPABILITY_HMAC_KEY is required in production mode")
 
         self.repository = repository or PostgresAgentWorkflowRepository()
-        self.external_resource_repo = external_resource_repo
+        if external_resource_repo is None:
+            try:
+                from app.adapters.postgres_external_resource_repository import PostgresExternalResourceRepository
+                self.external_resource_repo = PostgresExternalResourceRepository(db_url=None, seed_defaults=True)
+            except Exception:
+                self.external_resource_repo = None
+        else:
+            self.external_resource_repo = external_resource_repo
         
         # Default imports for the engine
         from app.agentos.policy_engine import GovernancePolicyEngine
@@ -281,7 +288,7 @@ class AgentOSKernel:
                     cand_sha = cand.get("commit_sha")
                     break
 
-            if primary_ident:
+            if primary_ident and not ctx.automation_plan.get("resolved_asset"):
                 known_params = ctx.normalized_intent.get("known_parameters", {}) if isinstance(ctx.normalized_intent, dict) else {}
                 test_expected_sha = known_params.get("expected_artifact_sha")
                 resolved = resolver.resolve_and_download(
@@ -291,8 +298,10 @@ class AgentOSKernel:
                     requested_os=known_params.get("os_platform"),
                     workflow_id=ctx.workflow_id,
                     raw_catalog_item=cand_meta,
+                    provided_parameters=known_params,
                 )
                 ctx.automation_plan["resolved_asset"] = resolved.to_dict()
+
 
             comp_out = self.composer_agent.execute(ctx)
             ctx.automation_plan["dag_steps"] = [s.model_dump() for s in comp_out.dag_steps]
@@ -436,32 +445,44 @@ class AgentOSKernel:
                 )
 
         elif target_role == AgentRole.EXECUTOR:
-            # Requires capability token!
-            artifact_sha = ctx.generated_artifacts[0].get("artifact_sha256") if ctx.generated_artifacts else "sha256-default"
+            # Use pre-bound capability token from approval if present, or generate for auto-approval
+            token = None
+            if ctx.capability_token:
+                try:
+                    token = ExecutionCapabilityToken(**ctx.capability_token)
+                except Exception:
+                    pass
+
             target_id = (
-                ctx.normalized_intent.get("known_parameters", {}).get("target_host")
+                (token.target_resource_id if token else None)
+                or ctx.normalized_intent.get("known_parameters", {}).get("target_host")
                 or ctx.desired_state.get("target_host")
                 or ctx.execution_plan.get("target_id")
                 or "db-cluster.internal"
             )
 
-            token_id = f"cap-{uuid.uuid4().hex[:12]}"
-            token = ExecutionCapabilityToken(
-                token_id=token_id,
-                workflow_id=ctx.workflow_id,
-                artifact_sha256=artifact_sha,
-                parameter_hash=hashlib.sha256(json.dumps(ctx.desired_state, sort_keys=True).encode()).hexdigest(),
-                target_resource_id=target_id,
-                environment=ctx.environment,
-                approval_id="appr-auto" if not ctx.approval_records else ctx.approval_records[-1].get("approver_id", "appr-sys"),
-                policy_decision_id=ctx.policy_decision.get("decision_id", "pol-unknown"),
-                allowed_action="EXECUTE",
-                expires_at=datetime.now(timezone.utc) + timedelta(minutes=30),
-            )
-            hmac_key = os.environ.get("VULCAN_CAPABILITY_HMAC_KEY", "")
-            if hmac_key:
-                token.hmac_signature = ExecutionCapabilityToken.compute_hmac(token, hmac_key)
-            self.repository.save_capability_token(token)
+            if not token:
+                artifact_sha = ctx.generated_artifacts[0].get("artifact_sha256") if ctx.generated_artifacts else "sha256-default"
+                token_id = f"cap-{uuid.uuid4().hex[:12]}"
+
+                token = ExecutionCapabilityToken(
+                    token_id=token_id,
+                    workflow_id=ctx.workflow_id,
+                    artifact_sha256=artifact_sha,
+                    parameter_hash=hashlib.sha256(json.dumps(ctx.desired_state, sort_keys=True).encode()).hexdigest(),
+                    target_resource_id=target_id,
+                    environment=ctx.environment,
+                    approval_id="appr-auto" if not ctx.approval_records else ctx.approval_records[-1].get("approver_id", "appr-sys"),
+                    policy_decision_id=ctx.policy_decision.get("decision_id", "pol-unknown"),
+                    allowed_action="EXECUTE",
+                    expires_at=datetime.now(timezone.utc) + timedelta(minutes=30),
+                )
+                hmac_key = os.environ.get("VULCAN_CAPABILITY_HMAC_KEY", "")
+                if hmac_key:
+                    token.hmac_signature = ExecutionCapabilityToken.compute_hmac(token, hmac_key)
+                self.repository.save_capability_token(token)
+                ctx.capability_token = token.model_dump()
+
 
             # Files dict for executor (includes all compiled package files)
             files = {}
@@ -593,12 +614,20 @@ class AgentOSKernel:
 
         # Merge supplied input into normalized intent
         input_data = dict(operator_input)
+        if "server" in input_data and "target_host" not in input_data:
+            input_data["target_host"] = input_data["server"]
+        if "target" in input_data and "target_host" not in input_data:
+            input_data["target_host"] = input_data["target"]
         if "target_inventory" in input_data and "target_host" not in input_data:
             input_data["target_host"] = input_data["target_inventory"]
         if "target_host" in input_data and "target_inventory" not in input_data:
             input_data["target_inventory"] = input_data["target_host"]
         ctx.normalized_intent.setdefault("known_parameters", {}).update(input_data)
-        ctx.unresolved_questions = [q for q in ctx.unresolved_questions if q not in input_data]
+        # Clear resolved questions
+        resolved_keys = set(input_data.keys())
+        if "target_host" in input_data:
+            resolved_keys.update(["target_host", "target_inventory", "server", "target"])
+        ctx.unresolved_questions = [q for q in ctx.unresolved_questions if q not in resolved_keys]
         ctx.normalized_intent["requires_operator_input"] = (len(ctx.unresolved_questions) > 0)
 
         event = ctx.transition_to(
@@ -656,19 +685,55 @@ class AgentOSKernel:
                 f"Maker-Checker Violation: Approver '{approver_id}' cannot approve their own requested workflow!"
             )
 
+        # Risk-Based Capability Token Generation and Approval Binding
+        artifact_sha = ctx.generated_artifacts[0].get("artifact_sha256") if ctx.generated_artifacts else "sha256-default"
+        target_id = (
+            ctx.normalized_intent.get("known_parameters", {}).get("target_host")
+            or ctx.desired_state.get("target_host")
+            or ctx.execution_plan.get("target_id")
+            or "db-cluster.internal"
+        )
+        param_hash = hashlib.sha256(json.dumps(ctx.desired_state, sort_keys=True).encode()).hexdigest()
+        risk_tier = ctx.risk_classification.get("risk_tier", "MEDIUM")
+
+        token_id = f"cap-{uuid.uuid4().hex[:12]}"
+        token = ExecutionCapabilityToken(
+            token_id=token_id,
+            workflow_id=ctx.workflow_id,
+            artifact_sha256=artifact_sha,
+            parameter_hash=param_hash,
+            target_resource_id=target_id,
+            environment=ctx.environment,
+            approval_id=approver_id,
+            policy_decision_id=ctx.policy_decision.get("decision_id", "pol-manual"),
+            allowed_action="EXECUTE",
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=30),
+        )
+        hmac_key = os.environ.get("VULCAN_CAPABILITY_HMAC_KEY", "")
+        if hmac_key:
+            token.hmac_signature = ExecutionCapabilityToken.compute_hmac(token, hmac_key)
+        self.repository.save_capability_token(token)
+
         approval_record = {
             "approver_id": approver_id,
             "approved_at": datetime.now(timezone.utc).isoformat(),
             "reason": reason,
+            "bound_token_id": token_id,
+            "bound_artifact_sha256": artifact_sha,
+            "bound_target_id": target_id,
+            "bound_parameter_hash": param_hash,
+            "risk_tier": risk_tier,
         }
         ctx.approval_records.append(approval_record)
+        ctx.capability_token = token.model_dump()
 
         event = ctx.transition_to(
             WorkflowState.EXECUTION_READY,
             actor=approver_id,
-            reason=f"Human Maker-Checker sign-off by {approver_id}",
+            reason=f"Human Maker-Checker sign-off by {approver_id} (Bound token {token_id})",
             payload=approval_record,
         )
+
 
         self.repository.save_workflow(ctx)
         self.repository.record_event(event)

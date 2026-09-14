@@ -121,6 +121,18 @@ class IntentAgent(BaseAgent):
             val = int(maxmem_match.group(1))
             known["maxmemory_mb"] = val * 1024 if unit == "gb" else val
 
+        # Docker transport detection (avoid unauthenticated TCP 2375)
+        if software == "docker":
+            if "unix:" in lower_prompt or "/var/run/docker.sock" in lower_prompt or "socket" in lower_prompt:
+                known["connection_transport"] = "unix:///var/run/docker.sock"
+            elif "ssh://" in lower_prompt or "ssh" in lower_prompt:
+                known["connection_transport"] = "ssh"
+            elif "tls://" in lower_prompt or "tcp://" in lower_prompt:
+                known["connection_transport"] = "tls_tcp"
+            else:
+                known["connection_transport"] = "unix:///var/run/docker.sock"
+                assumptions.append("Defaulting Docker connection transport to Unix socket /var/run/docker.sock.")
+
         # Node count detection
         word_num_map = {
             "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
