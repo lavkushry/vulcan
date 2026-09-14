@@ -493,8 +493,10 @@ class AgentOSKernel:
                 for f in all_file_entries:
                     files[f.get("path")] = f.get("content")
 
-            # Transition to EXECUTING
-            ctx.transition_to(WorkflowState.EXECUTING, actor="kernel", reason="Capability token issued; executing.")
+            # Transition to EXECUTING and checkpoint state
+            ev_exec = ctx.transition_to(WorkflowState.EXECUTING, actor="kernel", reason="Capability token issued; executing.")
+            self.repository.save_workflow(ctx)
+            self.repository.record_event(ev_exec)
 
             # Atomically consume capability token BEFORE execution
             consumed_token = self.repository.consume_capability_token(token.token_id)
@@ -686,6 +688,13 @@ class AgentOSKernel:
                 f"Maker-Checker Violation: Approver '{approver_id}' cannot approve their own requested workflow!"
             )
 
+        # Enforce Approver Role Permission (WORKFLOW_APPROVE)
+        from app.domain.roles_and_policies import has_permission, Permission
+        if not has_permission(approver_id, Permission.WORKFLOW_APPROVE):
+            raise PermissionError(
+                f"RBAC Policy Violation: Identity '{approver_id}' lacks permission 'workflow:approve' required to approve workflow."
+            )
+
         # Risk-Based Capability Token Generation and Approval Binding
         artifact_sha = ctx.generated_artifacts[0].get("artifact_sha256") if ctx.generated_artifacts else "sha256-default"
         target_id = (
@@ -765,4 +774,92 @@ class AgentOSKernel:
 
         self.repository.save_workflow(ctx)
         self.repository.record_event(event2)
+        return ctx
+
+    def recover_workflow(self, workflow_id: str) -> WorkflowContext:
+        """
+        Safely recovers a workflow that was interrupted during EXECUTING without duplicating changes.
+        """
+        ctx = self.repository.get_workflow(workflow_id)
+        if not ctx:
+            raise ValueError(f"Workflow '{workflow_id}' not found.")
+
+        if ctx.current_state != WorkflowState.EXECUTING:
+            return ctx
+
+        # Check if execution already completed
+        if ctx.execution_result and ctx.execution_result.get("exit_code") == 0:
+            ev = ctx.transition_to(
+                WorkflowState.VERIFYING,
+                actor="kernel_recovery",
+                reason="Recovered from worker restart; previous execution completed successfully.",
+            )
+            self.repository.save_workflow(ctx)
+            self.repository.record_event(ev)
+            return ctx
+
+        # Re-run execution with fresh recovery capability token
+        artifact_sha = ctx.generated_artifacts[0].get("artifact_sha256") if ctx.generated_artifacts else "sha256-default"
+        target_id = (
+            (ctx.capability_token.get("target_resource_id") if ctx.capability_token else None)
+            or ctx.normalized_intent.get("known_parameters", {}).get("target_host")
+            or ctx.desired_state.get("target_host")
+            or "db-cluster.internal"
+        )
+        token = ExecutionCapabilityToken(
+            token_id=f"cap-rec-{uuid.uuid4().hex[:10]}",
+            workflow_id=ctx.workflow_id,
+            artifact_sha256=artifact_sha,
+            parameter_hash=hashlib.sha256(json.dumps(ctx.desired_state, sort_keys=True).encode()).hexdigest(),
+            target_resource_id=target_id,
+            environment=ctx.environment,
+            approval_id="recovery",
+            policy_decision_id="pol-recovery",
+            allowed_action="EXECUTE",
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=30),
+        )
+        hmac_key = os.environ.get("VULCAN_CAPABILITY_HMAC_KEY", "")
+        if hmac_key:
+            token.hmac_signature = ExecutionCapabilityToken.compute_hmac(token, hmac_key)
+        self.repository.save_capability_token(token)
+        ctx.capability_token = token.model_dump()
+
+        files = {}
+        if ctx.generated_artifacts:
+            art = ctx.generated_artifacts[0]
+            all_file_entries = art.get("files", []) + art.get("test_files", []) + art.get("rollback_files", [])
+            for f in all_file_entries:
+                files[f.get("path")] = f.get("content")
+
+        target_id = token.target_resource_id or "db-cluster.internal"
+        try:
+            exec_res = self.executor.execute(
+                token=token,
+                artifact_files=files,
+                target_resource_id=target_id,
+                parameters=ctx.desired_state,
+                environment=ctx.environment,
+            )
+            ctx.execution_result = exec_res.model_dump()
+            if exec_res.exit_code != 0:
+                ev = ctx.transition_to(
+                    WorkflowState.EXECUTION_FAILED,
+                    actor="kernel_recovery",
+                    reason=f"Recovery execution failed with exit code {exec_res.exit_code}.",
+                )
+            else:
+                ev = ctx.transition_to(
+                    WorkflowState.VERIFYING,
+                    actor="kernel_recovery",
+                    reason="Recovery execution succeeded with zero duplicate drift.",
+                )
+        except Exception as exc:
+            ev = ctx.transition_to(
+                WorkflowState.EXECUTION_FAILED,
+                actor="kernel_recovery",
+                reason=f"Recovery execution error: {exc}",
+            )
+
+        self.repository.save_workflow(ctx)
+        self.repository.record_event(ev)
         return ctx

@@ -124,6 +124,7 @@ class ResolvedAsset:
         staging_dir: Optional[str] = None,
         is_compatible: bool = True,
         incompatibility_reason: str = "",
+        is_cached: bool = False,
     ):
         self.identifier = identifier
         self.version = version
@@ -136,6 +137,7 @@ class ResolvedAsset:
         self.staging_dir = staging_dir
         self.is_compatible = is_compatible
         self.incompatibility_reason = incompatibility_reason
+        self.is_cached = is_cached
 
     @property
     def role_interface(self) -> RoleInterface:
@@ -162,6 +164,7 @@ class ResolvedAsset:
             "staging_dir": self.staging_dir,
             "is_compatible": self.is_compatible,
             "incompatibility_reason": self.incompatibility_reason,
+            "is_cached": self.is_cached,
         }
 
 
@@ -252,9 +255,6 @@ class ArtifactResolver:
         # 1. State: DISCOVERED
         current_state = ArtifactState.DISCOVERED
 
-        if os.environ.get("VULCAN_REGISTRY_UNAVAILABLE") == "1":
-            raise RegistryUnavailableError(f"External registry is unreachable for asset '{identifier}'.")
-
         staging_parent = workspace_parent or Path(f"/tmp/vulcan_staging/{workflow_id}")
         staged_dir = staging_parent / identifier.replace(".", "_")
         staged_dir.mkdir(parents=True, exist_ok=True)
@@ -280,6 +280,8 @@ class ArtifactResolver:
                 used_cached = True
 
         if not used_cached:
+            if os.environ.get("VULCAN_REGISTRY_UNAVAILABLE") == "1":
+                raise RegistryUnavailableError(f"External registry is unreachable for asset '{identifier}'.")
             # Download via appropriate adapter
             # Determine source: if git_repo declared in raw_catalog_item or git in source_uri
             adapter: RegistryDownloadAdapter = self.local_adapter
@@ -485,4 +487,5 @@ class ArtifactResolver:
             staging_dir=str(staged_dir),
             is_compatible=is_compatible,
             incompatibility_reason=incompatibility_reason,
+            is_cached=used_cached,
         )

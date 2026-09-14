@@ -60,17 +60,27 @@ def test_real_postgres_demo_end_to_end(tmp_path):
     ctx = kernel.approve_workflow(ctx.workflow_id, approver_id="secops-bob@corp.internal", reason="Valid sign-off")
     assert ctx.current_state == WorkflowState.EXECUTION_READY
 
-    # 6. Real Execution via AnsibleRunnerExecutionAdapter
-    ctx = kernel.step(ctx.workflow_id)
-    assert ctx.current_state == WorkflowState.VERIFYING
-    assert ctx.execution_result.get("exit_code") == 0
-    assert ctx.execution_result.get("runner") == "ansible_runner_adapter"
+    # 6. Real Execution via AnsibleRunnerExecutionAdapter (mocking external ansible CLI at process boundary)
+    from unittest.mock import patch, MagicMock
+    mock_ansible_proc = MagicMock()
+    mock_ansible_proc.returncode = 0
+    mock_ansible_proc.stdout = "PLAY [deploy_postgres.yml] ********************\nchanged: [db-cluster.internal]\nPLAY RECAP: db-cluster.internal : ok=4 changed=3 unreachable=0 failed=0"
+    mock_ansible_proc.stderr = ""
+    with (
+        patch("shutil.which", return_value="/usr/bin/ansible-playbook"),
+        patch("os.path.isfile", return_value=True),
+        patch("os.access", return_value=True),
+        patch("subprocess.run", return_value=mock_ansible_proc),
+    ):
+        ctx = kernel.step(ctx.workflow_id)
+        assert ctx.current_state == WorkflowState.VERIFYING
+        assert ctx.execution_result.get("exit_code") == 0
+        assert ctx.execution_result.get("runner") == "ansible_runner_adapter"
 
     # 7. Independent Verification via ProductionProbeRunner (mocked at test boundary)
     # Mock network I/O (socket, psycopg) and resolve the target to localhost so
     # disk_capacity runs against the local filesystem. Mock disk_usage to provide
     # enough capacity for the 500GB requirement.
-    from unittest.mock import patch, MagicMock
     mock_disk = (600 * 1024**3, 100 * 1024**3, 500 * 1024**3)  # total=600GB, used=100GB, free=500GB
     with (
         patch("socket.create_connection"),
@@ -93,20 +103,31 @@ def test_real_postgres_demo_end_to_end(tmp_path):
 
 
 def test_ansible_runner_execution_adapter_executes_artifact(tmp_path):
+    from unittest.mock import patch, MagicMock
     adapter = AnsibleRunnerExecutionAdapter(base_dir=str(tmp_path / "runner"))
     assert adapter.is_simulation is False
-    res = adapter.execute(
-        workflow_id="wf-test-exec",
-        token_id="cap-test-1234",
-        artifact_sha256="sha256-test-hash",
-        artifact_files={"playbook.yml": "---\n- hosts: all\n  tasks:\n    - ping:\n"},
-        target_resource_id="db-test.internal",
-        parameters={"db_name": "test_db"},
-        environment="PROD",
-    )
-    assert res.exit_code == 0
-    assert res.runner == "ansible_runner_adapter"
-    assert "PLAY [playbook.yml]" in res.stdout
+    mock_proc = MagicMock()
+    mock_proc.returncode = 0
+    mock_proc.stdout = "PLAY [playbook.yml] ********************\nok: [db-test.internal]\nPLAY RECAP: db-test.internal : ok=1 changed=1 unreachable=0 failed=0"
+    mock_proc.stderr = ""
+    with (
+        patch("shutil.which", return_value="/usr/bin/ansible-playbook"),
+        patch("os.path.isfile", return_value=True),
+        patch("os.access", return_value=True),
+        patch("subprocess.run", return_value=mock_proc),
+    ):
+        res = adapter.execute(
+            workflow_id="wf-test-exec",
+            token_id="cap-test-1234",
+            artifact_sha256="sha256-test-hash",
+            artifact_files={"playbook.yml": "---\n- hosts: all\n  tasks:\n    - ping:\n"},
+            target_resource_id="db-test.internal",
+            parameters={"db_name": "test_db"},
+            environment="PROD",
+        )
+        assert res.exit_code == 0
+        assert res.runner == "ansible_runner_adapter"
+        assert "PLAY [playbook.yml]" in res.stdout
 
 
 def test_production_probe_runner_probes():

@@ -848,14 +848,18 @@ export function AgentControlCenter() {
                         <span>What Changed</span>
                       </div>
                       <div className="text-xs space-y-1 text-slate-400">
-                        <div>Tasks Changed: <span className="text-purple-300 font-bold">{selectedWorkflow.execution_result?.changed ?? 3}</span></div>
-                        <div>Tasks OK: <span className="text-emerald-300 font-bold">{selectedWorkflow.execution_result?.ok ?? 5}</span></div>
-                        <div>Tasks Failed: <span className="text-slate-200 font-bold">{selectedWorkflow.execution_result?.failed ?? 0}</span></div>
+                        <div>Tasks Changed: <span className="text-purple-300 font-bold">{selectedWorkflow.execution_result?.changed != null ? selectedWorkflow.execution_result.changed : <span className="text-slate-500 font-normal italic">Not measured</span>}</span></div>
+                        <div>Tasks OK: <span className="text-emerald-300 font-bold">{selectedWorkflow.execution_result?.ok != null ? selectedWorkflow.execution_result.ok : <span className="text-slate-500 font-normal italic">Not measured</span>}</span></div>
+                        <div>Tasks Failed: <span className="text-slate-200 font-bold">{selectedWorkflow.execution_result?.failed != null ? selectedWorkflow.execution_result.failed : <span className="text-slate-500 font-normal italic">Not measured</span>}</span></div>
                         <div className="pt-1">
                           <span className="text-[10px] text-slate-500 block">Idempotency Run (Re-execution):</span>
-                          <span className="text-emerald-400 font-bold text-xs flex items-center gap-1">
-                            <Check size={11} /> changed={selectedWorkflow.execution_result?.idempotency_run?.changed ?? 0} (Zero Drift Verified)
-                          </span>
+                          {selectedWorkflow.execution_result?.idempotency_run?.changed != null ? (
+                            <span className="text-emerald-400 font-bold text-xs flex items-center gap-1">
+                              <Check size={11} /> changed={selectedWorkflow.execution_result.idempotency_run.changed} {selectedWorkflow.execution_result.idempotency_run.changed === 0 ? '(Zero Drift Verified)' : ''}
+                            </span>
+                          ) : (
+                            <span className="text-slate-500 font-normal italic text-xs">Not measured</span>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -877,20 +881,7 @@ export function AgentControlCenter() {
                             </div>
                           ))
                         ) : (
-                          <>
-                            <div className="flex items-center justify-between text-[11px]">
-                              <span>Dynamic Port 6380 Open:</span>
-                              <span className="text-emerald-400 font-bold flex items-center gap-1"><Check size={10} /> PASSED</span>
-                            </div>
-                            <div className="flex items-center justify-between text-[11px]">
-                              <span>systemd redis.service:</span>
-                              <span className="text-emerald-400 font-bold flex items-center gap-1"><Check size={10} /> ACTIVE</span>
-                            </div>
-                            <div className="flex items-center justify-between text-[11px]">
-                              <span>Zero Secrets Leaked:</span>
-                              <span className="text-emerald-400 font-bold flex items-center gap-1"><Check size={10} /> VERIFIED</span>
-                            </div>
-                          </>
+                          <div className="text-xs text-slate-500 italic py-1">Not measured (no verification probes recorded)</div>
                         )}
                       </div>
                     </div>

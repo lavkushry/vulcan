@@ -108,31 +108,8 @@ class PolicyManager:
                 return True
             return permission in ROLE_PERMISSIONS.get(role, [])
 
-        # Role aliases / demo user fallback
-        role_map = {
-            "e2e.bot": UserRole.OPERATOR,
-            "lead.bob": UserRole.APPROVING_LEAD,
-            "eng.alice": UserRole.OPERATOR,
-            "engineer.alice": UserRole.OPERATOR,
-            "sec.carol": UserRole.SECURITY_ADMIN,
-            "admin.dave": UserRole.PLATFORM_ADMIN,
-            "system.admin": UserRole.PLATFORM_ADMIN,
-            "local.dev": UserRole.PLATFORM_ADMIN,
-            "audit.emma": UserRole.AUDITOR
-        }
-        mapped_role = role_map.get(user_id)
-        if mapped_role:
-            if mapped_role == UserRole.PLATFORM_ADMIN:
-                return True
-            return permission in ROLE_PERMISSIONS.get(mapped_role, [])
-
-        try:
-            role = UserRole(user_id)
-            if role == UserRole.PLATFORM_ADMIN:
-                return True
-            return permission in ROLE_PERMISSIONS.get(role, [])
-        except ValueError:
-            return False
+        from app.domain.roles_and_policies import has_permission
+        return has_permission(user_id, permission)
 
     def list_policies(self) -> List[Dict[str, Any]]:
         return [p.to_dict() for p in self.engine.policies.values()]

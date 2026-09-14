@@ -32,7 +32,10 @@ from app.agentos.agents.composer import ComposerAgent
 from app.agentos.agents.builder import BuilderAgent
 from app.agentos.compiler import AutomationCompiler
 from app.agentos.specification import AutomationSpecification, ResourceContract
-from app.agentos.adapters.execution_adapter import AnsibleRunnerExecutionAdapter
+from app.agentos.adapters.execution_adapter import (
+    AnsibleRunnerExecutionAdapter,
+    LiveDisposableTargetExecutionAdapter,
+)
 from app.agentos.agents.verifier import ProductionProbeRunner
 from app.catalog_data import DB_SHA, DEFAULT_SHA
 
@@ -47,7 +50,7 @@ def test_redis_request_has_zero_postgres_leakage(tmp_path):
     ext_repo = PostgresExternalResourceRepository(db_url=None, seed_defaults=True)
 
     kernel = AgentOSKernel(
-        execution_adapter=AnsibleRunnerExecutionAdapter(base_dir=str(tmp_path / "runner")),
+        execution_adapter=LiveDisposableTargetExecutionAdapter(target_root=tmp_path / "target"),
         probe_runner=ProductionProbeRunner(),
         external_resource_repo=ext_repo,
     )

@@ -239,7 +239,20 @@ class GalaxyDownloadAdapter(RegistryDownloadAdapter):
             raise RegistryUnavailableError(f"Ansible Galaxy server '{self.server_url}' is unreachable.")
         if version_constraint and version_constraint != "latest":
             return version_constraint
-        return "1.5.0"
+        if not (self.server_url.startswith("http://") or self.server_url.startswith("https://")):
+            raise RegistryUnavailableError(f"Ansible Galaxy server '{self.server_url}' is invalid or unreachable.")
+        try:
+            req = urllib.request.Request(f"{self.server_url.rstrip('/')}/api/v3/roles/{identifier}/")
+            if self.auth_token:
+                req.add_header("Authorization", f"Bearer {self.auth_token}")
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = json.loads(resp.read().decode())
+                latest = data.get("summary_fields", {}).get("versions", [{}])[0].get("version")
+                if latest:
+                    return latest
+        except Exception:
+            pass
+        raise RegistryUnavailableError(f"Cannot resolve version for '{identifier}' from unreachable Galaxy server '{self.server_url}'.")
 
     def download_artifact(self, identifier: str, version: str, dest_dir: Path | str) -> Path:
         dest_dir = Path(dest_dir)
@@ -298,26 +311,11 @@ class GalaxyDownloadAdapter(RegistryDownloadAdapter):
                     f"HTTP {http_err.code} error from registry '{download_url}': {http_err.reason}"
                 ) from http_err
             except (urllib.error.URLError, ConnectionError, OSError) as conn_err:
-                # If pointing to default public galaxy and disconnected, fallback to local
-                if self.local_fallback and "galaxy.ansible.com" in self.server_url:
-                    pass
-                else:
-                    raise RegistryUnavailableError(
-                        f"Network error connecting to registry '{download_url}': {conn_err}"
-                    ) from conn_err
+                raise RegistryUnavailableError(
+                    f"Network error connecting to registry '{download_url}': {conn_err}"
+                ) from conn_err
 
-        dest_role = dest_dir / identifier.replace(".", "_")
-        try:
-            return self.local_fallback.download_artifact(identifier, version, dest_dir)
-        except Exception:
-            dest_role.mkdir(parents=True, exist_ok=True)
-            (dest_role / "meta" / "main.yml").parent.mkdir(parents=True, exist_ok=True)
-            (dest_role / "meta" / "main.yml").write_text(
-                f"---\ngalaxy_info:\n  role_name: {identifier}\n  version: {version}\n",
-                encoding="utf-8"
-            )
-            return dest_role
-
+        raise RegistryUnavailableError(f"Galaxy server '{self.server_url}' is not a valid HTTP endpoint.")
 
 
 class GitDownloadAdapter(RegistryDownloadAdapter):
@@ -351,10 +349,9 @@ class GitDownloadAdapter(RegistryDownloadAdapter):
                 subprocess.run(cmd, env=env, capture_output=True, check=True, timeout=60)
                 return dest_role
             except Exception as e:
-                logger.warning("Git clone failed for %s: %s; falling back to local catalog.", url, e)
+                raise RegistryUnavailableError(f"Git clone failed for {url}: {e}") from e
 
-        local_adapter = LocalCatalogAdapter()
-        return local_adapter.download_artifact(identifier, version, dest_dir)
+        raise RegistryUnavailableError(f"Git clone unavailable or network access disabled for {url}.")
 
 
 class DependencyRetriever:

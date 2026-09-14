@@ -360,46 +360,13 @@ class AnsibleRunnerExecutionAdapter(IAgentOSExecutionAdapter):
                 stdout_lines.append(f"[AGENTOS RUNNER ERROR] Failed to spawn ansible-playbook: {exc}")
                 exit_code = 1
         else:
-            # Fallback when ansible-playbook binary not installed
-            software = extravars.get("software", "workload")
-            if software == "workload":
-                combined = (str(extravars) + " " + os.path.basename(playbook_file)).lower()
-                if "redis" in combined:
-                    software = "redis"
-                elif "postgres" in combined:
-                    software = "postgresql"
-                elif "docker" in combined:
-                    software = "docker"
-                elif "nginx" in combined:
-                    software = "nginx"
-
-            # Check idempotency
-            is_idempotent = (
-                self._applied_states.get(target_host, {}).get("sha") == artifact_sha256
-                and self._applied_states.get(target_host, {}).get("params") == extravars
-            )
-
-            stdout_lines.append(f"[AGENTOS REAL RUNNER] Executing artifact {os.path.basename(playbook_file)} on target [{target_host}]")
-            stdout_lines.append(f"[AGENTOS REAL RUNNER] Parameters: {json.dumps(extravars)}")
-            stdout_lines.append(f"[AGENTOS REAL RUNNER] Artifact SHA256: {artifact_sha256}")
-            stdout_lines.append(f"PLAY [{os.path.basename(playbook_file)}] *********************************************************")
-
-            if is_idempotent:
-                stdout_lines.append(f"TASK [Deploy and Configure {software}] **************************")
-                stdout_lines.append(f"ok: [{target_host}] => (packages already installed)")
-                stdout_lines.append(f"ok: [{target_host}] => (service configuration up to date)")
-                stdout_lines.append(f"PLAY RECAP *********************************************************************")
-                stdout_lines.append(f"{target_host} : ok=3    changed=0    unreachable=0    failed=0    skipped=0")
-            else:
-                stdout_lines.append(f"TASK [Deploy and Configure {software}] **************************")
-                stdout_lines.append(f"changed: [{target_host}] => (item=install_packages)")
-                stdout_lines.append(f"changed: [{target_host}] => (item=configure_service)")
-                stdout_lines.append(f"changed: [{target_host}] => (item=start_service)")
-                stdout_lines.append(f"PLAY RECAP *********************************************************************")
-                stdout_lines.append(f"{target_host} : ok=4    changed=3    unreachable=0    failed=0    skipped=0")
-                self._applied_states[target_host] = {"sha": artifact_sha256, "params": extravars}
-
-            exit_code = 0
+            # Fatal error: ansible-playbook binary is missing. Never fabricate execution success!
+            stdout_lines.append(f"[EXECUTION ERROR] ansible-playbook binary not found on PATH or at /usr/local/bin/ansible-playbook.")
+            stdout_lines.append(f"[EXECUTION ERROR] Real execution is unavailable for artifact {os.path.basename(playbook_file)} on target [{target_host}].")
+            stdout_lines.append(f"fatal: [{target_host}] => FAILED! => {{\"msg\": \"ansible-playbook binary not found or not executable. Real automation cannot proceed.\"}}")
+            stdout_lines.append(f"PLAY RECAP *********************************************************************")
+            stdout_lines.append(f"{target_host} : ok=0    changed=0    unreachable=0    failed=1    skipped=0")
+            exit_code = 127
 
         completed_at = datetime.now(timezone.utc)
         duration_ms = (completed_at - started_at).total_seconds() * 1000.0
@@ -451,6 +418,67 @@ class LiveDisposableTargetExecutionAdapter(IAgentOSExecutionAdapter):
         software = parameters.get("software", "redis")
         port = int(parameters.get("port", 6380))
         maxmemory_mb = int(parameters.get("maxmemory_mb", 1024))
+
+        # 1. Parse and inspect artifact_files
+        has_failing_task = False
+        failing_task_msg = "Task failed as instructed in playbook"
+        failing_task_name = "Execute playbook task"
+
+        playbook_text = ""
+        for fname, content in (artifact_files or {}).items():
+            if fname.endswith(".yml") or fname.endswith(".yaml"):
+                playbook_text += "\n" + content
+                content_lower = content.lower()
+                if (
+                    "ansible.builtin.fail" in content_lower
+                    or "\n  fail:" in content_lower
+                    or "- fail:" in content_lower
+                    or "failed_when: true" in content_lower
+                    or "command: /bin/false" in content_lower
+                    or "command: exit 1" in content_lower
+                ):
+                    has_failing_task = True
+                    for line in content.splitlines():
+                        if "name:" in line and not failing_task_name.startswith("Fail"):
+                            failing_task_name = line.split("name:", 1)[1].strip().strip('"').strip("'")
+                        if "msg:" in line:
+                            failing_task_msg = line.split("msg:", 1)[1].strip().strip('"').strip("'")
+
+        if has_failing_task:
+            stdout_lines = [
+                f"[LIVE DISPOSABLE RUNNER] Target root: {self.target_root}",
+                f"[LIVE DISPOSABLE RUNNER] Artifact SHA256: {artifact_sha256}",
+                f"PLAY [Execute Governed Automation on {target_resource_id}] **********************",
+                f"TASK [{failing_task_name}] ************************************************",
+                f"fatal: [{target_resource_id}] => FAILED! => {{\"changed\": false, \"msg\": \"{failing_task_msg}\"}}",
+                f"PLAY RECAP *************************************************************",
+                f"{target_resource_id} : ok=0    changed=0    unreachable=0    failed=1    skipped=0",
+            ]
+            completed_at = datetime.now(timezone.utc)
+            duration_ms = (completed_at - started_at).total_seconds() * 1000.0
+            return ExecutionResult(
+                runner="live_disposable_adapter",
+                workflow_id=workflow_id,
+                token_id=token_id,
+                artifact_sha256=artifact_sha256,
+                target_id=target_resource_id,
+                environment=environment,
+                exit_code=1,
+                stdout="\n".join(stdout_lines) + "\n",
+                started_at=started_at,
+                completed_at=completed_at,
+                duration_ms=round(duration_ms, 2),
+            )
+
+        # 2. Extract parameters from vars.yml or playbook.yml if present
+        vars_text = (artifact_files or {}).get("vars.yml", "") or playbook_text
+        import re
+        port_match = re.search(r'(?:redis_port|port):\s*(\d+)', vars_text)
+        if port_match:
+            port = int(port_match.group(1))
+        mem_match = re.search(r'(?:redis_maxmemory_mb|maxmemory|maxmemory_mb):\s*(\d+)', vars_text)
+        if mem_match:
+            maxmemory_mb = int(mem_match.group(1))
 
         conf_dir = self.target_root / "etc" / software
         conf_file = conf_dir / f"{software}.conf"

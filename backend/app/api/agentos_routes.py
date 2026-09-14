@@ -367,9 +367,15 @@ def deploy_workflow(workflow_id: str, request: Request, reason: str = Query(defa
 
     user_id = getattr(request.state, "user_id", None) or "admin.dave"
 
-    # If waiting for approval, approve it first
+    # If waiting for approval, approving requires WORKFLOW_APPROVE permission
     if ctx.current_state == WorkflowState.WAITING_FOR_APPROVAL:
-        ctx = kernel.approve_workflow(workflow_id, approver_id=user_id, reason=reason)
+        _enforce_permission(request, Permission.WORKFLOW_APPROVE)
+        try:
+            ctx = kernel.approve_workflow(workflow_id, approver_id=user_id, reason=reason)
+        except PermissionError as e:
+            raise HTTPException(status_code=403, detail=str(e))
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=str(e))
 
     if ctx.current_state == WorkflowState.EXECUTION_READY:
         # Step to EXECUTING -> VERIFYING
