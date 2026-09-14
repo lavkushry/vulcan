@@ -202,9 +202,32 @@ function PacksContent() {
   const activePack = useMemo(() => packs.find((p) => p.id === selectedId) ?? packs[0], [packs, selectedId]);
 
   return (
-    <div className="flex h-full">
-      {/* PACK LIST (Left Panel) */}
-      <div className="w-[360px] flex-shrink-0 border-r border-glass-border flex flex-col bg-glass-surface/30">
+    <div className="flex flex-col h-full">
+      {/* Demo / Preview Catalog Banner */}
+      <div className="px-4 py-2 bg-amber-500/10 border-b border-amber-500/30 flex items-center justify-between text-xs font-mono text-amber-300">
+        <span className="flex items-center gap-2">
+          <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-200 text-[10px] font-bold">PREVIEW</span>
+          <span>This Content Packs view displays offline/demo bundles. For live executable catalog modules or ingesting community modules, use the Catalog or Curation Gate.</span>
+        </span>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => router.push('/actions')}
+            className="hover:underline text-amber-200 font-semibold"
+          >
+            Live Catalog →
+          </button>
+          <button
+            onClick={() => router.push('/curation')}
+            className="hover:underline text-amber-200 font-semibold"
+          >
+            Curation Gate →
+          </button>
+        </div>
+      </div>
+
+      <div className="flex flex-1 overflow-hidden">
+        {/* PACK LIST (Left Panel) */}
+        <div className="w-[360px] flex-shrink-0 border-r border-glass-border flex flex-col bg-glass-surface/30">
         <div className="p-3 border-b border-glass-border flex items-center justify-between gap-2">
           <div className="relative flex-1">
             <Search size={14} className="absolute left-2.5 top-2.5 text-slate-500" />
@@ -369,6 +392,7 @@ function PacksContent() {
         )}
       </div>
     </div>
+  </div>
   );
 }
 

@@ -19,7 +19,7 @@ function MatrixContent() {
     setLoading(true);
     try {
       try {
-        const data = await api.getTasks();
+        const data = await api.getTasks(currentUser);
         const rawTasks = (data as any)?.tasks || data;
         if (Array.isArray(rawTasks)) {
           setTasks(rawTasks);
@@ -56,7 +56,7 @@ function MatrixContent() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [currentUser]);
 
   useEffect(() => {
     loadTasks();

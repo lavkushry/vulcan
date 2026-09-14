@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Plug, CheckCircle2, XCircle, RefreshCw, ExternalLink,
   Shield, Cpu, GitBranch, Layers, Lock, Activity,
@@ -80,7 +81,7 @@ const DEFAULT_SEED_RESOURCES: ExternalResource[] = [
     endpoint: 'https://api.openai.com/v1',
     auth_mode: 'API_KEY',
     enabled: true,
-    health_status: 'HEALTHY',
+    health_status: 'CONFIGURED',
     latency_ms: 35,
     config: { default_model: 'gpt-4o', organization_id: 'org-vulcan' },
     secret_refs: { api_key: 'vault://secret/vulcan/openai/api_key' },
@@ -102,7 +103,7 @@ const DEFAULT_SEED_RESOURCES: ExternalResource[] = [
     endpoint: 'https://openrouter.ai/api/v1',
     auth_mode: 'API_KEY',
     enabled: true,
-    health_status: 'HEALTHY',
+    health_status: 'CONFIGURED',
     latency_ms: 48,
     config: { default_model: 'anthropic/claude-3.5-sonnet' },
     secret_refs: { api_key: 'vault://secret/vulcan/openrouter/api_key' },
@@ -124,7 +125,7 @@ const DEFAULT_SEED_RESOURCES: ExternalResource[] = [
     endpoint: 'https://generativelanguage.googleapis.com/v1beta',
     auth_mode: 'API_KEY',
     enabled: true,
-    health_status: 'HEALTHY',
+    health_status: 'CONFIGURED',
     latency_ms: 31,
     config: { model: 'gemini-1.5-pro' },
     secret_refs: { api_key: 'vault://secret/vulcan/google/gemini_key' },
@@ -146,7 +147,7 @@ const DEFAULT_SEED_RESOURCES: ExternalResource[] = [
     endpoint: 'https://api-inference.huggingface.co',
     auth_mode: 'API_KEY',
     enabled: true,
-    health_status: 'HEALTHY',
+    health_status: 'CONFIGURED',
     latency_ms: 55,
     config: { default_embedding_model: 'BAAI/bge-large-en-v1.5' },
     secret_refs: { api_token: 'vault://secret/vulcan/hf/token' },
@@ -170,7 +171,7 @@ const DEFAULT_SEED_RESOURCES: ExternalResource[] = [
     endpoint: 'https://enterprise.service-now.com',
     auth_mode: 'BASIC_AUTH',
     enabled: true,
-    health_status: 'HEALTHY',
+    health_status: 'CONFIGURED',
     latency_ms: 42,
     config: { username: 'vulcan_service_acct', cmdb_sync_enabled: true },
     secret_refs: { password: 'vault://secret/vulcan/servicenow/password' },
@@ -194,7 +195,7 @@ const DEFAULT_SEED_RESOURCES: ExternalResource[] = [
     endpoint: 'https://cyberark.internal.net/AIMWebService',
     auth_mode: 'MUTUAL_TLS',
     enabled: true,
-    health_status: 'HEALTHY',
+    health_status: 'CONFIGURED',
     latency_ms: 18,
     config: { app_id: 'VULCAN_CONTROL_PLANE', safe: 'PNC-AUTOMATION-ROOT' },
     secret_refs: { client_cert: 'cyberark://vulcan/pki/cert' },
@@ -216,7 +217,7 @@ const DEFAULT_SEED_RESOURCES: ExternalResource[] = [
     endpoint: 'https://vault.internal.bank.com:8200',
     auth_mode: 'BEARER_TOKEN',
     enabled: true,
-    health_status: 'HEALTHY',
+    health_status: 'CONFIGURED',
     latency_ms: 8,
     config: { engine_path: 'secret', namespace: 'vulcan' },
     secret_refs: { token: 'vault://secret/vulcan/vault_root_token' },
@@ -262,7 +263,7 @@ const DEFAULT_SEED_RESOURCES: ExternalResource[] = [
     endpoint: 'https://bitbucket.internal.bank.com/rest/api/1.0',
     auth_mode: 'BEARER_TOKEN',
     enabled: true,
-    health_status: 'HEALTHY',
+    health_status: 'CONFIGURED',
     latency_ms: 26,
     config: { project_key: 'AUT', default_branch: 'main' },
     secret_refs: { http_token: 'vault://secret/vulcan/bitbucket/token' },
@@ -286,7 +287,7 @@ const DEFAULT_SEED_RESOURCES: ExternalResource[] = [
     endpoint: 'https://aap.internal.bank.com/api/v2',
     auth_mode: 'BEARER_TOKEN',
     enabled: true,
-    health_status: 'HEALTHY',
+    health_status: 'CONFIGURED',
     latency_ms: 34,
     config: { execution_environment: 'ee-supported-rhel9' },
     secret_refs: { oauth_token: 'vault://secret/vulcan/aap/token' },
@@ -310,7 +311,7 @@ const DEFAULT_SEED_RESOURCES: ExternalResource[] = [
     endpoint: 'https://api.datadoghq.com/api/v1',
     auth_mode: 'API_KEY',
     enabled: true,
-    health_status: 'HEALTHY',
+    health_status: 'CONFIGURED',
     latency_ms: 22,
     config: { site: 'datadoghq.com', trace_enabled: true },
     secret_refs: { api_key: 'vault://secret/vulcan/datadog/api_key' },
@@ -332,7 +333,7 @@ const DEFAULT_SEED_RESOURCES: ExternalResource[] = [
     endpoint: 'http://prometheus:9090/api/v1',
     auth_mode: 'NONE',
     enabled: true,
-    health_status: 'HEALTHY',
+    health_status: 'CONFIGURED',
     latency_ms: 6,
     config: { scrape_interval: '15s' },
     secret_refs: {},
@@ -356,7 +357,7 @@ const DEFAULT_SEED_RESOURCES: ExternalResource[] = [
     endpoint: 'postgresql://***@postgres:5432/vulcan_dev',
     auth_mode: 'BASIC_AUTH',
     enabled: true,
-    health_status: 'HEALTHY',
+    health_status: 'CONFIGURED',
     latency_ms: 4,
     config: { max_pool_size: 20, ssl_mode: 'require' },
     secret_refs: { password: 'vault://secret/vulcan/postgres/db_user' },
@@ -378,7 +379,7 @@ const DEFAULT_SEED_RESOURCES: ExternalResource[] = [
     endpoint: 'redis://***@redis:6379/0',
     auth_mode: 'BASIC_AUTH',
     enabled: true,
-    health_status: 'HEALTHY',
+    health_status: 'CONFIGURED',
     latency_ms: 2,
     config: { cluster_mode: false },
     secret_refs: { password: 'vault://secret/vulcan/redis/auth' },
@@ -400,7 +401,7 @@ const DEFAULT_SEED_RESOURCES: ExternalResource[] = [
     endpoint: 'http://minio:9000',
     auth_mode: 'API_KEY',
     enabled: true,
-    health_status: 'HEALTHY',
+    health_status: 'CONFIGURED',
     latency_ms: 5,
     config: { bucket: 'vulcan-artifacts', multipart_chunk_mb: 64 },
     secret_refs: { secret_key: 'vault://secret/vulcan/minio/secret_key' },
@@ -444,9 +445,14 @@ export function ExternalResourcesConsole() {
     return currentUser === 'admin.dave' || currentUserDef?.role === 'PLATFORM_ADMIN';
   }, [currentUser, currentUserDef]);
 
+  // Router & navigation
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const returnTo = searchParams?.get('return_to') || '/chat';
+
   // State
-  const [resources, setResources] = useState<ExternalResource[]>(DEFAULT_SEED_RESOURCES);
-  const [selectedId, setSelectedId] = useState<string>('res-foundry-default');
+  const [resources, setResources] = useState<ExternalResource[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [search, setSearch] = useState<string>('');
   const [envFilter, setEnvFilter] = useState<string>('ALL');
   const [activeTab, setActiveTab] = useState<ActiveTab>('Overview');
@@ -533,9 +539,7 @@ export function ExternalResourcesConsole() {
       setSelectedId(DEFAULT_SEED_RESOURCES[0].resource_id);
     } else {
       setResources(actualResources);
-      if (actualResources.length > 0) {
-        setSelectedId(actualResources[0].resource_id);
-      }
+      setSelectedId(actualResources.length > 0 ? actualResources[0].resource_id : null);
     }
   };
 
@@ -545,7 +549,8 @@ export function ExternalResourcesConsole() {
 
   // Selected Active Resource
   const selectedResource = useMemo(() => {
-    return resources.find(r => r.resource_id === selectedId) || resources[0] || DEFAULT_SEED_RESOURCES[0];
+    if (!resources.length) return null;
+    return resources.find(r => r.resource_id === selectedId) || resources[0] || null;
   }, [resources, selectedId]);
 
   const isFoundry = selectedResource ? selectedResource.provider === 'microsoft_foundry' : false;
@@ -627,7 +632,7 @@ export function ExternalResourcesConsole() {
 
   // Save Configuration (Restricted to Platform Admin)
   const handleSaveConfig = async () => {
-    if (!isPlatformAdmin) return;
+    if (!isPlatformAdmin || !selectedResource) return;
     if (secretError) return;
 
     setSavingConfig(true);
@@ -685,7 +690,7 @@ export function ExternalResourcesConsole() {
 
   // Toggle Enable / Disable
   const handleToggleEnable = async () => {
-    if (!isPlatformAdmin) return;
+    if (!isPlatformAdmin || !selectedResource) return;
     try {
       const newEnabled = !formEnabled;
       setFormEnabled(newEnabled);
@@ -700,7 +705,7 @@ export function ExternalResourcesConsole() {
 
   // Connection Handshake Test (Restricted to Platform Admin)
   const handleTestConnection = async () => {
-    if (!isPlatformAdmin) return;
+    if (!isPlatformAdmin || !selectedResource) return;
     setTestingId(selectedResource.resource_id);
     setTestResult(null);
     try {
@@ -725,7 +730,7 @@ export function ExternalResourcesConsole() {
 
   // Sync Resource
   const handleSyncResource = async () => {
-    if (!isPlatformAdmin) return;
+    if (!isPlatformAdmin || !selectedResource) return;
     setSyncingId(selectedResource.resource_id);
     setSyncMessage(null);
     try {
@@ -741,6 +746,7 @@ export function ExternalResourcesConsole() {
 
   // Dynamic Deployment Discovery (R4)
   const handleDiscoverDeployments = async () => {
+    if (!selectedResource) return;
     setDiscovering(true);
     setDiscoveryError(null);
     try {
@@ -945,7 +951,7 @@ export function ExternalResourcesConsole() {
 
                 <div className="space-y-1.5 mt-1">
                   {catResources.map((res) => {
-                    const isSelected = res.resource_id === selectedResource.resource_id;
+                    const isSelected = res.resource_id === selectedResource?.resource_id;
                     return (
                       <button
                         key={res.resource_id}
@@ -1016,11 +1022,41 @@ export function ExternalResourcesConsole() {
           </div>
         )}
 
-        {/* Detail Header */}
-        <div className="p-6 border-b border-glass-border flex items-center justify-between bg-glass-surface/20">
-          <div className="space-y-1">
+        {!selectedResource ? (
+          <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-canvas-void" data-testid="empty-resources-state">
+            <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 text-slate-500 mb-4">
+              <Plug size={36} className="text-slate-500" />
+            </div>
+            <h2 className="text-base font-bold text-slate-200 mb-1">No Connection Configured</h2>
+            <p className="text-xs text-slate-400 max-w-md mb-6 leading-relaxed font-sans">
+              No live cloud, AI model, or vault connections are active. Configure your enterprise endpoints or enable Demo Mode to explore simulated configurations.
+            </p>
             <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-slate-900 border border-glass-border">
+              <button
+                type="button"
+                onClick={() => toggleDemoMode(true)}
+                className="px-4 py-2 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 font-mono text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer"
+              >
+                <Sparkles size={14} />
+                <span>Explore Demo Mode</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => router.push(returnTo)}
+                className="px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 font-mono text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer"
+              >
+                <ArrowRight size={14} className="rotate-180" />
+                <span>Return to Request</span>
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* Detail Header */}
+            <div className="p-6 border-b border-glass-border flex items-center justify-between bg-glass-surface/20">
+              <div className="space-y-1">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-xl bg-slate-900 border border-glass-border">
                 {CATEGORY_ICONS[selectedResource.category] ?? <Plug className="w-6 h-6 text-cyan-400" />}
               </div>
               <div>
@@ -1097,6 +1133,16 @@ export function ExternalResourcesConsole() {
             >
               <RefreshCw size={13} className={syncingId === selectedResource.resource_id ? 'animate-spin' : ''} />
               <span>{syncingId === selectedResource.resource_id ? 'Syncing…' : 'Trigger Sync'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => router.push(returnTo)}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-mono font-medium border border-cyan-500/40 bg-cyan-950/30 text-cyan-300 hover:bg-cyan-900/40 transition-all cursor-pointer"
+              title="Return to active request flow"
+            >
+              <ArrowRight size={13} className="rotate-180" />
+              <span>Return to Request</span>
             </button>
           </div>
         </div>
@@ -1265,7 +1311,9 @@ export function ExternalResourcesConsole() {
                     </h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
                       <div>
-                        <label className="block text-slate-400 font-mono text-[11px] mb-1">Display Name</label>
+                        <label className="block text-slate-400 font-mono text-[11px] mb-1">
+                          Display Name <span className="text-cyan-400">*</span>
+                        </label>
                         <input
                           type="text"
                           disabled={!isPlatformAdmin}
@@ -1275,7 +1323,9 @@ export function ExternalResourcesConsole() {
                         />
                       </div>
                       <div>
-                        <label className="block text-slate-400 font-mono text-[11px] mb-1">Foundry Resource Name</label>
+                        <label className="block text-slate-400 font-mono text-[11px] mb-1">
+                          Foundry Resource Name <span className="text-cyan-400">*</span>
+                        </label>
                         <input
                           type="text"
                           disabled={!isPlatformAdmin}
@@ -1285,7 +1335,9 @@ export function ExternalResourcesConsole() {
                         />
                       </div>
                       <div>
-                        <label className="block text-slate-400 font-mono text-[11px] mb-1">Project Name</label>
+                        <label className="block text-slate-400 font-mono text-[11px] mb-1">
+                          Project Name <span className="text-cyan-400">*</span>
+                        </label>
                         <input
                           type="text"
                           disabled={!isPlatformAdmin}
@@ -1305,7 +1357,9 @@ export function ExternalResourcesConsole() {
                         />
                       </div>
                       <div className="md:col-span-2">
-                        <label className="block text-slate-400 font-mono text-[11px] mb-1">Project Endpoint</label>
+                        <label className="block text-slate-400 font-mono text-[11px] mb-1">
+                          Project Endpoint <span className="text-cyan-400">*</span>
+                        </label>
                         <input
                           type="text"
                           disabled={!isPlatformAdmin}
@@ -1577,7 +1631,9 @@ export function ExternalResourcesConsole() {
                         />
                       </div>
                       <div>
-                        <label className="block text-slate-400 font-mono text-[11px] mb-1">Endpoint URL</label>
+                        <label className="block text-slate-400 font-mono text-[11px] mb-1">
+                          Endpoint URL <span className="text-cyan-400">*</span>
+                        </label>
                         <input
                           type="text"
                           disabled={!isPlatformAdmin}
@@ -1588,7 +1644,7 @@ export function ExternalResourcesConsole() {
                       </div>
                       <div>
                         <label className="block text-slate-400 font-mono text-[11px] mb-1">
-                          Secret Reference (Zero-Raw-Secrets Invariant)
+                          Secret Reference (Zero-Raw-Secrets Invariant) <span className="text-cyan-400">*</span>
                         </label>
                         <input
                           type="text"
@@ -1700,15 +1756,27 @@ export function ExternalResourcesConsole() {
                         );
                       })
                     ) : (
-                      <div className="md:col-span-2 p-6 rounded-xl border border-slate-800 bg-slate-950/40 text-center space-y-2">
-                        <AlertCircle className="w-6 h-6 text-slate-500 mx-auto" />
-                        <p className="text-xs font-mono text-slate-300">
-                          {discoveryError ? discoveryError : "No active deployments discovered yet."}
-                        </p>
-                        <p className="text-[11px] text-slate-500 font-sans">
-                          Click &ldquo;Discover Deployments&rdquo; above to query live models from the connected provider endpoint.
-                        </p>
-                      </div>
+                      discoveryError ? (
+                        <div className="md:col-span-2 p-6 rounded-xl border border-rose-500/30 bg-rose-950/20 text-center space-y-2">
+                          <AlertCircle className="w-6 h-6 text-rose-400 mx-auto" />
+                          <p className="text-xs font-mono text-rose-300 font-bold">
+                            Discovery Failed: {discoveryError}
+                          </p>
+                          <p className="text-[11px] text-slate-400 font-sans">
+                            Verify provider endpoint URL, credential permissions, and network connectivity before re-probing.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="md:col-span-2 p-6 rounded-xl border border-slate-800 bg-slate-950/40 text-center space-y-2">
+                          <AlertCircle className="w-6 h-6 text-slate-500 mx-auto" />
+                          <p className="text-xs font-mono text-slate-300">
+                            No active deployments discovered yet.
+                          </p>
+                          <p className="text-[11px] text-slate-500 font-sans">
+                            Click &ldquo;Discover Deployments&rdquo; above to query live models from the connected provider endpoint.
+                          </p>
+                        </div>
+                      )
                     )}
                   </div>
                 </div>
@@ -1923,6 +1991,8 @@ export function ExternalResourcesConsole() {
             </div>
           )}
         </div>
+          </>
+        )}
       </div>
     </div>
   );

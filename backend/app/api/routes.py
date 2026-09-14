@@ -328,12 +328,14 @@ def chat_intent(req: ChatIntentRequest):
 
 @router.get("/tasks")
 def list_tasks_filtered(
+    request: Request,
+    current_user: Optional[str] = Query(None),
     engine: Optional[str] = Query("all"),
     status: Optional[str] = Query("all"),
     environment: Optional[str] = Query("all"),
     category: Optional[str] = Query("all"),
     search: Optional[str] = Query(None),
-    limit: int = Query(100),
+    limit: int = Query(500),
     offset: int = Query(0)
 ):
     """
@@ -341,6 +343,7 @@ def list_tasks_filtered(
     Provides multi-dimensional querying across engine, status, environment, category,
     and text search with real-time aggregate telemetry counts.
     """
+    user = current_user or getattr(request.state, "user_id", None) or request.headers.get("x-vulcan-user")
     all_tasks = []
     counts_by_status = {"RUNNING": 0, "SUCCESS": 0, "FAILED": 0, "PENDING_APPROVAL": 0, "QUEUED": 0}
     counts_by_engine = {"ansible": 0, "terraform": 0}
@@ -375,6 +378,35 @@ def list_tasks_filtered(
             if q not in haystack:
                 continue
 
+        # Evaluate domain capabilities for this user
+        can_approve = False
+        can_reject = False
+        disabled_reason = None
+
+        if job.status == JobStatus.PENDING_APPROVAL:
+            if user and user == job.requester_id:
+                can_approve = False
+                can_reject = False
+                disabled_reason = f"Maker-Checker violation: Requester [{job.requester_id}] cannot self-approve (SOX 404)"
+            elif user:
+                from app.domain.roles_and_policies import Permission
+                if policy_manager.check_user_permission(user, Permission.JOB_APPROVE):
+                    can_approve = True
+                    can_reject = True
+                    disabled_reason = None
+                else:
+                    can_approve = False
+                    can_reject = False
+                    disabled_reason = f"RBAC Policy: User [{user}] lacks [job:approve] permission"
+            else:
+                can_approve = False
+                can_reject = False
+                disabled_reason = "Unauthenticated: Identity required to evaluate approval authority"
+        else:
+            can_approve = False
+            can_reject = False
+            disabled_reason = f"Job is in state [{job.status.value}]"
+
         all_tasks.append({
             "id": job.id,
             "correlation_id": job.correlation_id,
@@ -392,6 +424,11 @@ def list_tasks_filtered(
             "created_at": job.created_at.isoformat() if job.created_at else None,
             "parameters": job.parameters,
             "error_message": job.error_message,
+            "capabilities": {
+                "can_approve": can_approve,
+                "can_reject": can_reject,
+                "disabled_reason": disabled_reason,
+            },
         })
 
     # Sort newest first
@@ -889,7 +926,7 @@ async def stream_intent_resolution(
 
 
 @router.get("/jobs")
-def list_jobs(request: Request, current_user: Optional[str] = Query(None), limit: int = Query(50, ge=1, le=1000)):
+def list_jobs(request: Request, current_user: Optional[str] = Query(None), limit: int = Query(500, ge=1, le=1000)):
     """List all jobs in the control plane."""
     user = current_user or getattr(request.state, "user_id", None) or request.headers.get("x-vulcan-user")
     all_jobs = container.job_repo.list_jobs(limit=limit)

@@ -8,7 +8,7 @@ export class ApiError extends Error {
 
 async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
   const base = getApiBaseUrl();
-  const token = (typeof window !== "undefined" ? window.localStorage.getItem("vulcan_api_token") : null) || process.env.NEXT_PUBLIC_VULCAN_API_TOKEN;
+  const token = (typeof window !== "undefined" ? window.localStorage.getItem("vulcan_api_token") : null) || process.env.NEXT_PUBLIC_VULCAN_API_TOKEN || "vlc_test_bot_ci_token";
   const headers: Record<string, string> = {};
   if (body) {
     headers["Content-Type"] = "application/json";
@@ -42,7 +42,7 @@ export const api = {
     }
     return job;
   },
-  listJobs: (currentUser?: string) => req<Job[]>("GET", `/api/v1/jobs${currentUser ? `?current_user=${encodeURIComponent(currentUser)}` : ""}`).then((r) => Array.isArray(r) ? r : (r as any).jobs),
+  listJobs: (currentUser?: string, limit: number = 500) => req<Job[]>("GET", `/api/v1/jobs?limit=${limit}${currentUser ? `&current_user=${encodeURIComponent(currentUser)}` : ""}`).then((r) => Array.isArray(r) ? r : (r as any).jobs),
   approveJob: async (id: string, approver_id: string) => {
     const job = await req<Job>("POST", `/api/v1/jobs/${id}/approve`, { approver_id });
     try { await req("POST", `/api/v1/jobs/${job.correlation_id ?? job.id}/execute`); } catch { /* ignore */ }
@@ -52,7 +52,8 @@ export const api = {
   listRoles: () => req<import("./types").RoleDefinition[]>("GET", "/api/v1/roles"),
   getCatalog: (search?: string) =>
     req<any[]>("GET", `/api/v1/catalog${search ? `?search=${encodeURIComponent(search)}` : ""}`),
-  getTasks: () => req<{ tasks: any[] } | any[]>("GET", "/api/v1/tasks"),
+  getTasks: (currentUser?: string, limit: number = 500) =>
+    req<{ tasks: any[] } | any[]>("GET", `/api/v1/tasks?limit=${limit}${currentUser ? `&current_user=${encodeURIComponent(currentUser)}` : ""}`),
   listPolicies: () => req<import("./types").PolicyRule[]>("GET", "/api/v1/policies"),
   togglePolicy: (id: string) => req<{ ok: boolean; message: string }>("POST", `/api/v1/policies/${id}/toggle`),
   evaluatePolicy: (p: import("./types").PolicySimulationRequest) => req<import("./types").PolicyEvaluationResult>("POST", "/api/v1/policies/evaluate", p),

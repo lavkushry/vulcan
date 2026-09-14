@@ -314,7 +314,10 @@ class MicrosoftFoundryProvider(BaseExternalResourceProvider):
         Dynamically enumerates available deployments, models, and tools
         via GET {endpoint}/deployments?api-version=v1.
         """
-        target_ep = endpoint or config.get("project_endpoint") or config.get("endpoint") or ""
+        target_ep = endpoint or config.get("project_endpoint") or config.get("endpoint")
+        if not target_ep and (config.get("tenant_id") or "api_key" in secret_refs or "client_secret" in secret_refs):
+            target_ep = "https://vulcan-ai.services.ai.azure.com/api/projects/vulcan-core"
+        target_ep = target_ep or ""
         deployments_list: List[Dict[str, Any]] = []
         models_list: List[str] = []
         tools_list: List[str] = ["code_interpreter", "azure_ai_search", "bing_grounding"]
@@ -351,9 +354,9 @@ class MicrosoftFoundryProvider(BaseExternalResourceProvider):
                 models_list = []
                 deployments_list = []
         else:
-            # No endpoint provided, return defaults
-            models_list = ["gpt-4o", "gpt-4o-mini", "text-embedding-3-small", "phi-3-mini"]
-            deployments_list = [{"name": m, "model": m, "status": "Running"} for m in models_list]
+            # No endpoint provided, return honest empty state
+            models_list = []
+            deployments_list = []
 
         return ProviderCapabilities(
             provider="microsoft_foundry",

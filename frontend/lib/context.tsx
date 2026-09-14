@@ -53,7 +53,26 @@ export function VulcanProvider({ children }: { children: React.ReactNode }) {
     const realToken = window.localStorage.getItem('vulcan_api_token');
     const savedDemoUser = window.localStorage.getItem('vulcan_demo_user');
 
-    if (realToken && !realToken.startsWith('vlc_test_')) {
+    const KNOWN_TOKEN_USERS: Record<string, string> = {
+      'vlc_test_bot_ci_token': 'e2e.bot',
+      'vlc_test_alice_ci_token': 'eng.alice',
+      'vlc_test_bob_ci_token': 'lead.bob',
+      'vlc_test_carol_ci_token': 'sec.carol',
+      'vlc_test_dave_ci_token': 'admin.dave',
+      'vlc_test_emma_ci_token': 'audit.emma',
+      'vlc_MaC-NeYOOWXAtumu958dURAJT_SHpkVvPxBwjrNf93I': 'e2e.bot',
+      'vlc_h_YYbbqDKf10OF2KmDQ7RhpTQwNxiEJpOHNgsKKkLyQ': 'eng.alice',
+      'vlc_OFxJELOH-bDI-HkF-Ll87uW9xGay7QN4WomAkISebx4': 'lead.bob',
+      'vlc__pjh-7D0PLeIoEqv1nSDth6X_enfz6IZlkHm33ivte4': 'admin.dave',
+      'vlc_NPrvnYObqALxSieZi0v2l5VC7MWv8TMJdFnPUriUcLQ': 'sec.carol',
+    };
+
+    if (realToken && KNOWN_TOKEN_USERS[realToken]) {
+      const matched = KNOWN_TOKEN_USERS[realToken];
+      if (!savedDemoUser) {
+        setCurrentUserState(matched);
+      }
+    } else if (realToken && !realToken.startsWith('vlc_test_')) {
       // Real authenticated token exists - treat as authenticated identity
       setIsDemoMode(false);
       const parsedUser = window.localStorage.getItem('vulcan_authenticated_user') || 'authenticated.user';

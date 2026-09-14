@@ -7,6 +7,7 @@ import {
   ArrowRight, Radio, Filter, Cpu, Database, Bell, Terminal
 } from 'lucide-react';
 import { AppShell } from '@/components/layout/AppShell';
+import { useRouter } from 'next/navigation';
 
 interface AutomationRule {
   id: string;
@@ -184,6 +185,7 @@ const PRESET_RULES: AutomationRule[] = [
 ];
 
 function RulesContent() {
+  const router = useRouter();
   const [rules, setRules] = useState<AutomationRule[]>(PRESET_RULES);
   const [selectedId, setSelectedId] = useState<string>(PRESET_RULES[0].id);
   const [search, setSearch] = useState('');
@@ -215,9 +217,26 @@ function RulesContent() {
   };
 
   return (
-    <div className="flex h-full">
-      {/* MASTER LIST (Left Panel: 380px) */}
-      <div className="w-[380px] flex-shrink-0 border-r border-glass-border flex flex-col bg-glass-surface/30">
+    <div className="flex flex-col h-full">
+      {/* Demo / Preview Rules Banner */}
+      <div className="px-4 py-2 bg-amber-500/10 border-b border-amber-500/30 flex items-center justify-between text-xs font-mono text-amber-300">
+        <span className="flex items-center gap-2">
+          <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-200 text-[10px] font-bold">PREVIEW</span>
+          <span>This Event-Driven Automation Rules view displays offline sample rules. For production workflow DAGs, use the Workflows engine.</span>
+        </span>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => router.push('/workflows')}
+            className="hover:underline text-amber-200 font-semibold cursor-pointer"
+          >
+            Live Workflows →
+          </button>
+        </div>
+      </div>
+
+      <div className="flex flex-1 overflow-hidden">
+        {/* MASTER LIST (Left Panel: 380px) */}
+        <div className="w-[380px] flex-shrink-0 border-r border-glass-border flex flex-col bg-glass-surface/30">
         <div className="p-3 border-b border-glass-border flex items-center justify-between gap-2">
           <div className="relative flex-1">
             <Search size={14} className="absolute left-2.5 top-2.5 text-slate-500" />
@@ -453,6 +472,7 @@ function RulesContent() {
         )}
       </div>
     </div>
+  </div>
   );
 }
 

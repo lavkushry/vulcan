@@ -79,6 +79,7 @@ export const SeparationOfDutiesProofCard: React.FC<SeparationOfDutiesProofCardPr
   const isTimedOut = remainingTime <= 0;
   // Fail-closed server-governed authority with client defense-in-depth:
   const canApprove = !isSelfApproval && !isTimedOut && (capabilities ? capabilities.can_approve : false);
+  const canReject = Boolean(capabilities?.can_reject);
 
   // Render server-provided domain reason directly, with client circuit-breaker overrides
   const disabledReason = isTimedOut
@@ -328,7 +329,13 @@ export const SeparationOfDutiesProofCard: React.FC<SeparationOfDutiesProofCardPr
         <button
           type="button"
           onClick={onReject}
-          className="px-4 py-2 rounded-lg border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-semibold transition-colors"
+          disabled={!canReject}
+          title={!canReject ? (disabledReason || "Rejection requires explicit server authorization") : "Reject & Cancel"}
+          className={`px-4 py-2 rounded-lg border text-xs font-semibold transition-colors ${
+            !canReject
+              ? 'border-slate-800 bg-slate-900/50 text-slate-600 cursor-not-allowed'
+              : 'border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-300'
+          }`}
         >
           Reject &amp; Cancel
         </button>

@@ -24,7 +24,7 @@ export default function MakerCheckerDeck({
 
   const isSelfApproval = currentUserId === job.requester_id;
   const canApprove = Boolean(job.capabilities?.can_approve);
-  const canReject = Boolean(job.capabilities?.can_reject ?? !isSelfApproval);
+  const canReject = Boolean(job.capabilities?.can_reject);
   const disabledReason = job.capabilities?.disabled_reason || (!canApprove ? "Approval requires explicit server authorization (approver role required, self-approval forbidden)" : "Action not permitted");
 
   return (
@@ -122,8 +122,13 @@ export default function MakerCheckerDeck({
           <button
             type="button"
             onClick={() => onApprove('REJECT', reason)}
-            disabled={isProcessing}
-            className="px-4 py-2 rounded bg-rose-950/50 hover:bg-rose-900 border border-rose-500/40 text-rose-300 font-mono text-xs font-bold transition-all disabled:opacity-50 flex items-center gap-1.5"
+            disabled={isProcessing || !canReject}
+            title={!canReject ? (disabledReason || "Rejection requires explicit server authorization") : "Deny Request"}
+            className={`px-4 py-2 rounded font-mono text-xs font-bold transition-all flex items-center gap-1.5 ${
+              !canReject
+                ? 'bg-slate-900 border border-slate-800 text-slate-600 cursor-not-allowed opacity-50'
+                : 'bg-rose-950/50 hover:bg-rose-900 border border-rose-500/40 text-rose-300'
+            }`}
           >
             <XCircle className="w-4 h-4" />
             DENY REQUEST
@@ -133,7 +138,7 @@ export default function MakerCheckerDeck({
             type="button"
             onClick={() => onApprove('APPROVE', reason)}
             disabled={isProcessing || !canApprove}
-            className="px-5 py-2 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-mono text-xs font-bold shadow-glow-emerald transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1.5"
+            className="px-5 py-2 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-mono text-xs font-bold transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1.5"
           >
             <CheckCircle className="w-4 h-4" />
             {isProcessing ? 'DISPATCHING EXECUTION...' : 'AUTHORIZE & DISPATCH EXECUTION [ENTER]'}

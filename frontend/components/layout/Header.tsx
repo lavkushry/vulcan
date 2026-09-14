@@ -121,6 +121,16 @@ export function Header({ currentUser, onUserChange, onOpenCommandPalette }: Head
               {health ? (health.audit_chain_valid ? 'VALID' : 'BROKEN') : 'UNCHECKED'}
             </span>
           </div>
+          <button
+            type="button"
+            onClick={() => setIsClusterMapOpen(true)}
+            title="Inspect multi-datacenter cluster topology & Redlock consensus (UI-25)"
+            className="flex items-center gap-1.5 text-slate-400 hover:text-cyan-300 transition-colors cursor-pointer"
+            data-testid="header-cluster-radar-btn"
+          >
+            <Globe2 size={11} className="text-cyan-400" />
+            <span className="text-slate-500">CLUSTERS</span>
+          </button>
         </div>
 
         {/* Pending Approvals Notification Badge */}

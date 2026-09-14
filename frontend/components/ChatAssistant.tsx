@@ -213,7 +213,7 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
 
   const refreshSessions = useCallback(async () => {
     try {
-      const list = await api.listChatSessions(currentUser);
+      const list = await api.listChatSessions(currentUser === 'authenticated.user' ? undefined : currentUser);
       setSessions(list);
       return list;
     } catch (e) {
@@ -1229,36 +1229,45 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
                         <span className="text-xs text-slate-400">Dry-run simulation (--check)</span>
                       </label>
 
-                      <button
-                        onClick={() => handleExecuteCard(msg.id, msg.cardData)}
-                        disabled={cardForms[msg.id]?.isSubmitting || !!msg.executionResult}
-                        className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-mono text-xs font-bold transition-all duration-300 ${
-                          msg.executionResult 
-                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 cursor-default'
-                            : cardForms[msg.id]?.isSubmitting
-                              ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 opacity-70 cursor-wait'
-                              : msg.cardData.risk_tier === 'HIGH' && !cardForms[msg.id]?.dryRun
-                                ? 'bg-gradient-to-r from-amber-600 to-rose-600 hover:from-amber-500 hover:to-rose-500 text-white shadow-glow-amber/30 hover:scale-[1.02]'
-                                : 'bg-gradient-to-r from-cyan-400 via-cyan-500 to-blue-600 hover:from-cyan-300 hover:to-blue-500 text-black font-semibold shadow-glow-cyan/30 hover:scale-[1.02]'
-                        }`}
-                      >
-                        {msg.executionResult ? (
-                          <>
-                            <CheckCircle2 className="w-4 h-4" />
-                            <span>DISPATCHED [{msg.executionResult.correlation_id}]</span>
-                          </>
-                        ) : cardForms[msg.id]?.isSubmitting ? (
-                          <>
-                            <Radio className="w-4 h-4 animate-spin" />
-                            <span>DISPATCHING TASK…</span>
-                          </>
-                        ) : (
-                          <>
-                            <Play className="w-4 h-4 fill-current" />
-                            <span>{msg.cardData.risk_tier === 'HIGH' && !cardForms[msg.id]?.dryRun ? 'SUBMIT FOR APPROVAL & DISPATCH' : 'DISPATCH EXECUTION NOW'}</span>
-                          </>
-                        )}
-                      </button>
+                      {(() => {
+                        const requiresApproval = !cardForms[msg.id]?.dryRun && (
+                          msg.cardData.risk_tier === 'HIGH' ||
+                          Boolean(msg.cardData.requires_maker_checker) ||
+                          Boolean(msg.cardData.requires_chg)
+                        );
+                        return (
+                          <button
+                            onClick={() => handleExecuteCard(msg.id, msg.cardData)}
+                            disabled={cardForms[msg.id]?.isSubmitting || !!msg.executionResult}
+                            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-mono text-xs font-bold transition-all ${
+                              msg.executionResult 
+                                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 cursor-default'
+                                : cardForms[msg.id]?.isSubmitting
+                                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 opacity-70 cursor-wait'
+                                  : requiresApproval
+                                    ? 'bg-amber-600 hover:bg-amber-500 text-white border border-amber-500/50'
+                                    : 'bg-cyan-600 hover:bg-cyan-500 text-white border border-cyan-500/50'
+                            }`}
+                          >
+                            {msg.executionResult ? (
+                              <>
+                                <CheckCircle2 className="w-4 h-4" />
+                                <span>DISPATCHED [{msg.executionResult.correlation_id}]</span>
+                              </>
+                            ) : cardForms[msg.id]?.isSubmitting ? (
+                              <>
+                                <Radio className="w-4 h-4 animate-spin" />
+                                <span>DISPATCHING TASK…</span>
+                              </>
+                            ) : (
+                              <>
+                                <Play className="w-4 h-4 fill-current" />
+                                <span>{requiresApproval ? 'SUBMIT FOR APPROVAL & DISPATCH' : 'DISPATCH EXECUTION NOW'}</span>
+                              </>
+                            )}
+                          </button>
+                        );
+                      })()}
                     </div>
 
                     {/* Feedback Alert */}

@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense } from 'react';
 import { AppShell } from '@/components/layout/AppShell';
 import ChatAssistant, { ChatLaunchPayload } from '@/components/ChatAssistant';
+import { AgentControlCenter } from '@/components/AgentControlCenter';
 import { TaskMonitor } from '@/components/TaskMonitor';
 import { JobDetail } from '@/components/JobDetail';
 import { ResizableDualPane } from '@/components/ResizableDualPane';
@@ -11,19 +12,22 @@ import { useKeyboardHotkeys } from '@/hooks/useKeyboardHotkeys';
 import { useVulcan } from '@/lib/context';
 import { api } from '@/lib/api';
 import type { Job, JobStatus } from '@/lib/types';
-import { useRouter } from 'next/navigation';
-import { Table2, ArrowRight, Keyboard } from 'lucide-react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Table2, ArrowRight, Keyboard, Bot, MessageSquare } from 'lucide-react';
 
 function ChatConsoleContent() {
   const { currentUser } = useVulcan();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const initialMode = searchParams?.get('mode') === 'agents' ? 'agents' : 'chat';
+  const [requestMode, setRequestMode] = useState<'chat' | 'agents'>(initialMode);
 
   const [jobs, setJobs] = useState<Job[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<JobStatus | 'ALL'>('ALL');
   const [query, setQuery] = useState('');
   const [isHelpOpen, setIsHelpOpen] = useState(false);
-  const [showDetails, setShowDetails] = useState(false);
+  const [showDetails, setShowDetails] = useState(true);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const refreshJobs = useCallback(async () => {
@@ -131,11 +135,33 @@ function ChatConsoleContent() {
   const leftPaneContent = (
     <div className="h-full flex flex-col bg-canvas-void">
       <div className="px-4 py-2 border-b border-glass-border flex items-center justify-between bg-glass-surface/40 select-none">
-        <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-cyan-400" />
-          <h1 className="text-xs font-mono font-semibold text-slate-200 uppercase tracking-wider">
-            New Request · Vulcan Copilot
-          </h1>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 p-0.5 rounded-lg bg-slate-900 border border-glass-border text-xs font-mono">
+            <button
+              type="button"
+              onClick={() => setRequestMode('chat')}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded transition-all ${
+                requestMode === 'chat'
+                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-semibold'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <MessageSquare size={12} className="text-cyan-400" />
+              <span>Copilot Chat</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setRequestMode('agents')}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded transition-all ${
+                requestMode === 'agents'
+                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-semibold'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Bot size={12} className="text-cyan-400" />
+              <span>Autonomous AgentOS</span>
+            </button>
+          </div>
         </div>
         <div className="flex items-center gap-3">
           <button
@@ -147,7 +173,7 @@ function ChatConsoleContent() {
                 : 'border-glass-border hover:border-slate-600 bg-white/[0.02] text-slate-400 hover:text-slate-200'
             }`}
           >
-            <span>{showDetails ? 'Focus Chat' : `Inspect Details (${jobs.length})`}</span>
+            <span>{showDetails ? 'Focus View' : `Inspect Details (${jobs.length})`}</span>
           </button>
           <button
             type="button"
@@ -162,11 +188,17 @@ function ChatConsoleContent() {
       </div>
 
       <div className="flex-1 overflow-hidden">
-        <ChatAssistant
-          currentUser={currentUser}
-          onDispatchTask={handleDispatchTask}
-          onSelectTaskToView={handleSelectTask}
-        />
+        {requestMode === 'chat' ? (
+          <ChatAssistant
+            currentUser={currentUser}
+            onDispatchTask={handleDispatchTask}
+            onSelectTaskToView={handleSelectTask}
+          />
+        ) : (
+          <div className="h-full overflow-y-auto">
+            <AgentControlCenter />
+          </div>
+        )}
       </div>
     </div>
   );
@@ -255,7 +287,9 @@ function ChatConsoleContent() {
 export default function ChatPage() {
   return (
     <AppShell>
-      <ChatConsoleContent />
+      <Suspense fallback={<div className="p-8 text-center text-slate-500 font-mono text-xs">Loading request console…</div>}>
+        <ChatConsoleContent />
+      </Suspense>
     </AppShell>
   );
 }

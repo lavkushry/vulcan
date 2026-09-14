@@ -52,12 +52,12 @@ function HistoryContent() {
   // Poll jobs
   useEffect(() => {
     const refresh = async () => {
-      try { setJobs(await api.listJobs()); } catch { /* */ }
+      try { setJobs(await api.listJobs(currentUser)); } catch { /* */ }
     };
     refresh();
     const t = setInterval(refresh, 3000);
     return () => clearInterval(t);
-  }, []);
+  }, [currentUser]);
 
   // Filter + search
   const filtered = useMemo(() => {
@@ -93,7 +93,7 @@ function HistoryContent() {
     if (!selectedId) return;
     try {
       await api.approveJob(selectedId, currentUser);
-      const refreshed = await api.listJobs();
+      const refreshed = await api.listJobs(currentUser);
       setJobs(refreshed);
     } catch (e: any) {
       alert(e?.message || 'Approval failed');
@@ -104,7 +104,7 @@ function HistoryContent() {
     if (!selectedId) return;
     try {
       await api.rejectJob(selectedId, currentUser);
-      const refreshed = await api.listJobs();
+      const refreshed = await api.listJobs(currentUser);
       setJobs(refreshed);
     } catch (e: any) {
       alert(e?.message || 'Rejection failed');
