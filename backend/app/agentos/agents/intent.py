@@ -36,15 +36,44 @@ class IntentAgent(BaseAgent):
         prompt = ctx.original_request.strip()
         lower_prompt = prompt.lower()
 
-        # 1. Automation Domain Classification
-        if any(w in lower_prompt for w in ("postgres", "postgresql", "mysql", "database", "sql")):
+        # 1. Automation Domain & Software Classification
+        software = None
+        if any(w in lower_prompt for w in ("postgres", "postgresql")):
+            software = "postgresql"
             domain = "database"
+        elif "redis" in lower_prompt:
+            software = "redis"
+            domain = "database"
+        elif "mysql" in lower_prompt:
+            software = "mysql"
+            domain = "database"
+        elif "mongodb" in lower_prompt or "mongo" in lower_prompt:
+            software = "mongodb"
+            domain = "database"
+        elif "docker" in lower_prompt:
+            software = "docker"
+            domain = "cloud"
+        elif "nginx" in lower_prompt:
+            software = "nginx"
+            domain = "network"
+        elif "jenkins" in lower_prompt:
+            software = "jenkins"
+            domain = "general"
+        elif "gitlab" in lower_prompt:
+            software = "gitlab"
+            domain = "general"
         elif any(w in lower_prompt for w in ("patch", "kernel", "reboot", "os", "rhel", "linux")):
+            software = "patching"
             domain = "os_patching"
-        elif any(w in lower_prompt for w in ("f5", "vip", "cert", "tls", "ssl", "network", "dns")):
+        elif any(w in lower_prompt for w in ("f5", "vip", "cert", "tls", "ssl")):
+            software = "f5_cert"
             domain = "network"
         elif any(w in lower_prompt for w in ("s3", "bucket", "vpc", "subnet", "terraform", "cloud", "aws", "azure")):
+            software = "cloud_infra"
             domain = "cloud"
+        elif any(w in lower_prompt for w in ("database", "sql")):
+            software = "database"
+            domain = "database"
         else:
             domain = "general"
 
@@ -53,13 +82,44 @@ class IntentAgent(BaseAgent):
         missing = []
         assumptions = []
 
+        if software:
+            known["software"] = software
+
         # Version detection
-        v_match = re.search(r'(postgresql|postgres)\s*([0-9]+)', lower_prompt)
+        v_match = re.search(r'(postgresql|postgres|redis|mysql|mongodb|nginx)\s*([0-9]+(?:\.[0-9]+)?)', lower_prompt)
         if v_match:
-            known["db_version"] = int(v_match.group(2))
-        elif domain == "database":
+            try:
+                known["software_version"] = int(v_match.group(2))
+            except ValueError:
+                known["software_version"] = v_match.group(2)
+            if software in ("postgresql", "postgres"):
+                known["db_version"] = known["software_version"]
+        elif software == "postgresql":
             known["db_version"] = 16
+            known["software_version"] = 16
             assumptions.append("Defaulting PostgreSQL version to 16 LTS.")
+        elif software == "redis":
+            known["software_version"] = 7
+
+        # Port detection
+        port_match = re.search(r'\bport\s*[:=]?\s*([0-9]{2,5})\b', lower_prompt)
+        if port_match:
+            known["port"] = int(port_match.group(1))
+        elif software == "redis":
+            known["port"] = 6379
+        elif software == "postgresql":
+            known["port"] = 5432
+        elif software == "nginx":
+            known["port"] = 80
+        elif software == "mysql":
+            known["port"] = 3306
+
+        # Max memory detection (e.g. for Redis)
+        maxmem_match = re.search(r'\bmaxmemory\s*[:=]?\s*([0-9]+)\s*(mb|gb)?\b', lower_prompt)
+        if maxmem_match:
+            unit = (maxmem_match.group(2) or "mb").lower()
+            val = int(maxmem_match.group(1))
+            known["maxmemory_mb"] = val * 1024 if unit == "gb" else val
 
         # Node count detection
         word_num_map = {
@@ -80,15 +140,32 @@ class IntentAgent(BaseAgent):
                     break
 
         # OS Platform detection
-        if "rhel 9" in lower_prompt or "rhel9" in lower_prompt:
+        if "rhel 9" in lower_prompt or "rhel9" in lower_prompt or "el9" in lower_prompt:
             known["os_platform"] = "rhel9"
-        elif "rhel 8" in lower_prompt or "rhel8" in lower_prompt:
+        elif "rhel 8" in lower_prompt or "rhel8" in lower_prompt or "el8" in lower_prompt:
             known["os_platform"] = "rhel8"
+        elif "ubuntu 22" in lower_prompt or "ubuntu22" in lower_prompt or "jammy" in lower_prompt:
+            known["os_platform"] = "ubuntu22"
+        elif "ubuntu 20" in lower_prompt or "ubuntu20" in lower_prompt or "focal" in lower_prompt:
+            known["os_platform"] = "ubuntu20"
+        elif "ubuntu" in lower_prompt:
+            known["os_platform"] = "ubuntu"
+        elif "debian 12" in lower_prompt or "debian12" in lower_prompt or "bookworm" in lower_prompt:
+            known["os_platform"] = "debian12"
+        elif "debian" in lower_prompt:
+            known["os_platform"] = "debian"
+        elif "rocky 9" in lower_prompt or "rocky9" in lower_prompt or "rocky" in lower_prompt:
+            known["os_platform"] = "rockylinux9"
+        elif "windows" in lower_prompt or "win" in lower_prompt:
+            known["os_platform"] = "windows"
 
         # Storage capacity detection
         storage_match = re.search(r'([0-9]+)\s*(gb|tb)', lower_prompt)
         if storage_match:
             known["storage_capacity"] = f"{storage_match.group(1)}{storage_match.group(2).upper()}"
+        elif "tablespace" in lower_prompt and "target_host" in known:
+            known["storage_capacity"] = "100GB"
+            assumptions.append("Defaulting tablespace expansion increment to 100GB.")
 
         # External services mentioned
         known["monitoring"] = "datadog" if "datadog" in lower_prompt else None
@@ -96,18 +173,50 @@ class IntentAgent(BaseAgent):
         known["itsm"] = "servicenow" if "servicenow" in lower_prompt else None
         known["secrets"] = "cyberark" if "cyberark" in lower_prompt else None
 
+        # Check if already supplied in context (e.g. from supply_input)
+        existing_known = ctx.normalized_intent.get("known_parameters", {}) if isinstance(ctx.normalized_intent, dict) else {}
+        if "target_host" in existing_known and existing_known["target_host"]:
+            known["target_host"] = existing_known["target_host"]
+        if "target_inventory" in existing_known and existing_known["target_inventory"]:
+            known["target_inventory"] = existing_known["target_inventory"]
+
+        # Target host detection (e.g., db-cluster.internal, rhel-srv.internal, vpc-prod, IP, localhost)
+        if "target_host" not in known:
+            host_match = re.search(r'\b([a-zA-Z0-9_-]+\.(?:internal|corp|local|net|com|org|io|gov))\b', lower_prompt)
+            ip_match = re.search(r'\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\b', lower_prompt)
+            if host_match:
+                known["target_host"] = host_match.group(1)
+            elif ip_match:
+                known["target_host"] = ip_match.group(1)
+            elif "localhost" in lower_prompt:
+                known["target_host"] = "localhost"
+            elif "vpc-prod" in lower_prompt or ("vpc" in lower_prompt and "peering" in lower_prompt) or "us-east-1" in lower_prompt:
+                known["target_host"] = "aws::us-east-1::vpc-peering"
+
         # 3. Detect Ambiguity & Missing Critical Parameters (Section 11)
-        # e.g., "restart database" without environment or node ID
-        if lower_prompt in ("restart database", "reboot database", "delete database", "drop database"):
-            missing.extend(["target_host", "environment", "change_ticket"])
-            ambiguity = "HIGHLY_AMBIGUOUS"
+        has_target = (
+            "target_host" in known
+            or "target_inventory" in known
+            or "node_count" in known
+            or ("vpc" in lower_prompt and "terraform" in lower_prompt)
+        )
+
+        # Check for domain-specific missing requirements
+        missing_domain_params = []
+        if "user account" in lower_prompt and not any(k in lower_prompt for k in ("username", "user=")):
+            missing_domain_params.append("usernames")
+        if any(vague in lower_prompt for vague in ("fix the server", "do maintenance", "check stuff")) and not has_target:
+            missing_domain_params.append("specific_issue_details")
+
+        if not has_target:
+            missing.extend(["target_host", "target_inventory"])
+
+        missing.extend(missing_domain_params)
+
+        if missing:
+            ambiguity = "HIGHLY_AMBIGUOUS" if not has_target else "PARTIAL"
             req_input = True
-            clarification = "Target database node and environment not specified. Please supply target_host and environment."
-        elif domain == "database" and "node_count" not in known and "target_host" not in known:
-            missing.append("target_inventory")
-            ambiguity = "PARTIAL"
-            req_input = True
-            clarification = "Target nodes or cluster size not specified."
+            clarification = "Target host, node inventory, or cluster size not specified. Please supply target_host or target_inventory."
         else:
             ambiguity = "UNAMBIGUOUS"
             req_input = False

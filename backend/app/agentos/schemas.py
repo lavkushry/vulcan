@@ -379,3 +379,4 @@ class EvalOutput(BaseAgentOutput):
     bootstrap_ci_lower: Optional[float] = None
     bootstrap_ci_upper: Optional[float] = None
     gate_passed: bool = True
+    calibration_record: Optional[Dict[str, Any]] = None

@@ -115,7 +115,28 @@ class AutomationCompiler:
             f"# Target platforms: {', '.join(spec.supported_platforms)}",
         ]
 
-        if "postgresql" in spec.goal.lower():
+        desired = spec.desired_state if isinstance(spec.desired_state, dict) else {}
+        software = desired.get("software", "")
+        if not software:
+            if "postgres" in spec.goal.lower():
+                software = "postgresql"
+            elif "redis" in spec.goal.lower():
+                software = "redis"
+            elif "docker" in spec.goal.lower():
+                software = "docker"
+            elif "nginx" in spec.goal.lower():
+                software = "nginx"
+            else:
+                software = "general"
+
+        # 2. Role Tasks (enforcing FQCN and native modules)
+        tasks_content = [
+            "---",
+            f"# Role tasks for {role_name}",
+            f"# Target platforms: {', '.join(spec.supported_platforms)}",
+        ]
+
+        if software == "postgresql":
             tasks_content.extend([
                 "- name: Ensure PostgreSQL 16 repository is configured",
                 "  ansible.builtin.dnf:",
@@ -149,6 +170,66 @@ class AutomationCompiler:
                 "    state: started",
                 "    enabled: true",
             ])
+        elif software == "redis":
+            tasks_content.extend([
+                "- name: Install Redis server packages",
+                "  ansible.builtin.package:",
+                "    name: redis-server",
+                "    state: present",
+                "",
+                "- name: Configure Redis port",
+                "  ansible.builtin.lineinfile:",
+                "    path: /etc/redis/redis.conf",
+                "    regexp: '^#?port '",
+                "    line: 'port {{ redis_port }}'",
+                "    state: present",
+                "  notify: Restart Redis",
+                "",
+                "- name: Configure Redis maxmemory limit",
+                "  ansible.builtin.lineinfile:",
+                "    path: /etc/redis/redis.conf",
+                "    regexp: '^#?maxmemory '",
+                "    line: 'maxmemory {{ redis_maxmemory_mb }}mb'",
+                "    state: present",
+                "  notify: Restart Redis",
+                "",
+                "- name: Ensure Redis service is enabled and running",
+                "  ansible.builtin.service:",
+                "    name: redis-server",
+                "    state: started",
+                "    enabled: true",
+                "",
+                "- name: Probe Redis with PING command",
+                "  ansible.builtin.command: 'redis-cli -p {{ redis_port }} ping'",
+                "  register: redis_ping",
+                "  changed_when: false",
+            ])
+        elif software == "docker":
+            tasks_content.extend([
+                "- name: Install Docker CE runtime packages",
+                "  ansible.builtin.package:",
+                "    name: docker-ce",
+                "    state: present",
+                "",
+                "- name: Ensure Docker daemon service is running and enabled",
+                "  ansible.builtin.service:",
+                "    name: docker",
+                "    state: started",
+                "    enabled: true",
+            ])
+        elif software == "nginx":
+            tasks_content.extend([
+                "- name: Install Nginx web server packages",
+                "  ansible.builtin.package:",
+                "    name: nginx",
+                "    state: present",
+                "",
+                "- name: Ensure Nginx service is running and enabled",
+                "  ansible.builtin.service:",
+                "    name: nginx",
+                "    state: started",
+                "    enabled: true",
+            ])
         else:
             tasks_content.extend([
                 f"- name: Execute core step for {spec.goal}",
@@ -157,19 +238,49 @@ class AutomationCompiler:
             ])
 
         # 3. Handlers
+        if software == "postgresql":
+            handler_service = "postgresql-16"
+            handler_name = "Restart PostgreSQL"
+        elif software == "redis":
+            handler_service = "redis-server"
+            handler_name = "Restart Redis"
+        elif software == "nginx":
+            handler_service = "nginx"
+            handler_name = "Restart Nginx"
+        elif software == "docker":
+            handler_service = "docker"
+            handler_name = "Restart Docker"
+        else:
+            handler_service = role_name
+            handler_name = f"Restart {role_name}"
+
         handlers_content = f"""---
-- name: Restart PostgreSQL
+- name: {handler_name}
   ansible.builtin.service:
-    name: postgresql-16
+    name: {handler_service}
     state: restarted
 """
 
         # 4. Defaults / Variables with schema
-        vars_content = f"""---
+        if software == "postgresql":
+            vars_content = f"""---
 # Default variables for {role_name}
-port: 5432
+port: {desired.get('port', 5432)}
 environment: "{spec.risk_level}"
-storage_size_gb: 500
+storage_size_gb: {desired.get('storage', 500)}
+"""
+        elif software == "redis":
+            vars_content = f"""---
+# Default variables for {role_name}
+redis_port: {desired.get('port', 6379)}
+redis_maxmemory_mb: {desired.get('maxmemory_mb', 256)}
+redis_bind_interface: "{desired.get('bind_address', '0.0.0.0')}"
+environment: "{spec.risk_level}"
+"""
+        else:
+            vars_content = f"""---
+# Default variables for {role_name}
+environment: "{spec.risk_level}"
 """
 
         # 5. Metadata
@@ -238,7 +349,7 @@ verifier:
   tasks:
     - name: Stop services if running
       ansible.builtin.service:
-        name: postgresql-16
+        name: {handler_service}
         state: stopped
       ignore_errors: true
     - name: Emit rollback completion event

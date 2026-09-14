@@ -74,6 +74,24 @@ class EvalAgent(BaseAgent):
 
         gate_passed = (pass_rate >= 80.0)
 
+        from app.agentos.confidence import CalibrationRecord, ConfidenceTier
+        plan_confidence = float(ctx.automation_plan.get("confidence", 0.0)) if isinstance(ctx.automation_plan, dict) else 0.0
+        predicted_tier = (
+            ConfidenceTier.HIGH if plan_confidence >= 0.85
+            else (ConfidenceTier.MEDIUM if plan_confidence >= 0.65 else ConfidenceTier.LOW)
+        )
+        actual_success = bool(ctx.postcondition_verification.get("all_passed", False) and ctx.execution_result.get("exit_code") == 0)
+        calib_rec = CalibrationRecord(
+            workflow_id=ctx.workflow_id,
+            predicted_confidence=plan_confidence,
+            predicted_tier=predicted_tier,
+            actual_outcome="SUCCESS" if actual_success else "FAILED",
+            actual_success=actual_success,
+            unknown_signals=[],
+            component_scores={},
+            environment=ctx.environment,
+        )
+
         return EvalOutput(
             workflow_id=ctx.workflow_id,
             eval_id=f"eval-{ctx.workflow_id[:8]}",
@@ -85,6 +103,7 @@ class EvalAgent(BaseAgent):
             bootstrap_ci_lower=ci_lower,
             bootstrap_ci_upper=ci_upper,
             gate_passed=gate_passed,
+            calibration_record=calib_rec.model_dump(),
             proposed_next_state=WorkflowState.EVALUATING.value,
             confidence=1.0,
             rationale=f"Evaluated workflow across {total_scenarios} quality dimensions. Pass rate: {pass_rate}%.",

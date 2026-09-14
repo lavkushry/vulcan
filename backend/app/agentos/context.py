@@ -295,6 +295,7 @@ class AgentOSStateMachine:
             WorkflowState.EXECUTION_FAILED,
             WorkflowState.ROLLING_BACK,
             WorkflowState.MANUAL_INTERVENTION_REQUIRED,
+            WorkflowState.SECURITY_REJECTED,
         },
         WorkflowState.EXECUTION_FAILED: {
             WorkflowState.ROLLING_BACK,

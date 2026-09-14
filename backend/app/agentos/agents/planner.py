@@ -49,15 +49,20 @@ class PlannerAgent(BaseAgent):
             return None, f"Asset trust state is {trust_state}; blocked by security policy."
 
         # 2. Rollback compatibility
-        has_rollback = bool(candidate.get("has_rollback", True))
-        is_prod = ctx.environment.upper() == "PROD"
-        if not has_rollback and is_prod:
-            return None, "Candidate lacks rollback support required for PROD environment."
+        is_curated = bool(candidate.get("is_curated") or trust_state == "CURATED")
+        has_rollback = candidate.get("has_rollback")
+        if has_rollback is None and is_curated:
+            has_rollback = True
 
-        rollback_score = 1.0 if has_rollback else 0.4
+        is_prod = ctx.environment.upper() == "PROD"
+        if has_rollback is False and is_prod:
+            return None, "Candidate lacks rollback support required for PROD environment."
+        if has_rollback is None and is_prod:
+            return None, "Candidate lacks verified rollback support required for PROD environment."
+
+        rollback_score = 1.0 if has_rollback is True else (0.5 if has_rollback is None else 0.0)
 
         # 3. Trust Score
-        is_curated = bool(candidate.get("is_curated") or trust_state == "CURATED")
         raw_trust = float(candidate.get("trust_score", 0.8 if is_curated else 0.5))
         trust_component = 1.0 if is_curated else min(1.0, max(0.0, raw_trust))
 
@@ -68,7 +73,7 @@ class PlannerAgent(BaseAgent):
         name_lower = str(candidate.get("name", "")).lower()
 
         capability_score = relevance
-        keywords = ["postgres", "postgresql", "ssl", "f5", "tablespace", "rhel", "patch", "vpc", "aws"]
+        keywords = ["postgres", "postgresql", "redis", "mysql", "mongodb", "docker", "nginx", "jenkins", "gitlab", "ssl", "f5", "tablespace", "rhel", "patch", "vpc", "aws"]
         matches = [kw for kw in keywords if kw in req_lower and (kw in ident_lower or kw in name_lower)]
         if matches:
             capability_score = min(1.0, capability_score + 0.2)
@@ -84,6 +89,21 @@ class PlannerAgent(BaseAgent):
                 version_score = 1.0
             elif any(f"version_{v}" in ident_lower or f"postgres_{v}" in ident_lower for v in ["12", "13", "14", "15", "16"] if v != target_v):
                 return None, f"Incompatible platform version: candidate is for different major version than requested {target_v}."
+
+        # 5b. OS Platform Compatibility
+        requested_os = ctx.normalized_intent.get("known_parameters", {}).get("os_platform") if isinstance(ctx.normalized_intent, dict) else None
+        if requested_os:
+            from app.agentos.artifacts.resolver import ArtifactResolver
+            supported_platforms = metadata.get("supported_platforms", [])
+            if not supported_platforms:
+                resolver = ArtifactResolver()
+                try:
+                    resolved = resolver.resolve_and_download(identifier, requested_os=requested_os)
+                    supported_platforms = resolved.interface.supported_platforms
+                except Exception:
+                    pass
+            if supported_platforms and not ArtifactResolver.is_os_compatible(requested_os, supported_platforms):
+                return None, f"Incompatible OS platform: candidate does not support requested OS '{requested_os}'."
 
         # 6. Historical Success Evidence
         historical_failures = getattr(ctx, "context_retrieval", {}).get("historical_failures", []) if hasattr(ctx, "context_retrieval") and isinstance(ctx.context_retrieval, dict) else []

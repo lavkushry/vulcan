@@ -144,8 +144,10 @@ def test_foundry_agent_runtime_invoke():
     from unittest.mock import MagicMock
     from app.ports.interfaces import ChatCompletionResponse
     mock_provider = MagicMock()
+    json_str = '{"desired_outcome": "Deploy PostgreSQL 16", "automation_domain": "database", "proposed_next_state": "DISCOVERING"}'
     mock_provider.complete_structured.return_value = ChatCompletionResponse(
-        raw_content='{"desired_outcome": "Deploy PostgreSQL 16", "automation_domain": "database", "proposed_next_state": "DISCOVERING"}',
+        content=json_str,
+        raw_content=json_str,
         parsed_json={"desired_outcome": "Deploy PostgreSQL 16", "automation_domain": "database", "proposed_next_state": "DISCOVERING"},
         provider_latency_ms=1.0,
     )
@@ -185,6 +187,7 @@ def test_foundry_agent_runtime_raises_invalid_agent_output():
 
     mock_provider = MagicMock()
     mock_provider.complete_structured.return_value = ChatCompletionResponse(
+        content="This is not json at all! {invalid syntax",
         raw_content="This is not json at all! {invalid syntax",
         parsed_json=None,
         provider_latency_ms=1.0,

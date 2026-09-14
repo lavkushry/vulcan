@@ -977,13 +977,81 @@ def generate_audit_markdown(results: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def run_agentos_eval(
+    output_json: Optional[Path] = None,
+    output_md: Optional[Path] = None,
+    enforce_gate: bool = False,
+) -> Tuple[Dict[str, Any], bool]:
+    """Runs the 50-scenario AgentOS evaluation suite."""
+    from app.agentos.eval.runner import AgentOSEvalRunner
+
+    print("\n" + "=" * 80)
+    print("Project Vulcan: AgentOS 50-Scenario Evaluation Suite")
+    print("=" * 80)
+
+    report = AgentOSEvalRunner.run_all_50_scenarios()
+    report_dict = report.model_dump()
+
+    print(f"Total Scenarios: {report.total_scenarios}")
+    print(f"Passed Scenarios: {report.passed_scenarios}")
+    print(f"Failed Scenarios: {report.failed_scenarios}")
+    print(f"Verified Completion Rate: {report.verified_completion_rate}%")
+    print(f"False-Success Rate: {report.false_success_rate}%")
+    print(f"Unauthorized Actions: {report.unauthorized_actions_count}")
+    print(f"P95 Latency: {report.p95_latency_ms}ms")
+    print(f"Avg Latency: {report.avg_latency_ms}ms")
+    print("-" * 80)
+    print("Scenario Groups Breakdown:")
+    for grp, data in report.group_breakdown.items():
+        print(f"  - {grp}: {data['passed']}/{data['total']} ({data['pass_rate']}%)")
+    print("=" * 80 + "\n")
+
+    # Target JSON file
+    target_json = output_json or (BASE_DIR / "eval_results" / "agentos_eval.json")
+    target_json.parent.mkdir(parents=True, exist_ok=True)
+    with open(target_json, "w", encoding="utf-8") as f:
+        json.dump(report_dict, f, indent=2, default=str)
+    print(f"✓ AgentOS evaluation report exported to: {target_json}")
+
+    if output_md:
+        output_md.parent.mkdir(parents=True, exist_ok=True)
+        md_lines = [
+            "# Vulcan AgentOS Evaluation Report",
+            "",
+            f"- **Verified Completion Rate**: {report.verified_completion_rate}%",
+            f"- **False-Success Rate**: {report.false_success_rate}%",
+            f"- **Unauthorized Actions**: {report.unauthorized_actions_count}",
+            f"- **P95 Latency**: {report.p95_latency_ms}ms",
+            "",
+            "## Scenario Groups",
+            "| Group | Passed | Total | Pass Rate |",
+            "| :--- | :--- | :--- | :--- |",
+        ]
+        for grp, data in report.group_breakdown.items():
+            md_lines.append(f"| {grp} | {data['passed']} | {data['total']} | {data['pass_rate']}% |")
+        with open(output_md, "w", encoding="utf-8") as f:
+            f.write("\n".join(md_lines))
+        print(f"✓ AgentOS markdown report exported to: {output_md}")
+
+    gate_passed = (
+        report.verified_completion_rate >= 95.0
+        and report.false_success_rate == 0.0
+        and report.unauthorized_actions_count == 0
+    )
+    return report_dict, gate_passed
+
+
 def main():
-    parser = argparse.ArgumentParser(description="Vulcan 500-Scenario Golden Evaluation Runner (CHAT-20)")
+    parser = argparse.ArgumentParser(description="Vulcan Golden & AgentOS Evaluation Runner (CHAT-20)")
+    parser.add_argument("--suite", choices=["golden", "agentos", "all"], default="golden",
+                        help="Evaluation suite: 'golden' (CHAT-20), 'agentos' (50 scenarios), or 'all'")
+    parser.add_argument("--agentos", action="store_true",
+                        help="Run AgentOS evaluation suite (equivalent to --suite agentos)")
     parser.add_argument("--provider", choices=["fake", "live", "huggingface", "hf", "openrouter"], default="fake",
                         help="Evaluation provider: 'fake' (hermetic), 'live' (Gemini/OpenAI/HF/OpenRouter), 'huggingface', or 'openrouter'")
     parser.add_argument("--scenarios", type=str, default="evals/golden/scenarios.v2.jsonl",
                         help="Path to scenarios JSONL dataset")
-    parser.add_argument("--output-json", type=str, default="docs/eval_results.json",
+    parser.add_argument("--output-json", type=str, default=None,
                         help="Path to export evaluation JSON")
     parser.add_argument("--output-md", type=str, default=None,
                         help="Path to export evaluation Markdown report")
@@ -995,34 +1063,58 @@ def main():
                         help="Enforce CI regression gating rules (exit 1 on regression)")
     args = parser.parse_args()
 
-    scenarios_path = Path(args.scenarios)
-    if not scenarios_path.is_absolute() and not scenarios_path.exists():
-        if (BASE_DIR / scenarios_path).exists():
-            scenarios_path = BASE_DIR / scenarios_path
+    suite = "agentos" if args.agentos else args.suite
 
-    output_json = Path(args.output_json) if args.output_json else None
-    if output_json and not output_json.is_absolute():
-        output_json = BASE_DIR / output_json
+    all_gates_passed = True
 
-    output_md = Path(args.output_md) if args.output_md else None
-    if output_md and not output_md.is_absolute():
-        output_md = BASE_DIR / output_md
+    if suite in ("golden", "all"):
+        scenarios_path = Path(args.scenarios)
+        if not scenarios_path.is_absolute() and not scenarios_path.exists():
+            if (BASE_DIR / scenarios_path).exists():
+                scenarios_path = BASE_DIR / scenarios_path
 
-    audit_md = Path(args.audit_md) if args.audit_md else None
-    if audit_md and not audit_md.is_absolute():
-        audit_md = BASE_DIR / audit_md
+        golden_output_json = Path(args.output_json) if args.output_json and suite == "golden" else (BASE_DIR / "docs" / "eval_results.json")
+        if golden_output_json and not golden_output_json.is_absolute():
+            golden_output_json = BASE_DIR / golden_output_json
 
-    _, gate_passed = run_evaluation(
-        provider_type=args.provider,
-        scenarios_path=scenarios_path,
-        output_json=output_json,
-        output_md=output_md,
-        audit_mode=args.audit,
-        audit_md=audit_md,
-        enforce_gate=args.gate
-    )
+        golden_output_md = Path(args.output_md) if args.output_md and suite == "golden" else None
+        if golden_output_md and not golden_output_md.is_absolute():
+            golden_output_md = BASE_DIR / golden_output_md
 
-    if args.gate and not gate_passed:
+        audit_md = Path(args.audit_md) if args.audit_md else None
+        if audit_md and not audit_md.is_absolute():
+            audit_md = BASE_DIR / audit_md
+
+        _, golden_gate = run_evaluation(
+            provider_type=args.provider,
+            scenarios_path=scenarios_path,
+            output_json=golden_output_json,
+            output_md=golden_output_md,
+            audit_mode=args.audit,
+            audit_md=audit_md,
+            enforce_gate=args.gate,
+        )
+        if not golden_gate:
+            all_gates_passed = False
+
+    if suite in ("agentos", "all"):
+        agentos_output_json = Path(args.output_json) if args.output_json and suite == "agentos" else (BASE_DIR / "eval_results" / "agentos_eval.json")
+        if agentos_output_json and not agentos_output_json.is_absolute():
+            agentos_output_json = BASE_DIR / agentos_output_json
+
+        agentos_output_md = Path(args.output_md) if args.output_md and suite == "agentos" else None
+        if agentos_output_md and not agentos_output_md.is_absolute():
+            agentos_output_md = BASE_DIR / agentos_output_md
+
+        _, agentos_gate = run_agentos_eval(
+            output_json=agentos_output_json,
+            output_md=agentos_output_md,
+            enforce_gate=args.gate,
+        )
+        if not agentos_gate:
+            all_gates_passed = False
+
+    if args.gate and not all_gates_passed:
         print("\nFATAL: CI Regression Gate failed. One or more evaluation thresholds were breached.", file=sys.stderr)
         sys.exit(1)
 

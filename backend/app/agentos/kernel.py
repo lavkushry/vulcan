@@ -39,7 +39,7 @@ from app.agentos.agents.validator import ValidatorAgent
 from app.agentos.agents.test_agent import TestAgent
 from app.agentos.agents.security import SecurityAgent
 from app.agentos.agents.critic import CriticAgent
-from app.agentos.agents.executor import ConstrainedExecutor
+from app.agentos.agents.executor import ConstrainedExecutor, CapabilityTokenViolationError
 from app.agentos.agents.verifier import VerifierAgent, IVerificationProbeRunner
 from app.agentos.agents.rollback import RollbackAgent
 from app.agentos.agents.curator import CuratorAgent
@@ -68,6 +68,7 @@ class AgentOSKernel:
         execution_adapter: Optional[IAgentOSExecutionAdapter] = None,
         agent_runtime: Optional[IAgentRuntime] = None,
         probe_runner: Optional[IVerificationProbeRunner] = None,
+        catalog_repo: Optional[Any] = None,
     ):
         is_prod = os.environ.get("AGENTOS_MODE", "").lower() == "production"
 
@@ -108,7 +109,7 @@ class AgentOSKernel:
         self.supervisor = SupervisorAgent()
         self.intent_agent = IntentAgent()
         self.context_agent = ContextAgent()
-        self.discovery_agent = DiscoveryAgent()
+        self.discovery_agent = DiscoveryAgent(catalog_repo=catalog_repo)
         self.risk_agent = RiskAgent()
         self.planner_agent = PlannerAgent()
         self.composer_agent = ComposerAgent()
@@ -266,6 +267,33 @@ class AgentOSKernel:
             )
 
         elif target_role == AgentRole.COMPOSER:
+            # Dedicated Artifact Resolver & Downloader Responsibility
+            from app.agentos.artifacts.resolver import ArtifactResolver, DigestMismatchError
+            resolver = ArtifactResolver()
+            selected_assets = ctx.automation_plan.get("selected_assets", [])
+            primary_ident = selected_assets[0] if selected_assets else ""
+
+            cand_meta = None
+            cand_sha = None
+            for cand in ctx.discovered_assets:
+                if cand.get("identifier") == primary_ident:
+                    cand_meta = cand.get("metadata", {})
+                    cand_sha = cand.get("commit_sha")
+                    break
+
+            if primary_ident:
+                known_params = ctx.normalized_intent.get("known_parameters", {}) if isinstance(ctx.normalized_intent, dict) else {}
+                test_expected_sha = known_params.get("expected_artifact_sha")
+                resolved = resolver.resolve_and_download(
+                    identifier=primary_ident,
+                    expected_sha=test_expected_sha or cand_sha,
+                    commit_sha=cand_sha,
+                    requested_os=known_params.get("os_platform"),
+                    workflow_id=ctx.workflow_id,
+                    raw_catalog_item=cand_meta,
+                )
+                ctx.automation_plan["resolved_asset"] = resolved.to_dict()
+
             comp_out = self.composer_agent.execute(ctx)
             ctx.automation_plan["dag_steps"] = [s.model_dump() for s in comp_out.dag_steps]
             ctx.automation_plan["execution_graph"] = comp_out.execution_graph
@@ -459,23 +487,40 @@ class AgentOSKernel:
                 return ctx
 
             # Run Executor with the original token (is_used=False in memory)
-            exec_res = self.executor.execute(
-                token=token,
-                artifact_files=files,
-                target_resource_id=target_id,
-                parameters=ctx.desired_state,
-                environment=ctx.environment,
-            )
-            ctx.execution_result = exec_res.model_dump()
-            
-            # Update used_at timestamp from the executor result
-            self.repository.save_capability_token(token)
+            try:
+                exec_res = self.executor.execute(
+                    token=token,
+                    artifact_files=files,
+                    target_resource_id=target_id,
+                    parameters=ctx.desired_state,
+                    environment=ctx.environment,
+                )
+                ctx.execution_result = exec_res.model_dump()
+                
+                # Update used_at timestamp from the executor result
+                self.repository.save_capability_token(token)
 
-            event = ctx.transition_to(
-                WorkflowState.VERIFYING,
-                actor="executor",
-                reason=f"Runner completed with exit code {exec_res.exit_code}.",
-            )
+                if exec_res.exit_code != 0:
+                    event = ctx.transition_to(
+                        WorkflowState.EXECUTION_FAILED,
+                        actor="executor",
+                        reason=f"Execution failed with exit code {exec_res.exit_code}: {exec_res.stderr}",
+                    )
+                else:
+                    event = ctx.transition_to(
+                        WorkflowState.VERIFYING,
+                        actor="executor",
+                        reason=f"Runner completed successfully with exit code 0.",
+                    )
+            except CapabilityTokenViolationError as err:
+                event = ctx.transition_to(
+                    WorkflowState.SECURITY_REJECTED,
+                    actor="executor",
+                    reason=f"Capability token security violation: {err}",
+                )
+                self.repository.save_workflow(ctx)
+                self.repository.record_event(event)
+                return ctx
 
         elif target_role == AgentRole.VERIFIER:
             ver_out = self.verifier_agent.execute(ctx)
@@ -547,8 +592,13 @@ class AgentOSKernel:
             )
 
         # Merge supplied input into normalized intent
-        ctx.normalized_intent.setdefault("known_parameters", {}).update(operator_input)
-        ctx.unresolved_questions = [q for q in ctx.unresolved_questions if q not in operator_input]
+        input_data = dict(operator_input)
+        if "target_inventory" in input_data and "target_host" not in input_data:
+            input_data["target_host"] = input_data["target_inventory"]
+        if "target_host" in input_data and "target_inventory" not in input_data:
+            input_data["target_inventory"] = input_data["target_host"]
+        ctx.normalized_intent.setdefault("known_parameters", {}).update(input_data)
+        ctx.unresolved_questions = [q for q in ctx.unresolved_questions if q not in input_data]
         ctx.normalized_intent["requires_operator_input"] = (len(ctx.unresolved_questions) > 0)
 
         event = ctx.transition_to(

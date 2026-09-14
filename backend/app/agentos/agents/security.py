@@ -41,12 +41,15 @@ class SecurityAgent(BaseAgent):
 
         # 1. Indirect & Direct Prompt Injection Scan (Section 33)
         injection_indicators = [
-            r'ignore\s+(all\s+)?previous\s+instructions',
+            r'ignore\s+(all\s+)?previous\s+(instructions|rules)',
             r'bypass\s+governance',
             r'delete\s+audit\s+log',
             r'disable\s+maker[-_\s]checker',
             r'system\s+prompt\s*override',
+            r'system\s+override',
             r'<script>.*</script>',
+            r'aws_secret_access_key',
+            r'drop\s+table',
         ]
         combined_text = f"{ctx.original_request} {ctx.assumptions} {ctx.unresolved_questions}"
         for pat in injection_indicators:

@@ -120,14 +120,23 @@ class FoundryAgentRuntime(IAgentRuntime):
         Resolves the live chat provider. Never silently falls back to a fake provider.
         Retries up to max_retries before raising ProviderUnavailableError.
         """
+        from app.adapters.fake_chat_adapter import DeterministicFakeChatProvider
+
         if self._chat_provider:
+            if isinstance(self._chat_provider, DeterministicFakeChatProvider):
+                raise ProviderUnavailableError(
+                    "DeterministicFakeChatProvider cannot be used in FoundryAgentRuntime (live execution required)."
+                )
             return self._chat_provider
+
+        if self._api_key:
+            from app.adapters.chat_providers import OpenAIChatProvider
+            return OpenAIChatProvider(api_key=self._api_key)
 
         last_error = None
         for attempt in range(1, self._max_retries + 1):
             try:
                 from app.adapters.chat_providers import get_chat_provider
-                from app.adapters.fake_chat_adapter import DeterministicFakeChatProvider
                 provider = get_chat_provider()
                 if isinstance(provider, DeterministicFakeChatProvider):
                     raise ProviderUnavailableError(
@@ -181,7 +190,14 @@ class FoundryAgentRuntime(IAgentRuntime):
             raw_text = ""
             parsed: Dict[str, Any] = {}
             try:
-                response = provider.complete_structured(current_req)
+                try:
+                    response = provider.complete_structured(current_req)
+                except Exception as call_exc:
+                    from app.domain.exceptions import AIProviderQuotaExhaustedError
+                    if isinstance(call_exc, (ProviderUnavailableError, AIProviderQuotaExhaustedError)):
+                        raise ProviderUnavailableError(f"External model provider unavailable: {call_exc}") from call_exc
+                    raise
+
                 parsed = getattr(response, "parsed_json", None) or {}
                 raw_text = getattr(response, "content", getattr(response, "raw_content", ""))
                 if not parsed and raw_text:
@@ -204,6 +220,8 @@ class FoundryAgentRuntime(IAgentRuntime):
                 parsed["execution_mode"] = ExecutionMode.LIVE.value
 
                 return output_schema.model_validate(parsed)
+            except ProviderUnavailableError:
+                raise
             except (ValidationError, json.JSONDecodeError, ValueError, Exception) as exc:
                 last_error = exc
                 if attempt < self._max_repair_attempts:

@@ -187,7 +187,8 @@ class ProductionProbeRunner(IVerificationProbeRunner):
                 total, used, free = shutil.disk_usage(path_to_check)
                 total_gb = total / (1024 ** 3)
                 free_gb = free / (1024 ** 3)
-                passed = total_gb >= min_gb
+                min_free_gb = float(probe_config.get("min_free_gb", 0.0))
+                passed = (total_gb >= min_gb) and (free_gb >= min_free_gb)
                 latency_ms = (time.perf_counter() - t0) * 1000.0
                 return VerificationProbe(
                     probe_id=probe_id,
@@ -195,7 +196,14 @@ class ProductionProbeRunner(IVerificationProbeRunner):
                     probe_type=probe_type,
                     passed=passed,
                     latency_ms=round(latency_ms, 2),
-                    details={"mount": mount, "total_gb": round(total_gb, 2), "free_gb": round(free_gb, 2), "min_gb": min_gb, "simulation": False},
+                    details={
+                        "mount": mount,
+                        "total_gb": round(total_gb, 2),
+                        "free_gb": round(free_gb, 2),
+                        "min_gb": min_gb,
+                        "min_free_gb": min_free_gb,
+                        "simulation": False,
+                    },
                 )
 
             elif probe_type == "telemetry_active":
@@ -205,6 +213,9 @@ class ProductionProbeRunner(IVerificationProbeRunner):
                     or os.environ.get("AGENTOS_TELEMETRY_ENDPOINT")
                     or os.environ.get("DATADOG_AGENT_URL")
                 )
+                if not endpoint and resolved_host:
+                    endpoint = f"http://{resolved_host}:5001/health"
+
                 if not endpoint:
                     latency_ms = (time.perf_counter() - t0) * 1000.0
                     return VerificationProbe(
@@ -220,6 +231,9 @@ class ProductionProbeRunner(IVerificationProbeRunner):
                             "simulation": False,
                         },
                     )
+
+                if not endpoint.startswith(("http://", "https://")):
+                    endpoint = f"http://{endpoint}"
 
                 timeout = float(probe_config.get("timeout", 3.0))
                 headers = dict(probe_config.get("headers") or {})
@@ -282,7 +296,15 @@ class ProductionProbeRunner(IVerificationProbeRunner):
                     import botocore.exceptions
                     from datetime import datetime, timezone
 
-                    s3_client = boto3.client("s3", region_name=region, endpoint_url=endpoint_url)
+                    client_kwargs: Dict[str, Any] = {"region_name": region, "endpoint_url": endpoint_url}
+                    if probe_config.get("aws_access_key_id"):
+                        client_kwargs["aws_access_key_id"] = probe_config["aws_access_key_id"]
+                    if probe_config.get("aws_secret_access_key"):
+                        client_kwargs["aws_secret_access_key"] = probe_config["aws_secret_access_key"]
+                    if probe_config.get("aws_session_token"):
+                        client_kwargs["aws_session_token"] = probe_config["aws_session_token"]
+
+                    s3_client = boto3.client("s3", **client_kwargs)
                     s3_client.head_bucket(Bucket=bucket)
 
                     resp = s3_client.list_objects_v2(Bucket=bucket, Prefix=prefix, MaxKeys=50)
@@ -384,17 +406,43 @@ class VerifierAgent(BaseAgent):
         target = ctx.execution_result.get("target_id", "db-cluster.internal")
         probes: List[VerificationProbe] = []
 
-        # Define probe configs from desired state / spec
-        min_disk_gb = float(os.environ.get("AGENTOS_VERIFY_MIN_DISK_GB", 50.0))
-        probe_configs = [
-            ("port_open", {"port": 5432, "protocol": "tcp"}),
-            ("service_status", {"service": "postgresql-16"}),
-            ("disk_capacity", {"mount": "/var/lib/pgsql", "min_gb": min_disk_gb}),
-            ("db_query", {"query": "SELECT version();"}),
-        ]
-        if "datadog" in ctx.original_request.lower():
+        # Define probe configs dynamically from automation domain and desired state
+        domain = ctx.normalized_intent.get("automation_domain") if isinstance(ctx.normalized_intent, dict) else None
+        req_lower = (ctx.original_request or "").lower()
+
+        probe_configs: List[tuple[str, Dict[str, Any]]] = []
+        if domain == "network" or any(k in req_lower for k in ("f5", "ssl", "cert", "tls", "load balancer")):
+            probe_configs.append(("port_open", {"port": 443, "protocol": "tcp"}))
+            probe_configs.append(("service_status", {"service": "f5-bigip", "port": 443}))
+        elif domain == "os_patching" or any(k in req_lower for k in ("patch", "rhel", "linux", "cve")):
+            probe_configs.append(("port_open", {"port": 22, "protocol": "tcp"}))
+            probe_configs.append(("service_status", {"service": "sshd", "port": 22}))
+            probe_configs.append(("disk_capacity", {"mount": "/", "min_gb": 10.0}))
+        elif domain == "cloud" or any(k in req_lower for k in ("vpc", "aws", "terraform", "peering")):
+            probe_configs.append(("port_open", {"port": 443, "protocol": "tcp"}))
+            probe_configs.append(("service_status", {"service": "cloud-vpc", "port": 443}))
+        elif "redis" in req_lower:
+            port = int(ctx.normalized_intent.get("known_parameters", {}).get("port", 6379)) if isinstance(ctx.normalized_intent, dict) else 6379
+            probe_configs.append(("port_open", {"port": port, "protocol": "tcp"}))
+            probe_configs.append(("service_status", {"service": "redis-server", "port": port}))
+        elif "nginx" in req_lower:
+            port = int(ctx.normalized_intent.get("known_parameters", {}).get("port", 80)) if isinstance(ctx.normalized_intent, dict) else 80
+            probe_configs.append(("port_open", {"port": port, "protocol": "tcp"}))
+            probe_configs.append(("service_status", {"service": "nginx", "port": port}))
+        elif "docker" in req_lower:
+            probe_configs.append(("service_status", {"service": "docker"}))
+        else:
+            # Default database probes (PostgreSQL)
+            min_disk_gb = float(os.environ.get("AGENTOS_VERIFY_MIN_DISK_GB", 50.0))
+            port = int(ctx.normalized_intent.get("known_parameters", {}).get("port", 5432)) if isinstance(ctx.normalized_intent, dict) else 5432
+            probe_configs.append(("port_open", {"port": port, "protocol": "tcp"}))
+            probe_configs.append(("service_status", {"service": "postgresql-16", "port": port}))
+            probe_configs.append(("disk_capacity", {"mount": "/var/lib/pgsql", "min_gb": min_disk_gb}))
+            probe_configs.append(("db_query", {"query": "SELECT version();"}))
+
+        if any(kw in req_lower for kw in ("datadog", "telemetry", "monitoring", "metrics")):
             probe_configs.append(("telemetry_active", {"agent": "datadog"}))
-        if "s3" in ctx.original_request.lower():
+        if any(kw in req_lower for kw in ("s3", "backup", "snapshot")):
             probe_configs.append(("backup_accessible", {"bucket": "vulcan-backups"}))
 
         for probe_type, config in probe_configs:
