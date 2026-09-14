@@ -227,7 +227,7 @@ jobs:
 
       - name: Upload E2E Test Evidence Artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-e2e-evidence
           path: |
@@ -274,7 +274,7 @@ jobs:
           ./scripts/generate_sbom.sh sbom
 
       - name: Upload SBOM Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: vulcan-sbom-artifacts
           path: sbom/
@@ -320,7 +320,7 @@ jobs:
 
       - name: Upload Trivy Vulnerability Scan Results (SARIF)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: trivy-vuln-results
           path: trivy-results.sarif

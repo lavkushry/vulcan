@@ -81,7 +81,7 @@ jobs:
           ./scripts/generate_sbom.sh /tmp/release-sbom
 
       - name: Upload Release SBOM Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: vulcan-release-sbom
           path: /tmp/release-sbom/
