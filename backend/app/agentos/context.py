@@ -143,6 +143,7 @@ class WorkflowEvent:
 
     def to_dict(self) -> Dict[str, Any]:
         return {
+            "event_id": f"{self.workflow_id}-{self.current_hash[:12] if self.current_hash else '0'}",
             "workflow_id": self.workflow_id,
             "correlation_id": self.correlation_id,
             "from_state": self.from_state.value if isinstance(self.from_state, WorkflowState) else str(self.from_state),
@@ -154,6 +155,7 @@ class WorkflowEvent:
             "payload": self.payload,
             "prev_hash": self.prev_hash,
             "current_hash": self.current_hash,
+            "event_hash": self.current_hash,
             "timestamp": self.timestamp.isoformat(),
         }
 

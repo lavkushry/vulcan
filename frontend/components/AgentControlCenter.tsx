@@ -68,9 +68,10 @@ export function AgentControlCenter() {
   const loadWorkflows = useCallback(async () => {
     try {
       const data = await api.listAgentWorkflows({ limit: 30 });
-      setWorkflows(data);
-      if (!selectedWorkflowId && data.length > 0) {
-        setSelectedWorkflowId(data[0].workflow_id);
+      const wfList = Array.isArray(data) ? data : (data as any)?.workflows || [];
+      setWorkflows(wfList);
+      if (!selectedWorkflowId && wfList.length > 0) {
+        setSelectedWorkflowId(wfList[0].workflow_id);
       }
     } catch {
       /* ignore */
@@ -83,8 +84,8 @@ export function AgentControlCenter() {
         api.getAgentWorkflow(id),
         api.getAgentWorkflowEvents(id),
       ]);
-      setSelectedWorkflow(wf);
-      setEvents(ev);
+      setSelectedWorkflow(wf || null);
+      setEvents(Array.isArray(ev) ? ev : []);
     } catch {
       /* ignore */
     }
@@ -93,7 +94,7 @@ export function AgentControlCenter() {
   const loadAgents = useCallback(async () => {
     try {
       const ags = await api.listAgents();
-      setAgents(ags);
+      setAgents(Array.isArray(ags) ? ags : []);
     } catch {
       /* ignore */
     }
@@ -102,7 +103,7 @@ export function AgentControlCenter() {
   const loadEvals = useCallback(async () => {
     try {
       const evs = await api.listEvals(20);
-      setEvalRuns(evs);
+      setEvalRuns(Array.isArray(evs) ? evs : []);
     } catch {
       /* ignore */
     }
@@ -431,7 +432,7 @@ export function AgentControlCenter() {
                     <div className="flex items-center justify-between text-[10px] text-slate-500 font-mono">
                       <span>Env: {wf.environment}</span>
                       <span>v{wf.version}</span>
-                      <span>{new Date(wf.created_at).toLocaleTimeString()}</span>
+                      <span>{wf.created_at ? new Date(wf.created_at).toLocaleTimeString() : 'N/A'}</span>
                     </div>
                   </div>
                 );
@@ -709,20 +710,29 @@ export function AgentControlCenter() {
                   Cryptographic Transition Audit Trail ({events.length} Events)
                 </h3>
                 <div className="max-h-48 overflow-y-auto divide-y divide-glass-border font-mono text-[11px]">
-                  {events.map((ev) => (
-                    <div key={ev.event_id} className="py-2 flex items-center justify-between text-slate-400">
-                      <div className="flex items-center gap-2">
-                        <span className="text-cyan-400 font-bold">{ev.from_state}</span>
-                        <ArrowRight size={12} className="text-slate-500" />
-                        <span className="text-emerald-400 font-bold">{ev.to_state}</span>
-                        <span className="text-slate-500">[{ev.actor}]</span>
-                        <span className="text-slate-400 truncate max-w-sm">{ev.reason}</span>
+                  {Array.isArray(events) && events.map((ev, idx) => {
+                    const hash = ev.current_hash || ev.event_hash || '';
+                    const displayHash = hash && hash.length > 12 ? `${hash.slice(0, 12)}...` : (hash || 'N/A');
+                    return (
+                      <div key={ev.event_id || `${ev.workflow_id || 'ev'}-${idx}`} className="py-2 flex items-center justify-between text-slate-400">
+                        <div className="flex items-center gap-2">
+                          <span className="text-cyan-400 font-bold">{ev.from_state}</span>
+                          <ArrowRight size={12} className="text-slate-500" />
+                          <span className="text-emerald-400 font-bold">{ev.to_state}</span>
+                          <span className="text-slate-500">[{ev.actor}]</span>
+                          <span className="text-slate-400 truncate max-w-sm">{ev.reason}</span>
+                        </div>
+                        <div className="text-slate-600 text-[10px]">
+                          Hash: {displayHash}
+                        </div>
                       </div>
-                      <div className="text-slate-600 text-[10px]">
-                        Hash: {ev.event_hash.slice(0, 12)}...
-                      </div>
+                    );
+                  })}
+                  {(!events || events.length === 0) && (
+                    <div className="py-4 text-center text-slate-500 text-[11px]">
+                      No state transitions recorded yet.
                     </div>
-                  ))}
+                  )}
                 </div>
               </div>
             </div>
@@ -857,7 +867,7 @@ export function AgentControlCenter() {
                         </span>
                       </td>
                       <td className="p-3 text-cyan-300">
-                        [{run.bootstrap_ci_95[0]}%, {run.bootstrap_ci_95[1]}%]
+                        [{run.bootstrap_ci_95?.[0] ?? 0}%, {run.bootstrap_ci_95?.[1] ?? 0}%]
                       </td>
                       <td className="p-3 font-bold text-purple-400">{run.risk_weighted_score}</td>
                       <td className="p-3 text-slate-500">{run.duration_ms}ms</td>

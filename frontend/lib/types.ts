@@ -516,7 +516,7 @@ export interface AgentWorkflowContext {
 }
 
 export interface AgentWorkflowEvent {
-  event_id: string;
+  event_id?: string;
   workflow_id: string;
   correlation_id: string;
   from_state: string;
@@ -525,7 +525,8 @@ export interface AgentWorkflowEvent {
   agent_name?: string | null;
   agent_version?: string | null;
   reason: string;
-  event_hash: string;
+  event_hash?: string;
+  current_hash?: string;
   prev_hash: string;
   timestamp: string;
 }
