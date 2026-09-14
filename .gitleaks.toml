@@ -1,0 +1,9 @@
+title = "Vulcan Control Plane Gitleaks Configuration"
+
+[allowlist]
+description = "Ignore synthetic test vectors, mock tokens, and evaluation scenarios"
+paths = [
+    '''(?i)backend/tests/.*''',
+    '''(?i)evals/.*''',
+    '''(?i)deploy/sandbox/.*'''
+]
