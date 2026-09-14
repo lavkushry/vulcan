@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import hashlib
 import json
+import re
 from typing import Any, Dict, List, Optional
 
 from app.agentos.specification import AutomationSpecification
@@ -90,30 +91,25 @@ class AutomationCompiler:
 
     @classmethod
     def _render_ansible(cls, spec: AutomationSpecification) -> tuple[List[ArtifactFile], List[ArtifactFile], List[ArtifactFile]]:
-        role_name = spec.goal.lower().replace(" ", "_")[:32].strip("_") or "vulcan_role"
-        safe_goal = spec.goal.replace('"', '\\"').replace("\n", " ")
+        clean_role = re.sub(r'[^a-zA-Z0-9_]+', '_', spec.goal.lower())[:32].strip('_')
+        role_name = clean_role if clean_role and clean_role[0].isalpha() else (f"role_{clean_role}" if clean_role else "vulcan_role")
+        clean_comment_goal = spec.goal.replace("\r", " ").replace("\n", " ")
+        playbook_name = json.dumps(f"Execute Governed Automation: {clean_comment_goal}")
 
         # 1. Main Playbook
         main_playbook = f"""---
 # Vulcan AgentOS Ultra Generated Playbook
-# Goal: {safe_goal}
+# Goal: {clean_comment_goal}
 # Spec ID: {spec.spec_id}
-- name: "Execute Governed Automation: {safe_goal}"
+- name: {playbook_name}
   hosts: all
   become: true
   gather_facts: true
   tasks:
     - name: "Include {role_name} tasks"
       ansible.builtin.include_role:
-        name: {role_name}
+        name: "{role_name}"
 """
-
-        # 2. Role Tasks (enforcing FQCN and native modules)
-        tasks_content = [
-            "---",
-            f"# Role tasks for {role_name}",
-            f"# Target platforms: {', '.join(spec.supported_platforms)}",
-        ]
 
         desired = spec.desired_state if isinstance(spec.desired_state, dict) else {}
         software = desired.get("software", "")
@@ -231,10 +227,12 @@ class AutomationCompiler:
                 "    enabled: true",
             ])
         else:
+            step_name = json.dumps(f"Execute core step for {clean_comment_goal}")
+            msg_str = json.dumps(f"Executing step for {clean_comment_goal}")
             tasks_content.extend([
-                f"- name: Execute core step for {spec.goal}",
+                f"- name: {step_name}",
                 "  ansible.builtin.debug:",
-                f"    msg: 'Executing step for {spec.goal}'",
+                f"    msg: {msg_str}",
             ])
 
         # 3. Handlers
@@ -255,9 +253,9 @@ class AutomationCompiler:
             handler_name = f"Restart {role_name}"
 
         handlers_content = f"""---
-- name: {handler_name}
+- name: {json.dumps(handler_name)}
   ansible.builtin.service:
-    name: {handler_service}
+    name: "{handler_service}"
     state: restarted
 """
 
@@ -287,7 +285,7 @@ environment: "{spec.risk_level}"
         meta_content = f"""---
 galaxy_info:
   author: Project Vulcan AgentOS Ultra
-  description: {spec.goal}
+  description: {json.dumps(clean_comment_goal)}
   company: Enterprise Platform
   license: Apache-2.0
   min_ansible_version: "2.15"
@@ -341,20 +339,22 @@ verifier:
         ]
 
         # Rollback Playbook
+        rollback_play_name = json.dumps(f"Rollback: {clean_comment_goal}")
+        rollback_msg = json.dumps(f"Rollback completed for {clean_comment_goal}")
         rollback_content = f"""---
-# Rollback Playbook for {safe_goal}
-- name: "Rollback: {safe_goal}"
+# Rollback Playbook for {clean_comment_goal}
+- name: {rollback_play_name}
   hosts: all
   become: true
   tasks:
     - name: Stop services if running
       ansible.builtin.service:
-        name: {handler_service}
+        name: "{handler_service}"
         state: stopped
       ignore_errors: true
     - name: Emit rollback completion event
       ansible.builtin.debug:
-        msg: "Rollback completed for {safe_goal}"
+        msg: {rollback_msg}
 """
         rollback_files = [
             ArtifactFile(path="rollback.yml", content=rollback_content),

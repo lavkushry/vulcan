@@ -62,7 +62,7 @@ class ResourceAgent(BaseAgent):
                 RequiredResource(
                     resource_type="monitoring",
                     provider="datadog",
-                    required=True,
+                    required=False,
                     description="Datadog APM and host monitoring",
                 )
             )
@@ -77,7 +77,19 @@ class ResourceAgent(BaseAgent):
                 )
             )
 
+        if "docker" in req_text:
+            dependencies.append(
+                RequiredResource(
+                    resource_type="execution",
+                    provider="docker",
+                    required=True,
+                    description="Docker container runtime sandbox",
+                )
+            )
+
         missing: List[str] = []
+        unknown_health: List[str] = []
+        degraded_capabilities: List[str] = []
         resolved: Dict[str, Any] = {}
         secret_refs: List[str] = []
         available_resources = []
@@ -99,24 +111,43 @@ class ResourceAgent(BaseAgent):
         for dep in dependencies:
             res = provider_map.get(dep.provider)
             if res:
-                dep.is_available = True
-                dep.external_resource_id = res.resource_id
-                resolved[dep.provider] = {
-                    "resource_id": res.resource_id,
-                    "endpoint": res.endpoint,
-                    "auth_mode": str(res.auth_mode),
-                    "health_status": str(res.health_status),
-                }
-                # Zero Raw Secrets: collect only pointers
-                if hasattr(res, "secret_refs") and isinstance(res.secret_refs, dict):
-                    for k, ptr in res.secret_refs.items():
-                        secret_refs.append(f"{dep.provider}://{res.resource_id}/{k} -> {ptr}")
+                health_val = str(getattr(res, "health_status", "CONNECTED")).upper()
+                is_unhealthy_or_unknown = any(bad in health_val for bad in ("UNKNOWN", "DEGRADED", "AUTH_FAILED", "UNHEALTHY", "DISABLED"))
+                
+                if is_unhealthy_or_unknown and dep.required:
+                    dep.is_available = False
+                    unknown_health.append(f"Resource '{res.resource_id}' ({dep.provider}) health is {res.health_status}. Please run connection preflight test.")
+                else:
+                    dep.is_available = True
+                    dep.external_resource_id = res.resource_id
+                    resolved[dep.provider] = {
+                        "resource_id": res.resource_id,
+                        "endpoint": res.endpoint,
+                        "auth_mode": str(res.auth_mode),
+                        "health_status": str(res.health_status),
+                    }
+                    # Zero Raw Secrets: collect only pointers
+                    if hasattr(res, "secret_refs") and isinstance(res.secret_refs, dict):
+                        for k, ptr in res.secret_refs.items():
+                            secret_refs.append(f"{dep.provider}://{res.resource_id}/{k} -> {ptr}")
             elif dep.required:
                 dep.is_available = False
                 missing.append(dep.provider)
+            else:
+                dep.is_available = False
+                degraded_capabilities.append(f"Optional integration '{dep.provider}' is unconfigured; proceeding with degraded telemetry.")
 
-        all_satisfied = (len(missing) == 0)
+        all_satisfied = (len(missing) == 0 and len(unknown_health) == 0)
         next_state = WorkflowState.VALIDATING.value if all_satisfied else WorkflowState.WAITING_FOR_RESOURCE.value
+
+        if all_satisfied:
+            rationale = "All dependencies resolved via External Resources."
+            if degraded_capabilities:
+                rationale += " " + " ".join(degraded_capabilities)
+        elif unknown_health:
+            rationale = "Action required: " + "; ".join(unknown_health)
+        else:
+            rationale = f"Missing required resources: {', '.join(missing)}. Please configure in Settings -> Connections."
 
         return ResourceOutput(
             workflow_id=ctx.workflow_id,
@@ -127,5 +158,5 @@ class ResourceAgent(BaseAgent):
             all_dependencies_satisfied=all_satisfied,
             proposed_next_state=next_state,
             confidence=1.0 if all_satisfied else 0.50,
-            rationale="All dependencies resolved via External Resources." if all_satisfied else f"Missing required resources: {missing}. Halting for operator configuration.",
+            rationale=rationale,
         )

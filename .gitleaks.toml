@@ -7,7 +7,6 @@ paths = [
     '''backend/tests/agentos/test_capability_token_hardening\.py''',
     '''backend/tests/test_injection_defense_pipeline\.py''',
     '''evals/golden/scenarios\.v2\.jsonl''',
-    '''deploy/sandbox/keys/id_ed25519''',
     '''backend/app/adapters/cyberark_adapter\.py'''
 ]
 regexes = [

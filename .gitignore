@@ -1,6 +1,6 @@
 # =====================================================================
 # Project Vulcan: Enterprise Control Plane .gitignore
-# Standard: PNC Bank Engineering Standard & Modern Fullstack Monorepo
+# Designed for Regulated Enterprise Infrastructure & Modern Monorepo
 # =====================================================================
 
 # Operating System & IDE Files
@@ -76,23 +76,35 @@ dist/
 *.tsbuildinfo
 
 # Security & Secrets (Strict Zero-Leak Invariant)
+**/keys/
+**/keys/*
+**/keys/id_*
+**/keys/*.pem
+**/keys/*.pub
+**/keys/*.key
+deploy/sandbox/keys/
+backend/ansible/keys/
+id_*
+id_rsa
+id_rsa.pub
+id_ed25519
+id_ed25519.pub
+**/keys/authorized_keys
+*.pem
+*.key
+*.cert
+*.crt
 .env
 .env.*
+!.env.example
+!*.env.example
+!**/.env.example
 .secrets*
 *.secrets.env
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
-*.pem
-*.key
-*.cert
-*.crt
-id_rsa
-id_ed25519
-id_ed25519.pub
-!deploy/sandbox/keys/*
-!backend/ansible/keys/*
 
 # Runtime Data & Ephemeral Uploads
 backend/data/uploads/*

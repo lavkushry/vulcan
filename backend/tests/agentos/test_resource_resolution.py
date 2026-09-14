@@ -21,8 +21,17 @@ def test_resource_agent_detects_missing_datadog_and_halts():
     )
     out = agent.execute(ctx)
     assert out.all_dependencies_satisfied is False
+    # Required resources (cyberark, servicenow, s3) must be in missing
     assert "cyberark" in out.missing_resources
-    assert "datadog" in out.missing_resources
+    assert "servicenow" in out.missing_resources
+    assert "s3" in out.missing_resources
+    # Datadog is optional (required=False) so it is NOT in missing_resources;
+    # it appears as a degraded capability instead
+    assert "datadog" not in out.missing_resources
+    datadog_dep = [r for r in out.required_resources if r.provider == "datadog"]
+    assert len(datadog_dep) == 1
+    assert datadog_dep[0].required is False
+    assert datadog_dep[0].is_available is False
     assert out.proposed_next_state == WorkflowState.WAITING_FOR_RESOURCE.value
 
 

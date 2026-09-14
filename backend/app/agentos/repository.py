@@ -20,6 +20,7 @@ from typing import Any, Dict, List, Optional
 
 from app.agentos.context import OptimisticLockError, WorkflowContext, WorkflowEvent, WorkflowState
 from app.agentos.schemas import ExecutionCapabilityToken
+from app.agentos.serialization import canonical_json_dumps, canonical_json_loads
 
 logger = logging.getLogger("vulcan.agentos_repository")
 
@@ -57,6 +58,7 @@ class PostgresAgentWorkflowRepository:
                         f"AgentOS production mode requires PostgreSQL but connection failed: {e}"
                     ) from e
                 logger.warning("PostgreSQL unavailable, falling back to in-memory: %s", e)
+                self.db_url = None
         elif self._production_mode:
             raise RuntimeError(
                 "AgentOS production mode requires POSTGRES_URL or DATABASE_URL to be set."
@@ -111,6 +113,7 @@ class PostgresAgentWorkflowRepository:
                 logger.info("Executed migration 012_agentos_ultra.sql against database.")
         except Exception as e:
             logger.warning("Could not apply Postgres schema for AgentOS (falling back to memory): %s", e)
+            raise
 
     def _hydrate_from_db(self) -> None:
         """Hydrates in-memory cache from PostgreSQL on startup with full context."""
@@ -162,7 +165,7 @@ class PostgresAgentWorkflowRepository:
                             val = data.get(field)
                             if isinstance(val, str):
                                 try:
-                                    data[field] = json.loads(val)
+                                    data[field] = canonical_json_loads(val)
                                 except (json.JSONDecodeError, TypeError):
                                     data[field] = {} if field not in (
                                         "assumptions", "unresolved_questions", "discovered_assets",
@@ -286,21 +289,20 @@ class PostgresAgentWorkflowRepository:
                         (
                             ctx.workflow_id, ctx.correlation_id, ctx.requester_id, ctx.environment,
                             ctx.current_state.value, ctx.version, ctx.original_request,
-                            json.dumps(ctx.normalized_intent), json.dumps(ctx.desired_state), json.dumps(ctx.risk_classification),
-                            json.dumps(ctx.assumptions), json.dumps(ctx.unresolved_questions), json.dumps(ctx.discovered_assets),
-                            json.dumps(ctx.provenance), json.dumps(ctx.automation_plan), json.dumps(ctx.generated_artifacts),
-                            json.dumps(ctx.required_resources), json.dumps(ctx.resolved_resources), json.dumps(ctx.secret_references),
-                            json.dumps(ctx.validation_results), json.dumps(ctx.security_findings), json.dumps(ctx.test_results),
-                            json.dumps(ctx.critic_findings), json.dumps(ctx.policy_decision), json.dumps(ctx.approval_records),
-                            json.dumps(ctx.execution_plan), json.dumps(ctx.execution_result), json.dumps(ctx.postcondition_verification),
-                            json.dumps(ctx.rollback_state), json.dumps(ctx.curation_state), json.dumps(ctx.eval_result),
+                            canonical_json_dumps(ctx.normalized_intent), canonical_json_dumps(ctx.desired_state), canonical_json_dumps(ctx.risk_classification),
+                            canonical_json_dumps(ctx.assumptions), canonical_json_dumps(ctx.unresolved_questions), canonical_json_dumps(ctx.discovered_assets),
+                            canonical_json_dumps(ctx.provenance), canonical_json_dumps(ctx.automation_plan), canonical_json_dumps(ctx.generated_artifacts),
+                            canonical_json_dumps(ctx.required_resources), canonical_json_dumps(ctx.resolved_resources), canonical_json_dumps(ctx.secret_references),
+                            canonical_json_dumps(ctx.validation_results), canonical_json_dumps(ctx.security_findings), canonical_json_dumps(ctx.test_results),
+                            canonical_json_dumps(ctx.critic_findings), canonical_json_dumps(ctx.policy_decision), canonical_json_dumps(ctx.approval_records),
+                            canonical_json_dumps(ctx.execution_plan), canonical_json_dumps(ctx.execution_result), canonical_json_dumps(ctx.postcondition_verification),
+                            canonical_json_dumps(ctx.rollback_state), canonical_json_dumps(ctx.curation_state), canonical_json_dumps(ctx.eval_result),
                             ctx.error_message, ctx.created_at, ctx.updated_at
                         ),
                     )
         except Exception as e:
-            if self._production_mode:
-                raise RuntimeError(f"AgentOS production mode: PostgreSQL persistence failed: {e}") from e
-            logger.warning("Postgres persist failed: %s", e)
+            logger.error("Postgres persist failed: %s", e)
+            raise RuntimeError(f"PostgreSQL persistence failed: {e}") from e
 
     # -------------------------------------------------------------------------
     # WORKFLOW EVENTS

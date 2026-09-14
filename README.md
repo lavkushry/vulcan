@@ -1,113 +1,95 @@
-# PROJECT VULCAN: ENTERPRISE AUTOMATION CONTROL PLANE
-## Clean Architecture, Distributed Scale, LLM Operating System & Reactive UX
+# Vulcan — AI-Governed Infrastructure Control Plane
 
-Built for Tier-1 mission-critical banking infrastructure (PNC Bank Engineering Standard).  
-Co-architected by:
-* **Robert C. Martin ("Uncle Bob")**: Clean Architecture, Domain Invariants, SOLID Principles, PyTest Suite.
-* **Alex Xu**: Distributed Concurrency (Redis Redlock with Watchdog), 10GB S3 Decoupled Storage, WebSocket Pub/Sub.
-* **Andrej Karpathy**: LLM Operating System, 2,500-Token Working Memory, Grammar-Constrained Decoding, SRE Diagnostics.
-* **Jordan Walke**: Declarative UI ($UI = f(state)$), Obsidian Glass Design System, 60 FPS WebGL xterm.js Canvas.
+> Converts natural-language infrastructure intent into approved, immutable, and verifiably executed automation — without fabricating success.
 
-## Definitive Architecture & Operations Guides
+[![CI](https://github.com/lavkushry/vulcan/actions/workflows/vulcan-ci.yml/badge.svg)](https://github.com/lavkushry/vulcan/actions/workflows/vulcan-ci.yml)
 
-| Guide | Target Audience | Key Contents |
-| :--- | :--- | :--- |
-| **[`📖 How to Use Project Vulcan`](docs/HOW_TO_USE.md)** | Operators, SREs, Approvers, Developers | Step-by-step console workflows (`/chat`, `/matrix`, `/policies`, `/workflows`, `/audit`), Maker-Checker approvals, xterm.js streaming, AI SRE diagnostics, RLHF feedback, and REST/WebSocket API recipes. |
-| **[`⚙️ How to Configure Project Vulcan`](docs/HOW_TO_CONFIGURE.md)** | Platform Engineers, DevOps, Sysadmins | Complete 12-Factor `.env` contract, multi-provider AI setup (Gemini, Hugging Face, OpenAI, Fake), pgvector HNSW indexing, Redis Redlock, MinIO S3, multi-interface `0.0.0.0` ingress, and production Docker deployment. |
-| **[`🧠 How Logic is Written (Architecture & Internals)`](docs/HOW_LOGIC_IS_WRITTEN.md)** | Software Architects, Core Developers | Clean Architecture layers, pure domain entities, the 5 deterministic banking invariants, FSM transition matrix, abstract ports, concrete adapters, the 5-stage intent pipeline, and reactive Next.js systems. |
+## Problem
 
----
+Infrastructure automation today is either fully manual (slow, error-prone) or fully automated (risky, unauditable). Vulcan provides the governance layer: AI understands intent, selects automation, enforces approval policies, executes with cryptographic audit trails, and independently verifies results.
 
-## High-Level Architecture Overview
+## What Makes Vulcan Different
 
-```
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│ [1] FRONTEND UI (Jordan Walke)                                                         │
-│     Next.js 15 • Obsidian Glass Bento Grid • Cmd+K Palette • WebGL xterm.js Terminal   │
-├────────────────────────────────────────────────────────────────────────────────────────┤
-│ [2] API CONTROL PLANE GATEWAY (Uncle Bob & Alex Xu)                                    │
-│     FastAPI • SAML Auth • Pydantic v2 Invariants • TruffleHog Secret Scanner • Redlock │
-├────────────────────────────────────────────────────────────────────────────────────────┤
-│ [3] AI REASONING & DISCOVERY ENGINE (Andrej Karpathy)                                  │
-│     pgvector Hybrid RRF Search • Grammar FSM Slot Filler • SRE Log Diagnostic Drawer   │
-├────────────────────────────────────────────────────────────────────────────────────────┤
-│ [4] DISTRIBUTED WORKER FLEET (Alex Xu & Uncle Bob)                                     │
-│     Ephemeral Container Pods • ansible-runner • opentofu • CyberArk JIT Secrets (RAM)  │
-└────────────────────────────────────────────────────────────────────────────────────────┘
+- **Intent → Execution pipeline**: Natural language request → artifact selection → policy check → maker-checker approval → constrained execution → independent verification
+- **Zero false success**: Every execution is independently verified against desired state. Missing metrics say "Not measured", not fabricated values.
+- **Cryptographic audit trail**: SHA-256 hash-chained event log from genesis to tip, proving tamper-evident execution history.
+- **Designed for regulated enterprise infrastructure**: Maker-checker separation of duties, environment isolation, capability-token-scoped execution.
+
+## Quick Start
+
+```bash
+git clone https://github.com/lavkushry/vulcan.git
+cd vulcan-control-plane
+make demo
 ```
 
----
+Or manually:
 
-## Directory Structure
+```bash
+# Backend
+cd backend && python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn app.main:app --port 8000
+
+# Frontend (separate terminal)
+cd frontend && npm install && npm run dev
+```
+
+Default demo credentials: `admin` / `vulcan-demo-2026`
+
+## Architecture
+
+```mermaid
+graph TB
+    U[User Intent] --> API[FastAPI Gateway]
+    API --> K[AgentOS Kernel]
+    K --> IA[Intent Agent]
+    K --> DA[Discovery Agent]
+    K --> PA[Planner Agent]
+    K --> CA[Composer Agent]
+    K --> RA[Resource Agent]
+    K --> VA[Validator Agent]
+    K --> SA[Security Agent]
+    K --> CR[Critic Agent]
+    K --> PE[Policy Engine]
+    PE --> AP[Approval Gate]
+    AP --> EX[Constrained Executor]
+    EX --> VF[Verification Agent]
+    VF --> AL[Audit Ledger]
+```
+
+## Test Results
+
+| Suite | Result |
+|---|---|
+| Backend unit & integration tests | 615 passed, 9 skipped |
+| 50-scenario evaluation framework | All scenarios pass |
+| Frontend production build | 18 pages, 0 TypeScript errors |
+
+## Design Inspirations
+
+Vulcan's architecture draws from Clean Architecture (Robert C. Martin), large-scale system design patterns (Alex Xu), and declarative UI principles. All implementation is original work.
+
+## Project Structure
 
 ```
 vulcan-control-plane/
-├── backend/
-│   ├── app/
-│   │   ├── domain/               # Uncle Bob: Pure Domain Entities & Invariants (Zero Dependencies)
-│   │   ├── ports/                # Abstract Interfaces (Dependency Inversion)
-│   │   ├── adapters/             # Concrete Adapters (Ansible, Redlock, S3, CryptoAudit)
-│   │   ├── use_cases/            # Application Interactors (ExecuteJob, ApproveJob, ResolveIntent)
-│   │   ├── api/                  # FastAPI Routes & Real-Time WebSocket Handlers
-│   │   └── config.py             # Dependency Injection Container & Settings
-│   ├── catalog/                  # Seeded Playbooks, Modules & metadata.yaml
-│   ├── tests/                    # Uncle Bob's PyTest Matrix & Karpathy Evals
-│   ├── requirements.txt
-│   └── main.py
-│
-├── frontend/                     # Jordan Walke: Obsidian Glass Web Console
-│   ├── app/                      # Next.js 15 App Router
-│   ├── components/               # Bento Grid, Monaco Editor, xterm.js Streamer
-│   └── package.json
-│
-├── deploy/                       # Local & Production Infrastructure
-│   ├── docker-compose.yml        # Postgres + pgvector, Redis, MinIO S3, Backend, Frontend
-│   └── k8s/                      # Kubernetes manifests
-│
-└── TASK_ASSIGNMENT_PLAN.md       # Specialized Agent Matrix & Milestones
+├── backend/          # FastAPI + AgentOS kernel, agents, adapters
+│   ├── app/agentos/  # Multi-agent orchestration engine
+│   ├── app/api/      # REST + WebSocket endpoints
+│   └── tests/        # 615+ tests
+├── frontend/         # Next.js 15 dashboard
+├── deploy/           # Docker Compose + sandbox
+└── docs/             # Architecture & operations guides
 ```
 
----
+## Known Limitations
 
-## The 11 Production Operational Views
+- Ansible execution requires `ansible-playbook` installed on the host or sandbox container
+- Registry download falls back to cache when registry is unavailable
+- Datadog monitoring integration is optional and runs in degraded mode when unconfigured
+- Demo mode uses simulation adapters; production mode requires real infrastructure
 
-| # | Route | View Name | Key Capabilities |
-|---|---|---|---|
-| 1 | **`/chat` & `/`** | **`✨ AI Chat Assistant`** | **The #1 Primary Screen**: Dual-pane workspace with natural language intent resolution across 100+ playbooks, dynamic slot-filling cards, and live xterm.js terminal stream. |
-| 2 | **`/matrix`** | **`🎛️ High-Filtered Tasks`** | **Enterprise Task Window**: 10-column sortable table with multi-dimensional filtering and CSV export. |
-| 3 | **`/policies`** | **`🔑 Roles & Policies`** | **Enterprise Governance & Simulator**: Interactive 5-role capability matrix, active OPA/Rego policy-as-code guardrails, and real-time execution policy simulator. |
-| 4 | **`/workflows`** | **`🔀 Workflows & Cron`** | **DAG Pipelines & Distributed Cron**: Multi-step sequential/parallel pipelines with rollback compensation + Redis Redlock distributed cron scheduler. |
-| 5 | **`/integrations`** | **`🔌 Connectors & Hub`** | **Enterprise Connectors**: Native bi-directional sync with ServiceNow (ITSM/CHG), Red Hat AAP (Tower/AWX), GitHub/Bitbucket GitOps, Jira Software, and HashiCorp Vault. |
-| 6 | **`/actions`** | **`⚡ Actions Catalog`** | **StackStorm Pack Tree**: Category/pack browser with schema-driven forms (enums, booleans, numeric sliders, ServiceNow CHG). |
-| 7 | **`/history`** | **`📜 Execution History`** | **Master-Detail Feed**: Reverse-chronological execution feed with status filters, terminal replay, approval deck, and AI diagnostics. |
-| 8 | **`/rules`** | **`⚡ Automation Rules`** | **Datadog / StackStorm Event Rules**: Trigger (Datadog Alert, Kafka, Prometheus) → Filter criteria → Action mapping with Jinja2 interpolation. |
-| 9 | **`/packs`** | **`📦 Content Packs`** | **Backstage / Port IDP Ecosystem**: Bundles for Network, Cloud, Database, Kubernetes, and OS Patching with dependency health validation. |
-| 10 | **`/audit`** | **`🛡️ Audit & Compliance`** | **Digital.ai & Banking SOX Governance**: Cryptographic Merkle chain proof ledger (Genesis to Tip SHA-256), Separation of Duties verification, and ServiceNow CHG reconciliation. |
-| 11 | **`/dashboard`** | **`📊 Telemetry Dashboard`** | **Operational Overview**: KPI cards (Active Runners, Catalog Size, Pending Approvals, Failures 24h, Merkle Chain), top failing playbooks, and recent activity. |
+## License
 
----
-
-## Verification & Test Results
-
-- **Backend Unit Tests**: **287 passed, 7 skipped (100% green across 29 suites)** (`backend/.venv/bin/pytest backend/tests/`).
-- **Master Architecture Register**: **127 / 127 items implemented (100.0% Complete)** across all 5 architecture tracks ([`docs/MASTER_OPPORTUNITY_REGISTER.md`](docs/MASTER_OPPORTUNITY_REGISTER.md)).
-- **500-Scenario Golden Evaluation Gate (`CHAT-20`)**: **500/500 scenarios evaluated, Gate Verdict: PASSED (GREEN)** (100% Adversarial Refusal, 100% Slot F1, 97.33% Top-3 Candidate, 82.00% Top-1 Routing).
-- **Browser E2E Suite**: **16/16 passing (100% green across 6 suites)** with zero unhandled console errors and full WCAG accessibility compliance via Playwright Chromium.
-- **Frontend Production Build**: **16 static routes compiled cleanly** with zero TypeScript errors (`npm run build`).
-- **Multi-Interface Ingress Deployment (`0.0.0.0`)**: Verified live across Web Console (`:3000`), Backend Control Plane (`:8000`), and MinIO (`:9000/:9001`) on remote production host (`141.148.195.233`).
-- **Git Repository**: Pushed to `origin/main` at `https://github.com/lavkushry/vulcan.git`.
-
----
-
-## Quick Start (Local Testbed)
-
-```bash
-# 1. Start Backend Control Plane (FastAPI on port 8000)
-cd backend
-source .venv/bin/activate
-uvicorn app.main:app --port 8000
-
-# 2. Start Frontend Web Console (Next.js 15 on port 3000)
-cd frontend
-npm run start
-```
+[MIT](LICENSE)

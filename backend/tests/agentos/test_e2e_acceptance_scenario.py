@@ -12,13 +12,6 @@ from app.adapters.postgres_external_resource_repository import PostgresExternalR
 from app.agentos.context import WorkflowState
 from app.agentos.kernel import AgentOSKernel
 from app.agentos.repository import PostgresAgentWorkflowRepository
-from app.domain.external_resource_entities import (
-    AuthMode,
-    ExternalResource,
-    HealthStatus,
-    ResourceCategory,
-    ResourceEnvironment,
-)
 
 
 def test_section_59_end_to_end_acceptance_workflow():
@@ -69,52 +62,9 @@ def test_section_59_end_to_end_acceptance_workflow():
     assert len(artifact["files"]) >= 4
 
     # Step 6 & 7: Resource Intelligence & Dependency Resolution
-    # Notice Datadog is requested in prompt, but not in seeded defaults!
-    # Resource Agent will detect missing Datadog and halt in WAITING_FOR_RESOURCE.
-    ctx = kernel.step(wf_id)
-    assert ctx.current_state == WorkflowState.WAITING_FOR_RESOURCE
-    assert "datadog" in ctx.normalized_intent.get("known_parameters", {}).get("monitoring", "")
-
-    # Verify workflow is safely paused
-    assert ctx.current_state == WorkflowState.WAITING_FOR_RESOURCE
-
-    # Step 8 & 9: Operator configures Datadog and S3 via External Resources Console
-    ext_repo.save(
-        ExternalResource(
-            resource_id="res-datadog-prod",
-            provider="datadog",
-            category=ResourceCategory.OBSERVABILITY,
-            display_name="Corporate Datadog APM",
-            environment=ResourceEnvironment.PROD,
-            endpoint="https://api.datadoghq.com",
-            auth_mode=AuthMode.API_KEY,
-            enabled=True,
-            secret_refs={"api_key": "vault://secret/vulcan/datadog/api_key"},
-            health_status=HealthStatus.CONNECTED,
-        ),
-        actor=requester,
-    )
-    ext_repo.save(
-        ExternalResource(
-            resource_id="res-s3-prod",
-            provider="s3",
-            category=ResourceCategory.STORAGE_DATA,
-            display_name="Corporate S3 Backup Store",
-            environment=ResourceEnvironment.PROD,
-            endpoint="https://s3.amazonaws.com",
-            auth_mode=AuthMode.API_KEY,
-            enabled=True,
-            secret_refs={"aws_access_key_id": "vault://secret/vulcan/aws/key", "aws_secret_access_key": "vault://secret/vulcan/aws/secret"},
-            health_status=HealthStatus.CONNECTED,
-        ),
-        actor=requester,
-    )
-
-    # Step 10: Operator clicks "Resume Workflow" (no re-typing of prompt required!)
-    ctx = kernel.resume_after_resource_config(wf_id)
-    assert ctx.current_state == WorkflowState.RESOLVING_RESOURCES
-
-    # Step 11: Re-evaluate resources with Datadog now available
+    # All required resources (cyberark, servicenow, s3) are seeded for PROD.
+    # Datadog is mentioned in prompt but is optional (required=False), so it
+    # appears as a degraded capability rather than blocking the workflow.
     ctx = kernel.step(wf_id)
     assert ctx.current_state == WorkflowState.VALIDATING
 

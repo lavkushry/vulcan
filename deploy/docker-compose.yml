@@ -40,25 +40,35 @@ services:
     restart: unless-stopped
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-vulcan_minio_admin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-}
     command: server /data --console-address ":9001"
     ports:
       - "0.0.0.0:9000:9000"
       - "0.0.0.0:9001:9001"
     volumes:
       - minio_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -f http://localhost:9000/minio/health/live || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   # Ephemeral MinIO Bucket Bootstrap Provisioner (INFRA-07)
   minio-init:
     image: minio/mc:RELEASE.2025-08-13T08-35-41Z
     container_name: vulcan-minio-init
     depends_on:
-      - minio
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-vulcan_minio_admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-}
+      S3_BUCKET_NAME: ${S3_BUCKET_NAME:-vulcan-artifacts}
     entrypoint: >
       /bin/sh -c "
-      until /usr/bin/mc alias set local http://minio:9000 $${MINIO_ROOT_USER:-vulcan_minio_admin} $${MINIO_ROOT_PASSWORD}; do echo 'Waiting for MinIO...'; sleep 1; done;
-      /usr/bin/mc mb local/$${S3_BUCKET_NAME:-vulcan-artifacts} || true;
-      /usr/bin/mc anonymous set download local/$${S3_BUCKET_NAME:-vulcan-artifacts} || true;
+      until /usr/bin/mc alias set local http://minio:9000 \"$$MINIO_ROOT_USER\" \"$$MINIO_ROOT_PASSWORD\"; do echo 'Waiting for MinIO...'; sleep 1; done;
+      /usr/bin/mc mb local/\"$$S3_BUCKET_NAME\" || true;
+      /usr/bin/mc anonymous set none local/\"$$S3_BUCKET_NAME\" || true;
       exit 0;
       "
 
@@ -71,6 +81,7 @@ services:
     restart: unless-stopped
     volumes:
       - sandbox_data:/var/lib
+      - ../backend/ansible/keys:/keys:ro
     healthcheck:
       test: ["CMD-SHELL", "/usr/sbin/sshd -t || exit 1"]
       interval: 5s
@@ -89,7 +100,7 @@ services:
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:-http://minio:9000}
       S3_ACCESS_KEY: ${MINIO_ROOT_USER:-vulcan_minio_admin}
-      S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-}
       S3_BUCKET_NAME: ${S3_BUCKET_NAME:-vulcan-artifacts}
       S3_PUBLIC_ENDPOINT_URL: ${S3_PUBLIC_ENDPOINT_URL:-http://localhost:9000}
       SIMULATION_MODE: "${SIMULATION_MODE:-false}"
@@ -118,13 +129,14 @@ services:
       - ../data/corpus:/app/data/corpus:ro
       - ../docs:/app/docs
       - ../evals:/app/evals:ro
+      - ../backend/ansible/keys:/app/ansible/keys:ro
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
       minio:
-        condition: service_started
+        condition: service_healthy
       sandbox:
         condition: service_healthy
 
@@ -136,13 +148,11 @@ services:
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
         NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:-ws://localhost:8000}
-        NEXT_PUBLIC_VULCAN_API_TOKEN: ${NEXT_PUBLIC_VULCAN_API_TOKEN:-}
     container_name: vulcan-frontend
     restart: unless-stopped
     environment:
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
       NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:-ws://localhost:8000}
-      NEXT_PUBLIC_VULCAN_API_TOKEN: ${NEXT_PUBLIC_VULCAN_API_TOKEN:-}
     ports:
       - "0.0.0.0:3000:3000"
     depends_on:
