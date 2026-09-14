@@ -25,7 +25,7 @@ from app.agentos.kernel import AgentOSKernel
 from app.agentos.context import WorkflowContext, WorkflowState
 from app.agentos.schemas import AgentRole, ExecutionCapabilityToken
 from app.agentos.adapters.execution_adapter import AnsibleRunnerExecutionAdapter
-from app.agentos.agents.verifier import ProductionProbeRunner, VerifierAgent
+from app.agentos.agents.verifier import ProductionProbeRunner, SimulationProbeRunner, VerifierAgent
 from app.agentos.agents.executor import ConstrainedExecutor, CapabilityTokenViolationError
 from app.catalog_data import DB_SHA, RAW_CATALOG_DEFINITIONS
 
@@ -56,17 +56,58 @@ def print_step(num: int, title: str):
 
 
 def main():
-    print_banner()
+    import argparse
+    import secrets
 
-    # Set capability HMAC signing key for high-assurance tokens
-    hmac_key = os.environ.get("VULCAN_CAPABILITY_HMAC_KEY", "vulcan-prod-hmac-secret-key-32b-ok")
+    parser = argparse.ArgumentParser(description="Vulcan AgentOS Governed PostgreSQL Demo")
+    parser.add_argument(
+        "--mode",
+        choices=["auto", "demo_sandbox", "simulation"],
+        default="auto",
+        help="Demo mode: 'demo_sandbox' (Docker Compose sandbox/PostgreSQL), 'simulation' (isolated mocks), or 'auto'",
+    )
+    args = parser.parse_args()
+
+    # Ephemeral HMAC secret generation (never hardcoded fallback)
+    hmac_key = os.environ.get("VULCAN_CAPABILITY_HMAC_KEY") or secrets.token_hex(32)
     os.environ["VULCAN_CAPABILITY_HMAC_KEY"] = hmac_key
 
-    # Initialize Kernel with Production Execution and Verification Adapters
+    # Detect live Docker sandbox / PostgreSQL availability
+    pg_host = os.environ.get("POSTGRES_HOST", "127.0.0.1")
+    pg_port = int(os.environ.get("POSTGRES_PORT", "5432"))
+    has_live_pg = False
+    try:
+        import socket
+        with socket.create_connection((pg_host, pg_port), timeout=0.5):
+            has_live_pg = True
+    except Exception:
+        has_live_pg = False
+
+    if args.mode == "demo_sandbox":
+        mode = "demo_sandbox"
+    elif args.mode == "simulation":
+        mode = "simulation"
+    else:
+        mode = "demo_sandbox" if has_live_pg else "simulation"
+
+    print_banner()
+    if mode == "demo_sandbox":
+        print(f"  {Colors.BOLD}{Colors.OKGREEN}[MODE: DEMO_SANDBOX]{Colors.END} Real container target detected ({pg_host}:{pg_port}). Live execution and verification active.\n")
+    else:
+        print(f"  {Colors.BOLD}{Colors.WARNING}[MODE: SIMULATED]{Colors.END} Standalone environment without active Docker sandbox. Deterministic simulated verification active.\n")
+
+    # Initialize Kernel with appropriate Execution and Verification Adapters
     from app.adapters.postgres_external_resource_repository import PostgresExternalResourceRepository
     ext_repo = PostgresExternalResourceRepository(db_url=None, seed_defaults=True)
-    exec_adapter = AnsibleRunnerExecutionAdapter(base_dir="/tmp/agentos-demo-runner")
-    probe_runner = ProductionProbeRunner()
+
+    if mode == "demo_sandbox":
+        exec_adapter = AnsibleRunnerExecutionAdapter(base_dir="/tmp/agentos-demo-runner")
+        probe_runner = ProductionProbeRunner()
+    else:
+        from app.agentos.adapters.execution_adapter import SimulationExecutionAdapter
+        exec_adapter = SimulationExecutionAdapter()
+        probe_runner = SimulationProbeRunner()
+
     kernel = AgentOSKernel(
         execution_adapter=exec_adapter,
         probe_runner=probe_runner,
@@ -198,21 +239,22 @@ def main():
     # -------------------------------------------------------------------------
     # STEP 6: Independent Postcondition Verification via ProductionProbeRunner
     # -------------------------------------------------------------------------
-    from unittest.mock import patch, MagicMock
-    # In standalone demo mode without external live DB cluster, harness provides simulated target at probe interface
-    with patch("socket.create_connection"), patch("psycopg.connect") as mock_conn:
-        mock_cursor = MagicMock()
-        mock_cursor.fetchone.return_value = ("PostgreSQL 16.2 on x86_64-pc-linux-gnu",)
-        mock_conn.return_value.__enter__.return_value.cursor.return_value.__enter__.return_value = mock_cursor
+    if mode == "demo_sandbox":
+        print("  [Live Verification] Running ProductionProbeRunner against live sandbox infrastructure...")
         ctx = kernel.step(ctx.workflow_id)  # Step VERIFYING -> SUCCESS
-    
+        is_sim = False
+    else:
+        print("  [Simulated Verification] Running deterministic SimulationProbeRunner (Simulation: True)...")
+        ctx = kernel.step(ctx.workflow_id)  # Step VERIFYING -> SUCCESS
+        is_sim = True
+
     assert ctx.postcondition_verification, "Postcondition verification missing!"
     probes = ctx.postcondition_verification.get("probes", [])
-    print(f"  ✔ Probes Evaluated: {len(probes)} real probes (Simulation: False)")
+    print(f"  ✔ Probes Evaluated: {len(probes)} probes (Simulation: {is_sim})")
     for p in probes:
         status_str = f"{Colors.OKGREEN}PASSED{Colors.END}" if p.get("passed") else f"{Colors.FAIL}FAILED{Colors.END}"
         print(f"      • [{p.get('probe_type')}] target={p.get('target')}: {status_str} (latency: {p.get('latency_ms')}ms, details: {p.get('details')})")
-    
+
     print(f"  ✔ Final Workflow State: {Colors.BOLD}{Colors.OKGREEN}{ctx.current_state.value}{Colors.END}")
     assert ctx.current_state == WorkflowState.SUCCESS
 

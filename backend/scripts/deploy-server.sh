@@ -40,7 +40,17 @@ else
     git reset --hard origin/main
 fi
 
-# 3. Pull & Rebuild Docker Stack
+# 3. Ensure ephemeral Ansible SSH keys exist (R2/R3 zero-leak invariant)
+if [ ! -f "$APP_DIR/backend/ansible/keys/id_ed25519" ]; then
+    echo "[*] Generating ephemeral Ed25519 keypair for Ansible sandbox execution..."
+    mkdir -p "$APP_DIR/backend/ansible/keys"
+    ssh-keygen -t ed25519 -N "" -f "$APP_DIR/backend/ansible/keys/id_ed25519" -C "vulcan-deploy@ephemeral"
+    chmod 700 "$APP_DIR/backend/ansible/keys"
+    chmod 600 "$APP_DIR/backend/ansible/keys/id_ed25519"
+    chmod 644 "$APP_DIR/backend/ansible/keys/id_ed25519.pub"
+fi
+
+# 4. Pull & Rebuild Docker Stack
 echo "[2/4] Deploying stack via Docker Compose..."
 cd "$APP_DIR/deploy"
 

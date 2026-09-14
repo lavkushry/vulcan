@@ -27,6 +27,16 @@ demo: ## Start the full demo environment (Docker Compose)
 	 export POSTGRES_PASSWORD=$${POSTGRES_PASSWORD:-$$(openssl rand -hex 16)} && \
 	 echo "✓ Credentials generated (not committed to disk)" && \
 	 echo "" && \
+	 echo "▶ Ensuring ephemeral Ansible SSH keys exist..." && \
+	 if [ ! -f backend/ansible/keys/id_ed25519 ]; then \
+	   mkdir -p backend/ansible/keys && \
+	   ssh-keygen -t ed25519 -N "" -f backend/ansible/keys/id_ed25519 -C "vulcan-demo@ephemeral" >/dev/null 2>&1 && \
+	   chmod 700 backend/ansible/keys && \
+	   chmod 600 backend/ansible/keys/id_ed25519 && \
+	   chmod 644 backend/ansible/keys/id_ed25519.pub && \
+	   echo "✓ Ephemeral SSH keypair generated"; \
+	 fi && \
+	 echo "" && \
 	 echo "▶ Starting services..." && \
 	 docker compose -f deploy/docker-compose.yml up -d --build && \
 	 echo "" && \
