@@ -145,6 +145,42 @@ export const api = {
       req<import("./types").ExternalResourceHealthRecord[]>("GET", `/api/v1/external-resources/${encodeURIComponent(id)}/health?limit=${limit}`),
     syncExternalResource: (id: string) =>
       req<any>("POST", `/api/v1/external-resources/${encodeURIComponent(id)}/sync`),
+    // AgentOS Ultra Multi-Agent Endpoints (AGENT-13)
+    createAgentWorkflow: (payload: { original_request: string; requester_id?: string; environment?: string }) =>
+      req<import("./types").AgentWorkflowContext>("POST", "/api/v1/agentos/workflows", payload),
+    listAgentWorkflows: (filters?: { limit?: number; offset?: number; state?: string }) => {
+      const params = new URLSearchParams();
+      if (filters?.limit) params.append("limit", String(filters.limit));
+      if (filters?.offset) params.append("offset", String(filters.offset));
+      if (filters?.state) params.append("state", filters.state);
+      const qs = params.toString() ? `?${params.toString()}` : "";
+      return req<import("./types").AgentWorkflowContext[]>("GET", `/api/v1/agentos/workflows${qs}`);
+    },
+    getAgentWorkflow: (id: string) =>
+      req<import("./types").AgentWorkflowContext>("GET", `/api/v1/agentos/workflows/${encodeURIComponent(id)}`),
+    stepAgentWorkflow: (id: string) =>
+      req<import("./types").AgentWorkflowContext>("POST", `/api/v1/agentos/workflows/${encodeURIComponent(id)}/step`),
+    autoRunAgentWorkflow: (id: string, maxSteps = 15) =>
+      req<{ workflow: import("./types").AgentWorkflowContext; steps_taken: number; is_paused: boolean; is_terminal: boolean }>(
+        "POST",
+        `/api/v1/agentos/workflows/${encodeURIComponent(id)}/auto-run?max_steps=${maxSteps}`
+      ),
+    supplyAgentWorkflowInput: (id: string, operator_input: Record<string, any>) =>
+      req<import("./types").AgentWorkflowContext>("POST", `/api/v1/agentos/workflows/${encodeURIComponent(id)}/input`, { operator_input }),
+    resumeAgentWorkflow: (id: string) =>
+      req<import("./types").AgentWorkflowContext>("POST", `/api/v1/agentos/workflows/${encodeURIComponent(id)}/resume`),
+    approveAgentWorkflow: (id: string, approver_id: string, reason = "Approved for execution") =>
+      req<import("./types").AgentWorkflowContext>("POST", `/api/v1/agentos/workflows/${encodeURIComponent(id)}/approve`, { approver_id, reason }),
+    rollbackAgentWorkflow: (id: string) =>
+      req<import("./types").AgentWorkflowContext>("POST", `/api/v1/agentos/workflows/${encodeURIComponent(id)}/rollback`),
+    getAgentWorkflowEvents: (id: string) =>
+      req<import("./types").AgentWorkflowEvent[]>("GET", `/api/v1/agentos/workflows/${encodeURIComponent(id)}/events`),
+    listAgents: () =>
+      req<import("./types").AgentVersionInfo[]>("GET", "/api/v1/agentos/agents"),
+    listEvals: (limit = 50) =>
+      req<import("./types").EvalRunRecord[]>("GET", `/api/v1/agentos/evals?limit=${limit}`),
+    runEval: (tier = 0) =>
+      req<import("./types").EvalRunRecord>("POST", "/api/v1/agentos/evals/run", { tier }),
   };
 
 

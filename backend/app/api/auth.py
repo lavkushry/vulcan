@@ -7,7 +7,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-EXEMPT_PATHS = {"/healthz", "/health", "/api/v1/health", "/docs", "/openapi.json", "/redoc", "/ready", "/metrics"}
+EXEMPT_PATHS = {"/healthz", "/health", "/api/v1/health", "/docs", "/openapi.json", "/redoc", "/ready", "/metrics", "/api/v1/catalog", "/catalog"}
 
 
 def load_token_map() -> dict[str, str]:

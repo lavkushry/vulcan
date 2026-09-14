@@ -34,6 +34,14 @@ class Permission(str, enum.Enum):
     AUDIT_VERIFY = "audit:verify"
     POLICY_MANAGE = "policy:manage"
     COMPLIANCE_EXPORT = "compliance:export"
+    
+    # AgentOS Ultra Permissions
+    WORKFLOW_CREATE = "workflow:create"
+    WORKFLOW_ADVANCE = "workflow:advance"
+    WORKFLOW_APPROVE = "workflow:approve"
+    WORKFLOW_ROLLBACK = "workflow:rollback"
+    EVAL_RUN = "eval:run"
+    WORKFLOW_READ_ALL = "workflow:read_all"
 
 
 ROLE_PERMISSIONS: Dict[UserRole, List[Permission]] = {
@@ -41,6 +49,9 @@ ROLE_PERMISSIONS: Dict[UserRole, List[Permission]] = {
         Permission.CATALOG_READ,
         Permission.JOB_REQUEST,
         Permission.DRY_RUN_EXECUTE,
+        Permission.WORKFLOW_CREATE,
+        Permission.WORKFLOW_ADVANCE,
+        Permission.WORKFLOW_READ_ALL,
     ],
     UserRole.APPROVING_LEAD: [
         Permission.CATALOG_READ,
@@ -49,12 +60,18 @@ ROLE_PERMISSIONS: Dict[UserRole, List[Permission]] = {
         Permission.JOB_REJECT,
         Permission.DRY_RUN_EXECUTE,
         Permission.WORKFLOW_DISPATCH,
+        Permission.WORKFLOW_CREATE,
+        Permission.WORKFLOW_ADVANCE,
+        Permission.WORKFLOW_APPROVE,
+        Permission.WORKFLOW_ROLLBACK,
+        Permission.WORKFLOW_READ_ALL,
     ],
     UserRole.SECURITY_ADMIN: [
         Permission.CATALOG_READ,
         Permission.AUDIT_VERIFY,
         Permission.POLICY_MANAGE,
         Permission.COMPLIANCE_EXPORT,
+        Permission.WORKFLOW_READ_ALL,
     ],
     UserRole.PLATFORM_ADMIN: [
         Permission.CATALOG_READ,
@@ -68,6 +85,12 @@ ROLE_PERMISSIONS: Dict[UserRole, List[Permission]] = {
         Permission.AUDIT_VERIFY,
         Permission.POLICY_MANAGE,
         Permission.COMPLIANCE_EXPORT,
+        Permission.WORKFLOW_CREATE,
+        Permission.WORKFLOW_ADVANCE,
+        Permission.WORKFLOW_APPROVE,
+        Permission.WORKFLOW_ROLLBACK,
+        Permission.EVAL_RUN,
+        Permission.WORKFLOW_READ_ALL,
     ],
     UserRole.AUDITOR: [
         Permission.CATALOG_READ,

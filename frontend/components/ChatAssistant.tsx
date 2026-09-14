@@ -147,11 +147,11 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
   }>>({});
 
   useEffect(() => {
-    fetch(`${getApiBaseUrl()}/api/v1/catalog`)
-      .then(res => res.json())
+    api.getCatalog()
       .then(data => {
-        if (Array.isArray(data)) {
-          setCatalogItems(data.map((i: any) => ({ identifier: i.identifier, name: i.name })));
+        const items = Array.isArray(data) ? data : ((data as any).items || []);
+        if (Array.isArray(items)) {
+          setCatalogItems(items.map((i: any) => ({ identifier: i.identifier, name: i.name })));
         }
       })
       .catch(() => {});

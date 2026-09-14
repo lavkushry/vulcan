@@ -16,6 +16,7 @@ import {
   Table2,
   Plug,
   Boxes,
+  Bot,
 } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
@@ -30,6 +31,7 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { id: 'chat', label: 'AI Chat Assistant', icon: <Sparkles size={20} className="text-cyan-400" />, href: '/chat' },
+  { id: 'agents', label: 'Agent Control Center', icon: <Bot size={20} className="text-cyan-400" />, href: '/agents' },
   { id: 'actions', label: 'Actions Catalog', icon: <Zap size={20} />, href: '/actions' },
   { id: 'curation', label: 'Registry Curation Gate', icon: <Boxes size={20} className="text-amber-400" />, href: '/curation' },
   { id: 'workflows', label: 'Workflows & Cron', icon: <GitMerge size={20} />, href: '/workflows' },
