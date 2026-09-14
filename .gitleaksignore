@@ -1,0 +1,6 @@
+# Gitleaks ignore list for historical commits with synthetic test data
+7bfc6888aeeac3f10f09b243381fdb42098d15ff:backend/tests/agentos/test_adversarial_security.py:generic-api-key:56
+7bfc6888aeeac3f10f09b243381fdb42098d15ff:backend/tests/agentos/test_capability_token_hardening.py:generic-api-key:79
+286a1e3c0995c315131a7a76d26429335771aa7e:backend/tests/test_injection_defense_pipeline.py:generic-api-key:63
+286a1e3c0995c315131a7a76d26429335771aa7e:backend/tests/test_injection_defense_pipeline.py:vault-service-token:84
+286a1e3c0995c315131a7a76d26429335771aa7e:backend/tests/test_injection_defense_pipeline.py:github-pat:89
