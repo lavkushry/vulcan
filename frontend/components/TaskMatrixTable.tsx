@@ -552,9 +552,9 @@ export default function TaskMatrixTable({
                 const isPending = task.status === 'PENDING_APPROVAL';
                 const isRunning = task.status === 'RUNNING' || task.status === 'VERIFYING';
                 const isFailed = task.status === 'FAILED';
-                const canApprove = task.capabilities ? task.capabilities.can_approve : (currentUser !== task.requester_id);
-                const canReject = task.capabilities ? task.capabilities.can_reject : (currentUser !== task.requester_id);
-                const disabledReason = task.capabilities?.disabled_reason || (currentUser === task.requester_id ? "Maker-Checker violation: Requester cannot approve own job (SOX 404)" : "Action not permitted");
+                const canApprove = Boolean(task.capabilities?.can_approve);
+                const canReject = Boolean(task.capabilities?.can_reject);
+                const disabledReason = task.capabilities?.disabled_reason || (!canApprove ? "Approval requires explicit server authorization (approver role required, self-approval forbidden)" : "");
 
                 return (
                   <tr 
@@ -650,9 +650,10 @@ export default function TaskMatrixTable({
                               onApproveTask && (
                                 <button
                                   onClick={() => onApproveTask(task)}
+                                  title="Authorize and dispatch automated execution immediately"
                                   className="px-2.5 py-1 text-xs font-semibold rounded bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm transition-colors"
                                 >
-                                  Approve
+                                  Approve &amp; Execute
                                 </button>
                               )
                             ) : (
@@ -660,13 +661,14 @@ export default function TaskMatrixTable({
                                 title={disabledReason}
                                 className="px-2 py-1 text-[10px] font-mono rounded bg-amber-500/10 text-amber-400 border border-amber-500/30"
                               >
-                                🔒 {disabledReason.includes("Maker-Checker") ? "Requester Locked" : "Gated"}
+                                🔒 {disabledReason.includes("Maker-Checker") ? "Requester Locked" : "Unauthorized"}
                               </span>
                             )}
 
                             {canReject && onRejectTask && (
                               <button
                                 onClick={() => onRejectTask(task)}
+                                title="Reject request and cancel execution"
                                 className="px-2.5 py-1 text-xs font-semibold rounded bg-rose-600/80 hover:bg-rose-600 text-white shadow-sm transition-colors"
                               >
                                 Reject

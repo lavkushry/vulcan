@@ -23,20 +23,17 @@ function ChatConsoleContent() {
   const [statusFilter, setStatusFilter] = useState<JobStatus | 'ALL'>('ALL');
   const [query, setQuery] = useState('');
   const [isHelpOpen, setIsHelpOpen] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const refreshJobs = useCallback(async () => {
     try {
       const data = await api.listJobs(currentUser);
       setJobs(data);
-      // If no job selected, auto-select first or latest running
-      if (!selectedId && data.length > 0) {
-        setSelectedId(data[0].id);
-      }
     } catch {
       /* ignore */
     }
-  }, [selectedId, currentUser]);
+  }, [currentUser]);
 
   useEffect(() => {
     refreshJobs();
@@ -79,7 +76,7 @@ function ChatConsoleContent() {
   }, [filteredJobs, selectedId]);
 
   const handleExecuteOrApprove = useCallback(async () => {
-    if (selectedJob && selectedJob.status === 'PENDING_APPROVAL' && currentUser !== selectedJob.requester_id) {
+    if (selectedJob && selectedJob.status === 'PENDING_APPROVAL' && Boolean(selectedJob.capabilities?.can_approve)) {
       try {
         await api.approveJob(selectedJob.id, currentUser);
         refreshJobs();
@@ -116,25 +113,42 @@ function ChatConsoleContent() {
         servicenow_chg: payload.servicenow_chg || null,
       });
 
-      // Instantly refresh and select this new job so operator sees live terminal stream
+      // Instantly refresh, open detail inspector, and select this new job
       await refreshJobs();
       setSelectedId(created.id);
+      setShowDetails(true);
       return created;
     },
     [currentUser, refreshJobs]
   );
+
+  const handleSelectTask = useCallback((corrId: string) => {
+    setSelectedId(corrId);
+    setShowDetails(true);
+  }, []);
 
   // Left Pane component
   const leftPaneContent = (
     <div className="h-full flex flex-col bg-canvas-void">
       <div className="px-4 py-2 border-b border-glass-border flex items-center justify-between bg-glass-surface/40 select-none">
         <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+          <span className="w-2 h-2 rounded-full bg-cyan-400" />
           <h1 className="text-xs font-mono font-semibold text-slate-200 uppercase tracking-wider">
-            AI Chat Assistant · Natural Language Intent Resolution
+            New Request · Vulcan Copilot
           </h1>
         </div>
         <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setShowDetails((prev) => !prev)}
+            className={`text-[10px] font-mono px-2 py-1 rounded border transition-colors flex items-center gap-1.5 ${
+              showDetails
+                ? 'border-cyan-500/40 bg-cyan-500/10 text-cyan-300'
+                : 'border-glass-border hover:border-slate-600 bg-white/[0.02] text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <span>{showDetails ? 'Focus Chat' : `Inspect Details (${jobs.length})`}</span>
+          </button>
           <button
             type="button"
             onClick={() => setIsHelpOpen(true)}
@@ -142,11 +156,8 @@ function ChatConsoleContent() {
             title="Press '?' for hotkeys"
           >
             <Keyboard size={12} />
-            <span>Hotkeys (?)</span>
+            <span>Hotkeys</span>
           </button>
-          <span className="text-[10px] font-mono text-slate-500">
-            120+ Playbooks &amp; Stacks
-          </span>
         </div>
       </div>
 
@@ -154,7 +165,7 @@ function ChatConsoleContent() {
         <ChatAssistant
           currentUser={currentUser}
           onDispatchTask={handleDispatchTask}
-          onSelectTaskToView={(corrId) => setSelectedId(corrId)}
+          onSelectTaskToView={handleSelectTask}
         />
       </div>
     </div>
@@ -166,20 +177,26 @@ function ChatConsoleContent() {
       <div className="px-4 py-2 border-b border-glass-border flex items-center justify-between bg-glass-surface/60 select-none">
         <div className="flex items-center gap-2">
           <span className="text-xs font-mono text-slate-400 uppercase tracking-wider">
-            Live Task Monitor &amp; Terminal
-          </span>
-          <span className="text-[10px] font-mono text-slate-500">
-            (j/k to navigate, Cmd+Enter to approve)
+            Request Details &amp; Execution Output
           </span>
         </div>
-        <button
-          onClick={() => router.push('/matrix')}
-          className="text-[11px] font-mono text-cyan-400 hover:text-cyan-300 flex items-center gap-1 transition-colors"
-        >
-          <Table2 size={12} />
-          <span>Full Task Matrix &amp; CSV</span>
-          <ArrowRight size={10} />
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => router.push('/history')}
+            className="text-[11px] font-mono text-cyan-400 hover:text-cyan-300 flex items-center gap-1 transition-colors"
+          >
+            <Table2 size={12} />
+            <span>Activity History</span>
+            <ArrowRight size={10} />
+          </button>
+          <button
+            onClick={() => setShowDetails(false)}
+            className="text-xs text-slate-400 hover:text-slate-200 p-1 rounded hover:bg-white/[0.04]"
+            title="Close details pane"
+          >
+            ✕
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 flex overflow-hidden">
@@ -194,7 +211,7 @@ function ChatConsoleContent() {
             setStatusFilter={setStatusFilter}
             query={query}
             setQuery={setQuery}
-            onOpenFullMatrix={() => router.push('/matrix')}
+            onOpenFullMatrix={() => router.push('/history')}
           />
         </div>
 
@@ -212,14 +229,20 @@ function ChatConsoleContent() {
 
   return (
     <div className="relative h-full overflow-hidden">
-      <ResizableDualPane
-        leftPane={leftPaneContent}
-        rightPane={rightPaneContent}
-        defaultRatio={0.50}
-        minRatio={0.25}
-        maxRatio={0.75}
-        storageKey="vulcan_chat_split_ratio"
-      />
+      {showDetails ? (
+        <ResizableDualPane
+          leftPane={leftPaneContent}
+          rightPane={rightPaneContent}
+          defaultRatio={0.50}
+          minRatio={0.25}
+          maxRatio={0.75}
+          storageKey="vulcan_chat_split_ratio"
+        />
+      ) : (
+        <div className="h-full max-w-5xl mx-auto border-x border-glass-border shadow-2xl">
+          {leftPaneContent}
+        </div>
+      )}
 
       <KeyboardShortcutsModal
         isOpen={isHelpOpen}

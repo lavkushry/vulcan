@@ -99,35 +99,28 @@ export function Header({ currentUser, onUserChange, onOpenCommandPalette }: Head
       {/* Right: Telemetry + Persona */}
       <div className="flex items-center gap-4">
         {/* Telemetry indicators */}
-        <div className="hidden lg:flex items-center gap-4 text-[10px] font-mono">
+        <div className="hidden lg:flex items-center gap-3 text-[10px] font-mono">
           <div className="flex items-center gap-1.5">
             <Database size={11} className="text-slate-500" />
             <span className="text-slate-500">CATALOG</span>
-            <span className="text-cyan-400">{health?.catalog_size ?? 120}</span>
+            <span className={health?.catalog_size !== undefined ? "text-cyan-400" : "text-slate-500"}>
+              {health?.catalog_size !== undefined ? health.catalog_size : "—"}
+            </span>
           </div>
           <div className="flex items-center gap-1.5">
             <Activity size={11} className="text-slate-500" />
             <span className="text-slate-500">ACTIVE</span>
-            <span className="text-emerald-400">{health?.active_jobs_count ?? 0}</span>
+            <span className={health?.active_jobs_count !== undefined ? "text-emerald-400" : "text-slate-500"}>
+              {health?.active_jobs_count !== undefined ? health.active_jobs_count : "0"}
+            </span>
           </div>
           <div className="flex items-center gap-1.5">
             <Shield size={11} className="text-slate-500" />
             <span className="text-slate-500">MERKLE</span>
-            <span className={health ? (health.audit_chain_valid ? 'text-emerald-400' : 'text-rose-400') : 'text-emerald-400'}>
-              {health ? (health.audit_chain_valid ? 'VALID' : 'BROKEN') : 'VALID'}
+            <span className={health ? (health.audit_chain_valid ? 'text-emerald-400' : 'text-rose-400') : 'text-slate-500'}>
+              {health ? (health.audit_chain_valid ? 'VALID' : 'BROKEN') : 'UNCHECKED'}
             </span>
           </div>
-          <button
-            type="button"
-            onClick={() => setIsClusterMapOpen(true)}
-            title="Inspect multi-datacenter cluster topology & Redlock consensus (UI-25)"
-            className="flex items-center gap-1.5 text-slate-400 hover:text-cyan-300 transition-colors cursor-pointer"
-            data-testid="header-cluster-radar-btn"
-          >
-            <Globe2 size={11} className="text-cyan-400" />
-            <span className="text-slate-500">CLUSTERS</span>
-            <span className="text-cyan-400">3</span>
-          </button>
         </div>
 
         {/* Pending Approvals Notification Badge */}

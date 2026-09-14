@@ -333,19 +333,19 @@ function ActionsContent() {
                 <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-cyan-400 rounded-r" />
               )}
               <div className="flex items-center gap-2 mb-0.5">
-                <span className="text-xs font-mono text-slate-300">{item.identifier}</span>
+                <span className="text-xs font-medium text-slate-100 truncate">{item.name}</span>
                 <span className={`ml-auto w-1.5 h-1.5 rounded-full flex-shrink-0 ${
                   item.risk_tier === 'HIGH' ? 'bg-rose-400' :
                   item.risk_tier === 'MEDIUM' ? 'bg-amber-400' : 'bg-emerald-400'
                 }`} />
               </div>
-              <div className="text-[11px] text-slate-600 truncate">{item.name}</div>
+              <div className="text-[11px] font-mono text-cyan-400/70 truncate">{item.identifier}</div>
               <div className="flex items-center gap-2 mt-1">
-                <span className="text-[10px] font-mono px-1 py-0.5 rounded border border-glass-border text-slate-600">
+                <span className="text-[10px] font-mono px-1 py-0.5 rounded border border-glass-border text-slate-500">
                   {item.engine}
                 </span>
                 {item.requires_maker_checker && (
-                  <span className="text-[10px] font-mono text-amber-500/60">SoD</span>
+                  <span className="text-[10px] font-mono text-amber-500/80">Approval Req</span>
                 )}
               </div>
             </button>
@@ -365,10 +365,10 @@ function ActionsContent() {
           <div className="max-w-2xl mx-auto space-y-5">
             {/* Action header */}
             <div>
-              <h2 className="text-lg font-mono text-slate-200 mb-1">{activeAction.identifier}</h2>
-              <p className="text-sm text-slate-400">{activeAction.name}</p>
+              <h2 className="text-lg font-semibold text-slate-100 mb-0.5">{activeAction.name}</h2>
+              <p className="text-xs font-mono text-cyan-400/80 mb-2">{activeAction.identifier}</p>
               {activeAction.description && (
-                <p className="text-xs text-slate-600 mt-2">{activeAction.description}</p>
+                <p className="text-xs text-slate-400 leading-relaxed">{activeAction.description}</p>
               )}
             </div>
 
@@ -447,7 +447,7 @@ function ActionsContent() {
               ) : (
                 <>
                   <Play size={16} />
-                  {activeAction.risk_tier === 'HIGH' ? 'Run — Requires Approval' : 'Run Immediately'}
+                  {activeAction.risk_tier === 'HIGH' ? 'Submit for Approval & Dispatch' : 'Dispatch Execution Now'}
                 </>
               )}
             </button>

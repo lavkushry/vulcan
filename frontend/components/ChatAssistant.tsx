@@ -880,9 +880,9 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
                       className="w-full px-3.5 py-2 flex items-center justify-between text-slate-400 hover:text-cyan-300 hover:bg-white/[0.02] transition-colors"
                     >
                       <div className="flex items-center gap-2">
-                        <Sparkles className="w-3.5 h-3.5 text-purple-400 animate-pulse" />
-                        <span className="text-[11px]">Reasoning &amp; Intent Resolution</span>
-                        <span className="text-[10px] text-slate-500">• {msg.thoughtProcess.time}</span>
+                        <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                        <span className="text-[11px] font-medium">Resolution details</span>
+                        {msg.thoughtProcess.time && <span className="text-[10px] text-slate-500">• {msg.thoughtProcess.time}</span>}
                       </div>
                       {openThoughts[msg.id] ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                     </button>
@@ -897,17 +897,17 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
                           ))}
                         </div>
 
-                        {/* Andrej Karpathy's LLM OS Working Memory Tokenomics HUD */}
+                        {/* Tokenomics & Execution Telemetry HUD */}
                         <TokenomicsHUD
                           maxTokens={2500}
-                          promptTokens={tokenomics?.tokens_used ? Math.floor(tokenomics.tokens_used * 0.8) : 840}
-                          completionTokens={tokenomics?.tokens_used ? Math.ceil(tokenomics.tokens_used * 0.2) : 180}
-                          latencyMs={tokenomics?.latency_ms ? tokenomics.latency_ms : Math.round(parseFloat(msg.thoughtProcess.time || "0.8") * 1000)}
-                          ttftMs={48}
-                          decodeSpeedTokPerSec={122}
-                          intentConfidencePercent={msg.cardData ? Math.round(msg.cardData.confidence * 100) : 99}
-                          cosineDistance={0.082}
-                          matchedCatalogItem={msg.cardData?.identifier || 'net-f5-cert-renew'}
+                          promptTokens={tokenomics?.tokens_used ? Math.floor(tokenomics.tokens_used * 0.8) : undefined}
+                          completionTokens={tokenomics?.tokens_used ? Math.ceil(tokenomics.tokens_used * 0.2) : undefined}
+                          latencyMs={tokenomics?.latency_ms ?? (msg.thoughtProcess.time ? Math.round(parseFloat(msg.thoughtProcess.time) * 1000) : undefined)}
+                          ttftMs={undefined}
+                          decodeSpeedTokPerSec={undefined}
+                          intentConfidencePercent={msg.cardData?.confidence ? Math.round(msg.cardData.confidence * 100) : undefined}
+                          cosineDistance={undefined}
+                          matchedCatalogItem={msg.cardData?.identifier}
                         />
                       </div>
                     )}
@@ -1062,7 +1062,7 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
                             <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
                             <div>
                               <span className="font-mono font-bold text-rose-300 text-[11px] block">
-                                PROVENANCE CONFLICT DETECTED (CHAT-15 · [Simulated CMDB Rule Engine])
+                                PROVENANCE CONFLICT DETECTED (CMDB Environment Policy Engine)
                               </span>
                               <span className="text-[11px] text-rose-200/80">
                                 Target resource <code className="font-mono text-white font-bold">{cardForms[msg.id]?.targetHost}</code> has hostname indicative of non-production, but selected execution environment is <code className="font-mono text-amber-300 font-bold">{cardForms[msg.id]?.environment}</code>.
@@ -1255,7 +1255,7 @@ export default function ChatAssistant({ onDispatchTask, onSelectTaskToView, curr
                         ) : (
                           <>
                             <Play className="w-4 h-4 fill-current" />
-                            <span>{msg.cardData.risk_tier === 'HIGH' && !cardForms[msg.id]?.dryRun ? 'SUBMIT FOR APPROVAL' : 'LAUNCH ACTION NOW'}</span>
+                            <span>{msg.cardData.risk_tier === 'HIGH' && !cardForms[msg.id]?.dryRun ? 'SUBMIT FOR APPROVAL & DISPATCH' : 'DISPATCH EXECUTION NOW'}</span>
                           </>
                         )}
                       </button>

@@ -197,15 +197,26 @@ function HistoryContent() {
                 </div>
                 <span className="text-[10px] text-slate-600">{timeAgo(job.created_at)}</span>
               </div>
-              <div className="text-xs text-slate-300 mb-1 truncate">{job.name}</div>
-              <div className="flex items-center gap-2 text-[10px]">
-                <span className="font-mono text-slate-600">{job.engine}</span>
-                <span className="text-slate-700">·</span>
-                <span className="text-slate-600">{job.requester_id}</span>
-                <span className={`ml-auto w-1.5 h-1.5 rounded-full ${
-                  job.risk_tier === 'HIGH' ? 'bg-rose-400' :
-                  job.risk_tier === 'MEDIUM' ? 'bg-amber-400' : 'bg-emerald-400'
-                }`} />
+              <div className="text-xs text-slate-200 mb-0.5 truncate font-medium">{job.name}</div>
+              <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-mono mb-1 truncate">
+                <span>Target:</span>
+                <span className="text-cyan-300">{(job.parameters?.target_resource as string) || (job.parameters?.hostname as string) || job.target_resource || 'Infrastructure'}</span>
+                <span>•</span>
+                <span className="text-slate-400 uppercase">{(job.parameters?.environment as string) || 'Prod'}</span>
+              </div>
+              <div className="flex items-center justify-between text-[10px]">
+                <div className="flex items-center gap-1.5 text-slate-500 font-mono">
+                  <span>{job.engine}</span>
+                  <span>·</span>
+                  <span>{job.requester_id}</span>
+                </div>
+                {job.status === 'PENDING_APPROVAL' ? (
+                  <span className="text-[10px] font-mono text-amber-400 font-semibold">Action: Approval</span>
+                ) : job.status === 'RUNNING' ? (
+                  <span className="text-[10px] font-mono text-cyan-400">Action: Monitor</span>
+                ) : (
+                  <span className="text-[10px] font-mono text-slate-500">Done</span>
+                )}
               </div>
             </button>
           ))}
@@ -319,49 +330,58 @@ function HistoryContent() {
             </div>
 
             {/* Approval Deck — when PENDING_APPROVAL */}
-            {selectedJob.status === 'PENDING_APPROVAL' && (
-              <div className="bg-glass-surface border border-amber-500/20 rounded-lg p-4">
-                <h3 className="text-xs font-mono text-amber-400/70 uppercase tracking-wider mb-3">Maker-Checker Approval</h3>
-                {currentUser === selectedJob.requester_id ? (
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2 text-xs text-amber-400/70">
-                      <AlertTriangle size={14} />
-                      <span>You submitted this request. Separation of Duties: requester ≠ approver.</span>
+            {selectedJob.status === 'PENDING_APPROVAL' && (() => {
+              const canApprove = Boolean(selectedJob.capabilities?.can_approve);
+              const canReject = Boolean(selectedJob.capabilities?.can_reject);
+              const disabledReason = selectedJob.capabilities?.disabled_reason || 
+                (currentUser === selectedJob.requester_id ? 'You submitted this request. Separation of Duties: requester ≠ approver.' : 'Approval requires authorized lead role.');
+
+              return (
+                <div className="bg-glass-surface border border-amber-500/20 rounded-lg p-4">
+                  <h3 className="text-xs font-mono text-amber-400/70 uppercase tracking-wider mb-3">Maker-Checker Approval</h3>
+                  {!canApprove ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 text-xs text-amber-400/70">
+                        <AlertTriangle size={14} />
+                        <span>{disabledReason}</span>
+                      </div>
+                      <p className="text-xs text-slate-500">Switch to an authorized lead persona to approve or reject.</p>
+                      <div className="flex gap-2 mt-3">
+                        <button disabled className="px-4 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-500/40 text-xs font-mono cursor-not-allowed opacity-50">
+                          Approve &amp; Execute
+                        </button>
+                        <button disabled className="px-4 py-2 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-500/40 text-xs font-mono cursor-not-allowed opacity-50">
+                          Reject
+                        </button>
+                      </div>
                     </div>
-                    <p className="text-xs text-slate-500">Switch to another persona to approve or reject.</p>
-                    <div className="flex gap-2 mt-3">
-                      <button disabled className="px-4 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-500/40 text-xs font-mono cursor-not-allowed opacity-50">
-                        Approve & Execute
-                      </button>
-                      <button disabled className="px-4 py-2 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-500/40 text-xs font-mono cursor-not-allowed opacity-50">
-                        Reject
-                      </button>
+                  ) : (
+                    <div className="space-y-3">
+                      <p className="text-xs text-slate-400">
+                        Requested by <span className="text-cyan-400 font-mono">{selectedJob.requester_id}</span>. 
+                        You are authorized to approve as <span className="text-emerald-400 font-mono">{currentUser}</span>.
+                      </p>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={handleApprove}
+                          className="px-4 py-2 rounded-lg bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-xs font-mono hover:bg-emerald-500/30 transition-colors"
+                        >
+                          ✓ Approve &amp; Execute
+                        </button>
+                        {canReject && (
+                          <button
+                            onClick={handleReject}
+                            className="px-4 py-2 rounded-lg bg-rose-500/20 border border-rose-500/30 text-rose-400 text-xs font-mono hover:bg-rose-500/30 transition-colors"
+                          >
+                            ✗ Reject
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    <p className="text-xs text-slate-400">
-                      Requested by <span className="text-cyan-400 font-mono">{selectedJob.requester_id}</span>. 
-                      You are acting as <span className="text-emerald-400 font-mono">{currentUser}</span>.
-                    </p>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={handleApprove}
-                        className="px-4 py-2 rounded-lg bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-xs font-mono hover:bg-emerald-500/30 transition-colors"
-                      >
-                        ✓ Approve & Execute
-                      </button>
-                      <button
-                        onClick={handleReject}
-                        className="px-4 py-2 rounded-lg bg-rose-500/20 border border-rose-500/30 text-rose-400 text-xs font-mono hover:bg-rose-500/30 transition-colors"
-                      >
-                        ✗ Reject
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
+                  )}
+                </div>
+              );
+            })()}
 
             {/* Live Terminal — when RUNNING */}
             {(selectedJob.status === 'RUNNING' || selectedJob.status === 'VERIFYING') && (

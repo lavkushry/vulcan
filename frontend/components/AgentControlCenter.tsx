@@ -31,9 +31,11 @@ import {
   Flame,
 } from 'lucide-react';
 import { api } from '@/lib/api';
+import { useVulcan } from '@/lib/context';
 import type { AgentWorkflowContext, AgentWorkflowEvent, AgentVersionInfo, EvalRunRecord } from '@/lib/types';
 
 export function AgentControlCenter() {
+  const { currentUser } = useVulcan();
   const [activeTab, setActiveTab] = useState<'workflows' | 'agents' | 'evals'>('workflows');
   const [workflows, setWorkflows] = useState<AgentWorkflowContext[]>([]);
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(null);
@@ -43,11 +45,10 @@ export function AgentControlCenter() {
   const [evalRuns, setEvalRuns] = useState<EvalRunRecord[]>([]);
 
   // Action states
-  const [promptInput, setPromptInput] = useState(
-    'Build and deploy a hardened PostgreSQL 16 production cluster on three RHEL 9 nodes with 500GB storage, Datadog monitoring, S3 backups, ServiceNow change control, and CyberArk credentials.'
-  );
-  const [environment, setEnvironment] = useState<'PROD' | 'STAGE' | 'DEV'>('PROD');
-  const [requesterId, setRequesterId] = useState('eng.alice@bank.internal');
+  const [promptInput, setPromptInput] = useState('');
+  const [environment, setEnvironment] = useState<'PROD' | 'STAGE' | 'DEV'>('DEV');
+  const [requesterId, setRequesterId] = useState(currentUser || '');
+  const [showAdvancedControls, setShowAdvancedControls] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isStepping, setIsStepping] = useState(false);
   const [isAutoRunning, setIsAutoRunning] = useState(false);
@@ -59,10 +60,16 @@ export function AgentControlCenter() {
   const [showResourceModal, setShowResourceModal] = useState(false);
   const [showApprovalModal, setShowApprovalModal] = useState(false);
   const [showInputModal, setShowInputModal] = useState(false);
-  const [approverId, setApproverId] = useState('lead.bob@bank.internal');
-  const [approvalReason, setApprovalReason] = useState('Reviewed security architecture and change record CHG0091823.');
+  const [approverId, setApproverId] = useState('');
+  const [approvalReason, setApprovalReason] = useState('');
   const [operatorInputKey, setOperatorInputKey] = useState('');
   const [operatorInputValue, setOperatorInputValue] = useState('');
+
+  useEffect(() => {
+    if (!requesterId && currentUser) {
+      setRequesterId(currentUser);
+    }
+  }, [currentUser, requesterId]);
 
   // 1. Data Fetching
   const loadWorkflows = useCallback(async () => {
@@ -354,17 +361,17 @@ export function AgentControlCenter() {
           {/* Left Panel: Workflow List & Create Form */}
           <div className="w-96 border-r border-glass-border flex flex-col bg-canvas-base/50">
             {/* Create Form */}
-            <div className="p-4 border-b border-glass-border bg-slate-900/40">
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2 font-mono flex items-center gap-2">
-                <Sparkles size={13} className="text-cyan-400" />
-                Dispatch Natural Language Goal
+            <div className="p-3 border-b border-glass-border bg-slate-900/40">
+              <h2 className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5 font-mono flex items-center gap-1.5">
+                <Sparkles size={12} className="text-cyan-400" />
+                New Goal Request
               </h2>
-              <form onSubmit={handleCreateWorkflow} className="space-y-3">
+              <form onSubmit={handleCreateWorkflow} className="space-y-2">
                 <textarea
-                  rows={3}
+                  rows={2}
                   value={promptInput}
                   onChange={(e) => setPromptInput(e.target.value)}
-                  placeholder="Describe your infrastructure or operational goal..."
+                  placeholder="e.g. Provision PostgreSQL cluster with backups and monitoring..."
                   className="w-full text-xs font-mono bg-slate-950/80 border border-glass-border rounded p-2 text-slate-200 focus:border-cyan-400 focus:outline-none resize-none"
                 />
                 <div className="flex gap-2">
@@ -373,9 +380,9 @@ export function AgentControlCenter() {
                     onChange={(e) => setEnvironment(e.target.value as any)}
                     className="text-xs font-mono bg-slate-950 border border-glass-border rounded px-2 py-1 text-slate-300"
                   >
-                    <option value="PROD">PROD</option>
-                    <option value="STAGE">STAGE</option>
                     <option value="DEV">DEV</option>
+                    <option value="STAGE">STAGE</option>
+                    <option value="PROD">PROD</option>
                   </select>
                   <input
                     type="text"
@@ -386,11 +393,11 @@ export function AgentControlCenter() {
                   />
                   <button
                     type="submit"
-                    disabled={isSubmitting}
-                    className="px-3 py-1 bg-cyan-600 hover:bg-cyan-500 text-white rounded text-xs font-mono font-medium disabled:opacity-50 flex items-center gap-1"
+                    disabled={isSubmitting || !promptInput.trim()}
+                    className="px-3 py-1 bg-cyan-600 hover:bg-cyan-500 text-white rounded text-xs font-mono font-medium disabled:opacity-40 flex items-center gap-1"
                   >
                     {isSubmitting ? <RefreshCw size={12} className="animate-spin" /> : <Play size={12} />}
-                    Create
+                    Submit
                   </button>
                 </div>
               </form>
@@ -475,15 +482,6 @@ export function AgentControlCenter() {
                 {/* Primary Action Buttons */}
                 <div className="flex items-center gap-2 font-mono">
                   <button
-                    onClick={handleStep}
-                    disabled={isStepping || isAutoRunning}
-                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-glass-border text-cyan-300 rounded text-xs font-medium flex items-center gap-1.5 disabled:opacity-40"
-                  >
-                    {isStepping ? <RefreshCw size={13} className="animate-spin" /> : <ChevronRight size={14} />}
-                    Step
-                  </button>
-
-                  <button
                     onClick={handleAutoRun}
                     disabled={isAutoRunning || isStepping}
                     className="px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded text-xs font-medium flex items-center gap-1.5 disabled:opacity-40"
@@ -491,6 +489,26 @@ export function AgentControlCenter() {
                     {isAutoRunning ? <RefreshCw size={13} className="animate-spin" /> : <FastForward size={14} />}
                     Auto-Run
                   </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowAdvancedControls(!showAdvancedControls)}
+                    className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 border border-glass-border text-slate-400 hover:text-slate-200 rounded text-xs"
+                    title="Toggle manual stepping"
+                  >
+                    {showAdvancedControls ? 'Hide Stepper' : 'Manual Step'}
+                  </button>
+
+                  {showAdvancedControls && (
+                    <button
+                      onClick={handleStep}
+                      disabled={isStepping || isAutoRunning}
+                      className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-cyan-500/40 text-cyan-300 rounded text-xs font-medium flex items-center gap-1.5 disabled:opacity-40 animate-fade-in-up"
+                    >
+                      {isStepping ? <RefreshCw size={13} className="animate-spin" /> : <ChevronRight size={14} />}
+                      Step
+                    </button>
+                  )}
 
                   {/* Pause Resolution Buttons */}
                   {selectedWorkflow.current_state === 'WAITING_FOR_RESOURCE' && (

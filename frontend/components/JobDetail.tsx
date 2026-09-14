@@ -9,7 +9,7 @@ import { STATUS_STYLE } from "@/lib/types";
 import type { Job } from "@/lib/types";
 import { timeAgo } from "@/lib/util";
 import { useVulcan } from "@/lib/context";
-import { AlertCircle, RefreshCw, ShieldCheck, Database, Radio, FileCode, Globe2, Split } from "lucide-react";
+import { AlertCircle, RefreshCw, ShieldCheck, Database, Radio, FileCode, Globe2, Split, ChevronDown } from "lucide-react";
 import ASTFailurePinpointCard from "./ASTFailurePinpointCard";
 import MerkleAuditModal from "./MerkleAuditModal";
 import S3MultipartSwarmGrid from "./S3MultipartSwarmGrid";
@@ -29,11 +29,28 @@ const PROGRESSION_STEPS = [
   "SUCCESS",
 ];
 
+function getHumanStatus(status: string): string {
+  switch (status) {
+    case 'PENDING_APPROVAL': return 'Awaiting authorization';
+    case 'RUNNING': return 'Executing commands';
+    case 'LOCKED': return 'Resource lock acquired';
+    case 'VERIFYING': return 'Verifying environment';
+    case 'SUCCESS': return 'Execution succeeded';
+    case 'FAILED': return 'Execution failed';
+    case 'REJECTED': return 'Execution rejected';
+    case 'QUEUED': return 'Queued for runner';
+    case 'PARSED': return 'Parameters validated';
+    case 'SUBMITTED': return 'Request registered';
+    default: return status;
+  }
+}
+
 export function JobDetail({ job, currentUser, onChanged }: {
   job: Job | null; currentUser: string; onChanged: () => void;
 }) {
   const { setCurrentUser } = useVulcan();
   const [error, setError] = useState<string | null>(null);
+  const [showTechnicalDetails, setShowTechnicalDetails] = useState<boolean>(false);
   const [isMerkleModalOpen, setIsMerkleModalOpen] = useState<boolean>(false);
   const [showS3Swarm, setShowS3Swarm] = useState<boolean>(false);
   const [isBlastRadiusOpen, setIsBlastRadiusOpen] = useState<boolean>(false);
@@ -97,7 +114,7 @@ export function JobDetail({ job, currentUser, onChanged }: {
           type="button"
           onClick={() => setIsMerkleModalOpen(true)}
           title="Inspect SHA-256 Merkle chain and export WORM receipt"
-          className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-950/50 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-900/50 hover:border-emerald-400 transition-all shadow-[0_0_8px_rgba(0,255,157,0.2)] cursor-pointer"
+          className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-950/50 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-900/50 hover:border-emerald-400 transition-all cursor-pointer"
           data-testid="job-detail-merkle-pill"
         >
           <ShieldCheck size={11} className="text-emerald-400" />
@@ -111,7 +128,7 @@ export function JobDetail({ job, currentUser, onChanged }: {
           title="Toggle 10GB S3 Decoupled Multipart Swarm Telemetry"
           className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold border transition-all cursor-pointer ${
             showS3Swarm
-              ? "bg-cyan-950/60 text-cyan-300 border-cyan-500/50 shadow-[0_0_8px_rgba(0,240,255,0.3)]"
+              ? "bg-cyan-950/60 text-cyan-300 border-cyan-500/50"
               : "bg-slate-900/60 text-slate-400 border-slate-700 hover:text-slate-200"
           }`}
           data-testid="job-detail-s3-toggle"
@@ -125,7 +142,7 @@ export function JobDetail({ job, currentUser, onChanged }: {
           type="button"
           onClick={() => setIsBlastRadiusOpen(true)}
           title="Inspect topology blast radius and downstream dependencies"
-          className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-cyan-950/40 text-cyan-300 border border-cyan-500/40 hover:bg-cyan-900/50 hover:border-cyan-400 transition-all cursor-pointer shadow-[0_0_8px_rgba(0,240,255,0.2)]"
+          className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-cyan-950/40 text-cyan-300 border border-cyan-500/40 hover:bg-cyan-900/50 hover:border-cyan-400 transition-all cursor-pointer"
           data-testid="job-detail-blast-radius-btn"
         >
           <Radio size={11} className="text-cyan-400" />
@@ -162,44 +179,130 @@ export function JobDetail({ job, currentUser, onChanged }: {
         </span>
       </header>
 
-      {/* 8-Step Progression Rail */}
-      <div
-        role="region"
-        aria-label="Execution progression steps"
-        tabIndex={0}
-        className="px-5 py-2.5 border-b border-slate-800/80 bg-[#07090E] overflow-x-auto select-none focus:outline-none"
-      >
-        <div className="flex items-center gap-1.5 min-w-[640px] font-mono text-[10px]">
-          {PROGRESSION_STEPS.map((step, idx) => {
-            const isCompleted = idx < activeStepIdx;
-            const isCurrent = idx === activeStepIdx;
-            const isFailed = status === "FAILED" && isCurrent;
+      {/* 5 Questions Clarity Card */}
+      <div className="bg-glass-surface/50 border-b border-slate-800/80 p-4 space-y-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 text-xs">
+          {/* 1. What is being done? */}
+          <div className="p-2.5 rounded-lg bg-black/40 border border-slate-800/80">
+            <span className="text-[10px] font-mono text-slate-500 uppercase block mb-1">1. What is being done?</span>
+            <div className="font-semibold text-slate-200 truncate">{job.name}</div>
+            <div className="text-[10px] font-mono text-slate-400 truncate mt-0.5">{job.identifier}</div>
+          </div>
 
-            return (
-              <div key={step} className="flex items-center gap-1.5 flex-1">
-                <div
-                  className={`flex-1 px-2 py-1 rounded text-center font-semibold transition-all ${
-                    isFailed
-                      ? "bg-rose-950/60 text-rose-300 border border-rose-500/50 shadow-[0_0_8px_rgba(255,0,85,0.4)]"
-                      : isCurrent
-                      ? "bg-cyan-950/60 text-cyan-300 border border-cyan-500/50 animate-pulse shadow-[0_0_8px_rgba(0,240,255,0.4)]"
-                      : isCompleted
-                      ? "bg-emerald-950/40 text-emerald-400 border border-emerald-500/30"
-                      : "bg-slate-900/50 text-slate-600 border border-slate-800"
-                  }`}
-                >
-                  {step}
-                </div>
-                {idx < PROGRESSION_STEPS.length - 1 && (
-                  <span className={`text-[10px] ${isCompleted ? "text-emerald-500" : "text-slate-700"}`}>
-                    ➔
-                  </span>
-                )}
-              </div>
-            );
-          })}
+          {/* 2. Where? */}
+          <div className="p-2.5 rounded-lg bg-black/40 border border-slate-800/80">
+            <span className="text-[10px] font-mono text-slate-500 uppercase block mb-1">2. Target &amp; Environment</span>
+            <div className="font-semibold text-cyan-300 truncate">
+              {(job.parameters?.target_resource as string) || job.target_resource || 'Default Infrastructure'}
+            </div>
+            <div className="text-[10px] font-mono text-slate-400 mt-0.5">
+              Env: <span className="text-slate-300 uppercase">{(job.parameters?.environment as string) || 'Production'}</span>
+            </div>
+          </div>
+
+          {/* 3. What is happening now? */}
+          <div className="p-2.5 rounded-lg bg-black/40 border border-slate-800/80">
+            <span className="text-[10px] font-mono text-slate-500 uppercase block mb-1">3. Current Status</span>
+            <div className="flex items-center gap-1.5 font-semibold text-slate-200">
+              <span className={`w-2 h-2 rounded-full ${status === 'SUCCESS' ? 'bg-emerald-400' : status === 'FAILED' ? 'bg-rose-500' : status === 'PENDING_APPROVAL' ? 'bg-amber-400' : 'bg-cyan-400 animate-pulse'}`} />
+              <span>{getHumanStatus(status)}</span>
+            </div>
+            <div className="text-[10px] font-mono text-slate-400 mt-0.5">
+              State: <span className="text-slate-300 font-bold">{status}</span>
+            </div>
+          </div>
+
+          {/* 4. Do I need to act? */}
+          <div className="p-2.5 rounded-lg bg-black/40 border border-slate-800/80">
+            <span className="text-[10px] font-mono text-slate-500 uppercase block mb-1">4. Required Action</span>
+            <div className="text-slate-200 font-semibold truncate">
+              {pending ? (
+                job.capabilities?.can_approve ? (
+                  <span className="text-amber-400">Action: Your approval required</span>
+                ) : (
+                  <span className="text-slate-400">Awaiting peer approval</span>
+                )
+              ) : status === 'RUNNING' || status === 'LOCKED' ? (
+                <span className="text-cyan-300">Live monitoring in progress</span>
+              ) : status === 'SUCCESS' ? (
+                <span className="text-emerald-400">No action needed (Done)</span>
+              ) : status === 'FAILED' ? (
+                <span className="text-rose-400">Review failure diagnostic</span>
+              ) : (
+                <span className="text-slate-400">No action needed</span>
+              )}
+            </div>
+            <div className="text-[10px] font-mono text-slate-400 mt-0.5 truncate">
+              {pending && job.capabilities?.disabled_reason ? job.capabilities.disabled_reason : `Submitted ${timeAgo(job.created_at)}`}
+            </div>
+          </div>
+        </div>
+
+        {/* 5. What happened? & Technical Details Accordion Toggle */}
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-800/40 text-xs font-mono text-slate-400">
+          <div className="flex items-center gap-2">
+            <span className="text-slate-500 font-semibold">5. Outcome:</span>
+            <span className="text-slate-300">
+              {status === 'SUCCESS' && `Succeeded cleanly with exit code ${job.exit_code ?? 0}`}
+              {status === 'FAILED' && `Execution failed with exit code ${job.exit_code ?? 1}`}
+              {status === 'PENDING_APPROVAL' && 'Awaiting authorization before runner dispatch'}
+              {(status === 'RUNNING' || status === 'QUEUED' || status === 'LOCKED' || status === 'VERIFYING') && 'Streaming output from runner'}
+              {status === 'SUBMITTED' || status === 'PARSED' ? 'Request registered and queued' : ''}
+              {status === 'REJECTED' && 'Execution was rejected by reviewer'}
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setShowTechnicalDetails(!showTechnicalDetails)}
+            className="flex items-center gap-1.5 text-xs text-cyan-400 hover:text-cyan-300 font-mono transition-colors"
+          >
+            <span>{showTechnicalDetails ? 'Hide technical progression' : 'Show technical progression'}</span>
+            <ChevronDown size={14} className={`transform transition-transform ${showTechnicalDetails ? 'rotate-180' : ''}`} />
+          </button>
         </div>
       </div>
+
+      {/* Expandable 8-Step Progression Rail */}
+      {showTechnicalDetails && (
+        <div
+          role="region"
+          aria-label="Execution progression steps"
+          tabIndex={0}
+          className="px-5 py-2.5 border-b border-slate-800/80 bg-[#07090E] overflow-x-auto select-none focus:outline-none animate-fade-in-up"
+        >
+          <div className="flex items-center gap-1.5 min-w-[640px] font-mono text-[10px]">
+            {PROGRESSION_STEPS.map((step, idx) => {
+              const isCompleted = idx < activeStepIdx;
+              const isCurrent = idx === activeStepIdx;
+              const isFailed = status === "FAILED" && isCurrent;
+
+              return (
+                <div key={step} className="flex items-center gap-1.5 flex-1">
+                  <div
+                    className={`flex-1 px-2 py-1 rounded text-center font-semibold transition-all ${
+                      isFailed
+                        ? "bg-rose-950/60 text-rose-300 border border-rose-500/50 shadow-[0_0_8px_rgba(255,0,85,0.4)]"
+                        : isCurrent
+                        ? "bg-cyan-950/60 text-cyan-300 border border-cyan-500/50 animate-pulse shadow-[0_0_8px_rgba(0,240,255,0.4)]"
+                        : isCompleted
+                        ? "bg-emerald-950/40 text-emerald-400 border border-emerald-500/30"
+                        : "bg-slate-900/50 text-slate-600 border border-slate-800"
+                    }`}
+                  >
+                    {step}
+                  </div>
+                  {idx < PROGRESSION_STEPS.length - 1 && (
+                    <span className={`text-[10px] ${isCompleted ? "text-emerald-500" : "text-slate-700"}`}>
+                      ➔
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
         {/* Distributed Redlock Watchdog Radar (Shown when running, locked, or verifying) */}

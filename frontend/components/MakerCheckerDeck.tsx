@@ -23,8 +23,9 @@ export default function MakerCheckerDeck({
   }
 
   const isSelfApproval = currentUserId === job.requester_id;
-  const canApprove = job.capabilities ? job.capabilities.can_approve : (!isSelfApproval);
-  const disabledReason = job.capabilities?.disabled_reason || (isSelfApproval ? "Banking Rule: You cannot approve your own change. An independent Checker must sign off." : "Action not permitted");
+  const canApprove = Boolean(job.capabilities?.can_approve);
+  const canReject = Boolean(job.capabilities?.can_reject ?? !isSelfApproval);
+  const disabledReason = job.capabilities?.disabled_reason || (!canApprove ? "Approval requires explicit server authorization (approver role required, self-approval forbidden)" : "Action not permitted");
 
   return (
     <div className="glass-panel border border-amber-500/30 rounded-xl p-5 shadow-glow-amber space-y-4">
@@ -135,7 +136,7 @@ export default function MakerCheckerDeck({
             className="px-5 py-2 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-mono text-xs font-bold shadow-glow-emerald transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1.5"
           >
             <CheckCircle className="w-4 h-4" />
-            {isProcessing ? 'COMMITTING AUDIT...' : 'SIGN & AUTHORIZE [ENTER]'}
+            {isProcessing ? 'DISPATCHING EXECUTION...' : 'AUTHORIZE & DISPATCH EXECUTION [ENTER]'}
           </button>
         </div>
       </div>

@@ -486,6 +486,8 @@ export function ExternalResourcesConsole() {
   // Dynamic Capabilities & Deployment Discovery State (R4)
   const [discovering, setDiscovering] = useState<boolean>(false);
   const [discoveredCaps, setDiscoveredCaps] = useState<DiscoveredCapabilities | null>(null);
+  const [discoveryError, setDiscoveryError] = useState<string | null>(null);
+  const [demoMode, setDemoMode] = useState<boolean>(false);
   const [routingChatDefault, setRoutingChatDefault] = useState<boolean>(true);
   const [routingEmbedDefault, setRoutingEmbedDefault] = useState<boolean>(true);
   const [routingSreDiag, setRoutingSreDiag] = useState<boolean>(false);
@@ -496,18 +498,46 @@ export function ExternalResourcesConsole() {
   // Diagnostics History State
   const [healthHistory, setHealthHistory] = useState<ExternalResourceHealthRecord[]>([]);
   const [loadingHistory, setLoadingHistory] = useState<boolean>(false);
+  const [actualResources, setActualResources] = useState<ExternalResource[]>([]);
 
-  // Fetch Resources from Backend
+  // Fetch Resources from Backend (Honest empty state, no fabricated healthy connections)
   const loadResources = useCallback(async () => {
     try {
       const data = await api.listExternalResources();
       if (Array.isArray(data) && data.length > 0) {
+        setActualResources(data);
         setResources(data);
+        if (!selectedId) setSelectedId(data[0].resource_id);
+      } else {
+        setActualResources([]);
+        if (demoMode) {
+          setResources(DEFAULT_SEED_RESOURCES);
+        } else {
+          setResources([]);
+        }
       }
     } catch {
-      // Fallback to initial seed state
+      setActualResources([]);
+      if (demoMode) {
+        setResources(DEFAULT_SEED_RESOURCES);
+      } else {
+        setResources([]);
+      }
     }
-  }, []);
+  }, [demoMode, selectedId]);
+
+  const toggleDemoMode = (enabled: boolean) => {
+    setDemoMode(enabled);
+    if (enabled) {
+      setResources(DEFAULT_SEED_RESOURCES);
+      setSelectedId(DEFAULT_SEED_RESOURCES[0].resource_id);
+    } else {
+      setResources(actualResources);
+      if (actualResources.length > 0) {
+        setSelectedId(actualResources[0].resource_id);
+      }
+    }
+  };
 
   useEffect(() => {
     loadResources();
@@ -518,7 +548,7 @@ export function ExternalResourcesConsole() {
     return resources.find(r => r.resource_id === selectedId) || resources[0] || DEFAULT_SEED_RESOURCES[0];
   }, [resources, selectedId]);
 
-  const isFoundry = selectedResource.provider === 'microsoft_foundry';
+  const isFoundry = selectedResource ? selectedResource.provider === 'microsoft_foundry' : false;
 
   // Populate Configuration Form on Selection Change
   useEffect(() => {
@@ -712,26 +742,21 @@ export function ExternalResourcesConsole() {
   // Dynamic Deployment Discovery (R4)
   const handleDiscoverDeployments = async () => {
     setDiscovering(true);
+    setDiscoveryError(null);
     try {
       const caps = await api.discoverDeployments(selectedResource.resource_id);
       setDiscoveredCaps(caps);
     } catch (e: any) {
-      // Mock discovery payload for UI resilience if offline
       setDiscoveredCaps({
         resource_id: selectedResource.resource_id,
         provider: selectedResource.provider,
-        deployments: [
-          { name: 'gpt-4o', model: 'gpt-4o', type: 'chat', capacity: 150000, status: 'Succeeded' },
-          { name: 'gpt-4o-mini', model: 'gpt-4o-mini', type: 'chat', capacity: 200000, status: 'Succeeded' },
-          { name: 'text-embedding-3-small', model: 'text-embedding-3-small', type: 'embeddings', capacity: 350000, status: 'Succeeded' },
-          { name: 'text-embedding-3-large', model: 'text-embedding-3-large', type: 'embeddings', capacity: 350000, status: 'Succeeded' },
-          { name: 'o1-preview', model: 'o1-preview', type: 'reasoning', capacity: 100000, status: 'Succeeded' },
-        ],
-        models: ['gpt-4o', 'gpt-4o-mini', 'text-embedding-3-small', 'text-embedding-3-large', 'o1-preview'],
-        tools: ['web_search', 'code_interpreter', 'vulcan_catalog_resolver'],
-        agents: ['SRE_Diagnostic_Agent', 'Maker_Checker_Verifier'],
+        deployments: [],
+        models: [],
+        tools: [],
+        agents: [],
         discovered_at: new Date().toISOString(),
       });
+      setDiscoveryError(e?.message || 'Deployment discovery failed. Could not query provider endpoint.');
     } finally {
       setDiscovering(false);
     }
@@ -852,25 +877,56 @@ export function ExternalResourcesConsole() {
           </div>
 
           {/* Environment Filter Pills */}
-          <div className="flex items-center gap-1.5 pt-1">
-            {['ALL', 'PROD', 'STAGE', 'DEV'].map((env) => (
-              <button
-                key={env}
-                onClick={() => setEnvFilter(env)}
-                className={`text-[10px] font-mono px-2.5 py-0.5 rounded-md transition-all ${
-                  envFilter === env
-                    ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-bold'
-                    : 'text-slate-500 hover:text-slate-300 hover:bg-white/[0.04]'
-                }`}
-              >
-                {env}
-              </button>
-            ))}
+          <div className="flex items-center justify-between pt-1">
+            <div className="flex items-center gap-1.5">
+              {['ALL', 'PROD', 'STAGE', 'DEV'].map((env) => (
+                <button
+                  key={env}
+                  onClick={() => setEnvFilter(env)}
+                  className={`text-[10px] font-mono px-2 py-0.5 rounded-md transition-all ${
+                    envFilter === env
+                      ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-bold'
+                      : 'text-slate-500 hover:text-slate-300 hover:bg-white/[0.04]'
+                  }`}
+                >
+                  {env}
+                </button>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => toggleDemoMode(!demoMode)}
+              title="Toggle illustrative sample connections"
+              className={`text-[9px] font-mono px-2 py-0.5 rounded border transition-colors ${
+                demoMode
+                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 font-bold'
+                  : 'bg-slate-900 text-slate-500 border-slate-800 hover:text-slate-400'
+              }`}
+            >
+              {demoMode ? 'DEMO MODE: ON' : 'Demo Samples'}
+            </button>
           </div>
         </div>
 
         {/* Bento Category Accordion / List */}
         <div className="flex-1 overflow-y-auto divide-y divide-glass-border/30 p-2 space-y-4">
+          {filteredResources.length === 0 && (
+            <div className="p-6 text-center space-y-3">
+              <Plug className="w-8 h-8 text-slate-600 mx-auto" />
+              <p className="text-xs font-mono text-slate-300">No external resources connected.</p>
+              <p className="text-[11px] text-slate-500 leading-relaxed font-sans">
+                Connect external cloud providers, models, or credential vaults, or view sample configurations in demo mode.
+              </p>
+              <button
+                type="button"
+                onClick={() => toggleDemoMode(true)}
+                className="px-3 py-1.5 rounded-lg bg-cyan-500/15 border border-cyan-500/30 text-cyan-300 text-xs font-mono hover:bg-cyan-500/25 transition-colors"
+              >
+                Load Sample Demo Connections
+              </button>
+            </div>
+          )}
           {categories.map((cat) => {
             const catResources = filteredResources.filter(r => r.category === cat);
             if (catResources.length === 0 && search) return null;
@@ -943,6 +999,23 @@ export function ExternalResourcesConsole() {
 
       {/* ──── RIGHT DETAIL PANE ──── */}
       <div className="flex-1 flex flex-col h-full overflow-hidden bg-canvas-void">
+        {/* Demo Mode Notice Banner */}
+        {demoMode && (
+          <div className="px-6 py-2 bg-amber-500/10 border-b border-amber-500/30 flex items-center justify-between text-amber-300 text-xs font-mono">
+            <span className="flex items-center gap-2">
+              <AlertTriangle size={13} className="text-amber-400" />
+              <span>Demo Mode Active: Displaying illustrative sample connections. Real operations require actual endpoints and vault secret references.</span>
+            </span>
+            <button
+              type="button"
+              onClick={() => toggleDemoMode(false)}
+              className="px-2 py-0.5 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 text-[10px] font-bold"
+            >
+              Exit Demo Mode
+            </button>
+          </div>
+        )}
+
         {/* Detail Header */}
         <div className="p-6 border-b border-glass-border flex items-center justify-between bg-glass-surface/20">
           <div className="space-y-1">
@@ -955,6 +1028,11 @@ export function ExternalResourcesConsole() {
                   <h2 className="text-lg font-bold text-white tracking-wide">
                     {selectedResource.display_name}
                   </h2>
+                  {demoMode && (
+                    <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-amber-500/20 border border-amber-500/40 text-amber-300 font-bold">
+                      DEMO SAMPLE
+                    </span>
+                  )}
                   <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-900 border border-glass-border text-slate-300">
                     [{selectedResource.environment}]
                   </span>
@@ -1622,46 +1700,15 @@ export function ExternalResourcesConsole() {
                         );
                       })
                     ) : (
-                      <>
-                        <div className="p-3.5 rounded-xl bg-slate-950/70 border border-glass-border flex flex-col justify-between gap-2">
-                          <div className="flex items-start justify-between">
-                            <div className="font-mono text-xs font-bold text-slate-100">gpt-4o</div>
-                            <span className="text-[9px] font-mono px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">
-                              chat reasoning
-                            </span>
-                          </div>
-                          <div className="flex items-center justify-between text-[10px] font-mono text-slate-400">
-                            <span>Capacity: 150k TPM</span>
-                            <span className="text-emerald-400 font-bold">Succeeded</span>
-                          </div>
-                        </div>
-
-                        <div className="p-3.5 rounded-xl bg-slate-950/70 border border-glass-border flex flex-col justify-between gap-2">
-                          <div className="flex items-start justify-between">
-                            <div className="font-mono text-xs font-bold text-slate-100">text-embedding-3-small</div>
-                            <span className="text-[9px] font-mono px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">
-                              intent embeddings
-                            </span>
-                          </div>
-                          <div className="flex items-center justify-between text-[10px] font-mono text-slate-400">
-                            <span>Capacity: 350k TPM</span>
-                            <span className="text-emerald-400 font-bold">Succeeded</span>
-                          </div>
-                        </div>
-
-                        <div className="p-3.5 rounded-xl bg-slate-950/70 border border-glass-border flex flex-col justify-between gap-2">
-                          <div className="flex items-start justify-between">
-                            <div className="font-mono text-xs font-bold text-slate-100">o1-preview</div>
-                            <span className="text-[9px] font-mono px-2 py-0.5 rounded bg-purple-500/10 text-purple-300 border border-purple-500/20">
-                              reasoning
-                            </span>
-                          </div>
-                          <div className="flex items-center justify-between text-[10px] font-mono text-slate-400">
-                            <span>Capacity: 100k TPM</span>
-                            <span className="text-emerald-400 font-bold">Succeeded</span>
-                          </div>
-                        </div>
-                      </>
+                      <div className="md:col-span-2 p-6 rounded-xl border border-slate-800 bg-slate-950/40 text-center space-y-2">
+                        <AlertCircle className="w-6 h-6 text-slate-500 mx-auto" />
+                        <p className="text-xs font-mono text-slate-300">
+                          {discoveryError ? discoveryError : "No active deployments discovered yet."}
+                        </p>
+                        <p className="text-[11px] text-slate-500 font-sans">
+                          Click &ldquo;Discover Deployments&rdquo; above to query live models from the connected provider endpoint.
+                        </p>
+                      </div>
                     )}
                   </div>
                 </div>

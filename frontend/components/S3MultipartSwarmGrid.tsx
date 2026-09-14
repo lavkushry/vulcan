@@ -35,14 +35,14 @@ export const S3MultipartSwarmGrid: React.FC<S3MultipartSwarmGridProps> = ({
   parallelStreams = 8,
   directWireSpeedMbSec = 680,
   controlPlaneLatencyMs = 15,
-  isSimulating = true,
+  isSimulating = false,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   // True Uint8Array binary state buffer: constant O(1) memory footprint
   const partBufferRef = useRef<Uint8Array>(new Uint8Array(totalParts));
-  const [completedCount, setCompletedCount] = useState<number>(182);
+  const [completedCount, setCompletedCount] = useState<number>(isSimulating ? 1 : 0);
   const [hoveredPart, setHoveredPart] = useState<HoveredPartInfo | null>(null);
   const animFrameIdRef = useRef<number | null>(null);
 
@@ -57,7 +57,7 @@ export const S3MultipartSwarmGrid: React.FC<S3MultipartSwarmGridProps> = ({
       }
     }
     partBufferRef.current = buf;
-  }, [totalParts]);
+  }, [totalParts, completedCount]);
 
   // Simulation tick updating the Uint8Array buffer in place
   useEffect(() => {
@@ -250,19 +250,23 @@ export const S3MultipartSwarmGrid: React.FC<S3MultipartSwarmGridProps> = ({
           </span>
         </div>
         <div className="flex items-center gap-2 text-[11px] text-slate-400">
-          <span>Wire Speed: <strong className="text-emerald-400">{directWireSpeedMbSec} MB/s</strong></span>
+          <span>Wire Speed: <strong className={isSimulating ? "text-emerald-400" : "text-slate-500 font-normal"}>{isSimulating ? `${directWireSpeedMbSec} MB/s` : "Idle"}</strong></span>
           <span>•</span>
-          <span>Control Latency: <strong className="text-cyan-400">{controlPlaneLatencyMs}ms</strong></span>
+          <span>Control Latency: <strong className={isSimulating ? "text-cyan-400" : "text-slate-500 font-normal"}>{isSimulating ? `${controlPlaneLatencyMs}ms` : "—"}</strong></span>
         </div>
       </div>
 
       {/* Progress metrics */}
       <div className="flex items-center justify-between text-slate-300 text-xs">
         <span>
-          Transferred: <strong className="text-cyan-300">{uploadedGb} GB</strong> / {totalGb} GB ({percent}%)
+          {isSimulating ? (
+            <>Transferred: <strong className="text-cyan-300">{uploadedGb} GB</strong> / {totalGb} GB ({percent}%)</>
+          ) : (
+            <span className="text-slate-400 font-normal">Awaiting active storage transfer operation</span>
+          )}
         </span>
         <span className="text-slate-500 text-[11px]">
-          {completedCount} of {totalParts} chunks verified (SHA-256 / MD5)
+          {isSimulating ? `${completedCount} of ${totalParts} chunks verified` : "0 chunks in flight"}
         </span>
       </div>
 
