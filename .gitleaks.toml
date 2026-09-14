@@ -1,9 +1,20 @@
 title = "Vulcan Control Plane Gitleaks Configuration"
 
 [allowlist]
-description = "Ignore synthetic test vectors, mock tokens, and evaluation scenarios"
+description = "Allowlist strictly narrowed to specific synthetic test fixtures and known mock tokens"
 paths = [
-    '''(?i)backend/tests/.*''',
-    '''(?i)evals/.*''',
-    '''(?i)deploy/sandbox/.*'''
+    '''backend/tests/agentos/test_adversarial_security\.py''',
+    '''backend/tests/agentos/test_capability_token_hardening\.py''',
+    '''backend/tests/test_injection_defense_pipeline\.py''',
+    '''evals/golden/scenarios\.v2\.jsonl''',
+    '''deploy/sandbox/keys/id_ed25519''',
+    '''backend/app/adapters/cyberark_adapter\.py'''
+]
+regexes = [
+    '''cap-adversarial-[0-9a-zA-Z_-]+''',
+    '''c2FmZV9leGVjdXRpb25fZmxlZXRfdmF1bHRfMjAyNg==''',
+    '''s\.[a-zA-Z0-9]{24}''',
+    '''ghp_123456789012345678901234567890123456''',
+    '''AKIAIOSFODNN7EXAMPLE''',
+    '''test-secret-key'''
 ]

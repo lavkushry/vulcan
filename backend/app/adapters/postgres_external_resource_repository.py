@@ -143,6 +143,23 @@ class PostgresExternalResourceRepository(IExternalResourceRepository):
                 created_at=now,
                 updated_at=now,
             ),
+            ExternalResource(
+                resource_id="res-s3-default",
+                provider="s3",
+                category=ResourceCategory.STORAGE_DATA,
+                display_name="Enterprise S3 / MinIO Backup Store",
+                environment=ResourceEnvironment.PROD,
+                endpoint="https://s3.amazonaws.com",
+                auth_mode=AuthMode.API_KEY,
+                enabled=True,
+                config={"bucket": "vulcan-backups"},
+                secret_refs={"role_arn": "vault://secret/vulcan/s3_backup_role"},
+                health_status=HealthStatus.CONFIGURED,
+                created_by="system",
+                updated_by="system",
+                created_at=now,
+                updated_at=now,
+            ),
         ]
         for res in defaults:
             self._resources[res.resource_id] = res

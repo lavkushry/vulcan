@@ -80,6 +80,7 @@ class ResourceAgent(BaseAgent):
         missing: List[str] = []
         resolved: Dict[str, Any] = {}
         secret_refs: List[str] = []
+        available_resources = []
 
         if self.resource_repo:
             try:
