@@ -20,7 +20,6 @@ import abc
 import os
 import shutil
 import socket
-import subprocess
 import time
 from app.agentos.agents.base import BaseAgent
 from app.agentos.context import WorkflowContext, WorkflowState
@@ -115,11 +114,6 @@ class ProductionProbeRunner(IVerificationProbeRunner):
                 except Exception as e:
                     err_msg = str(e)
 
-                if not is_active and shutil.which("systemctl"):
-                    res = subprocess.run(["systemctl", "is-active", service], capture_output=True, text=True)
-                    if res.returncode == 0 and "active" in res.stdout:
-                        is_active = True
-
                 latency_ms = (time.perf_counter() - t0) * 1000.0
                 return VerificationProbe(
                     probe_id=probe_id,
@@ -127,7 +121,7 @@ class ProductionProbeRunner(IVerificationProbeRunner):
                     probe_type=probe_type,
                     passed=is_active,
                     latency_ms=round(latency_ms, 2),
-                    details={"service": service, "status": "active" if is_active else "inactive", "error": err_msg, "simulation": False},
+                    details={"service": service, "host": resolved_host, "port": port, "status": "active" if is_active else "inactive", "error": err_msg, "simulation": False},
                 )
 
             elif probe_type == "db_query":
@@ -168,11 +162,32 @@ class ProductionProbeRunner(IVerificationProbeRunner):
             elif probe_type == "disk_capacity":
                 mount = probe_config.get("mount", "/")
                 min_gb = float(probe_config.get("min_gb", 1.0))
+
+                # shutil.disk_usage only checks the local filesystem — if the
+                # resolved host is remote, we cannot verify disk capacity.
+                is_local = resolved_host in ("127.0.0.1", "localhost", "::1")
+                if not is_local:
+                    latency_ms = (time.perf_counter() - t0) * 1000.0
+                    return VerificationProbe(
+                        probe_id=probe_id,
+                        target=target,
+                        probe_type=probe_type,
+                        passed=False,
+                        latency_ms=round(latency_ms, 2),
+                        details={
+                            "mount": mount, "min_gb": min_gb,
+                            "host": resolved_host,
+                            "status": "unverified",
+                            "reason": "Remote disk capacity verification requires an agent on the target host; local shutil.disk_usage cannot check remote filesystems.",
+                            "simulation": False,
+                        },
+                    )
+
                 path_to_check = mount if os.path.exists(mount) else "/"
                 total, used, free = shutil.disk_usage(path_to_check)
                 total_gb = total / (1024 ** 3)
                 free_gb = free / (1024 ** 3)
-                passed = total_gb >= min_gb or free_gb > 0.1
+                passed = total_gb >= min_gb
                 latency_ms = (time.perf_counter() - t0) * 1000.0
                 return VerificationProbe(
                     probe_id=probe_id,
@@ -183,15 +198,141 @@ class ProductionProbeRunner(IVerificationProbeRunner):
                     details={"mount": mount, "total_gb": round(total_gb, 2), "free_gb": round(free_gb, 2), "min_gb": min_gb, "simulation": False},
                 )
 
-            elif probe_type in ("telemetry_active", "backup_accessible"):
+            elif probe_type == "telemetry_active":
+                endpoint = (
+                    probe_config.get("endpoint")
+                    or probe_config.get("url")
+                    or os.environ.get("AGENTOS_TELEMETRY_ENDPOINT")
+                    or os.environ.get("DATADOG_AGENT_URL")
+                )
+                if not endpoint:
+                    latency_ms = (time.perf_counter() - t0) * 1000.0
+                    return VerificationProbe(
+                        probe_id=probe_id,
+                        target=target,
+                        probe_type=probe_type,
+                        passed=False,
+                        latency_ms=round(latency_ms, 2),
+                        details={
+                            **probe_config,
+                            "status": "unconfigured",
+                            "error": "Telemetry health endpoint URL is not configured. Set 'endpoint' in probe_config or AGENTOS_TELEMETRY_ENDPOINT / DATADOG_AGENT_URL.",
+                            "simulation": False,
+                        },
+                    )
+
+                timeout = float(probe_config.get("timeout", 3.0))
+                headers = dict(probe_config.get("headers") or {})
+                if "User-Agent" not in headers:
+                    headers["User-Agent"] = "Vulcan-Verifier/1.0"
+                api_key = probe_config.get("api_key") or os.environ.get("DATADOG_API_KEY") or os.environ.get("DD_API_KEY")
+                if api_key and "DD-API-KEY" not in headers:
+                    headers["DD-API-KEY"] = api_key
+
+                passed = False
+                status_code = None
+                err_msg = None
+                try:
+                    import urllib.request
+                    import urllib.error
+                    req = urllib.request.Request(endpoint, headers=headers)
+                    with urllib.request.urlopen(req, timeout=timeout) as resp:
+                        status_code = resp.getcode()
+                        passed = 200 <= status_code < 300
+                except urllib.error.HTTPError as he:
+                    status_code = he.code
+                    passed = False
+                    err_msg = f"HTTP error {he.code}: {he.reason}"
+                except Exception as exc:
+                    passed = False
+                    err_msg = str(exc)
+
                 latency_ms = (time.perf_counter() - t0) * 1000.0
                 return VerificationProbe(
                     probe_id=probe_id,
                     target=target,
                     probe_type=probe_type,
-                    passed=True,
+                    passed=passed,
                     latency_ms=round(latency_ms, 2),
-                    details={**probe_config, "simulation": False},
+                    details={
+                        "endpoint": endpoint,
+                        "status_code": status_code,
+                        "status": "active" if passed else "inactive",
+                        "error": err_msg,
+                        "simulation": False,
+                    },
+                )
+
+            elif probe_type == "backup_accessible":
+                bucket = probe_config.get("bucket", "vulcan-backups")
+                prefix = probe_config.get("prefix", "")
+                region = probe_config.get("region") or os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
+                endpoint_url = probe_config.get("endpoint_url") or os.environ.get("AWS_S3_ENDPOINT_URL")
+                max_age_hours = float(probe_config.get("max_age_hours", 24.0))
+
+                passed = False
+                details = {
+                    "bucket": bucket,
+                    "prefix": prefix,
+                    "simulation": False,
+                }
+
+                try:
+                    import boto3
+                    import botocore.exceptions
+                    from datetime import datetime, timezone
+
+                    s3_client = boto3.client("s3", region_name=region, endpoint_url=endpoint_url)
+                    s3_client.head_bucket(Bucket=bucket)
+
+                    resp = s3_client.list_objects_v2(Bucket=bucket, Prefix=prefix, MaxKeys=50)
+                    contents = resp.get("Contents", [])
+                    details["object_count"] = len(contents)
+
+                    if not contents:
+                        details["status"] = "empty"
+                        details["reason"] = f"Bucket '{bucket}' exists but contains no snapshot objects under prefix '{prefix}'."
+                        passed = False
+                    else:
+                        newest = max(contents, key=lambda o: o["LastModified"])
+                        details["latest_snapshot_key"] = newest["Key"]
+                        details["latest_snapshot_time"] = newest["LastModified"].isoformat()
+                        age_hours = (datetime.now(timezone.utc) - newest["LastModified"]).total_seconds() / 3600.0
+                        details["snapshot_age_hours"] = round(age_hours, 2)
+
+                        if age_hours <= max_age_hours:
+                            passed = True
+                            details["status"] = "accessible_and_recent"
+                        else:
+                            passed = False
+                            details["status"] = "stale_snapshot"
+                            details["reason"] = f"Latest snapshot is {age_hours:.1f}h old (max allowed {max_age_hours:.1f}h)."
+
+                except botocore.exceptions.NoCredentialsError:
+                    details["status"] = "credentials_missing"
+                    details["error"] = "AWS credentials not found in environment or IAM role."
+                    passed = False
+                except botocore.exceptions.ClientError as ce:
+                    details["status"] = "client_error"
+                    details["error"] = str(ce)
+                    passed = False
+                except ImportError:
+                    details["status"] = "missing_dependency"
+                    details["error"] = "boto3 library not installed"
+                    passed = False
+                except Exception as exc:
+                    details["status"] = "error"
+                    details["error"] = str(exc)
+                    passed = False
+
+                latency_ms = (time.perf_counter() - t0) * 1000.0
+                return VerificationProbe(
+                    probe_id=probe_id,
+                    target=target,
+                    probe_type=probe_type,
+                    passed=passed,
+                    latency_ms=round(latency_ms, 2),
+                    details=details,
                 )
 
             else:
@@ -200,9 +341,14 @@ class ProductionProbeRunner(IVerificationProbeRunner):
                     probe_id=probe_id,
                     target=target,
                     probe_type=probe_type,
-                    passed=True,
+                    passed=False,
                     latency_ms=round(latency_ms, 2),
-                    details={**probe_config, "simulation": False},
+                    details={
+                        **probe_config,
+                        "simulation": False,
+                        "status": "unsupported_probe_type",
+                        "reason": f"Unrecognized probe type '{probe_type}'; cannot verify.",
+                    },
                 )
 
         except Exception as exc:
@@ -234,14 +380,16 @@ class VerifierAgent(BaseAgent):
         return VerifierOutput
 
     def execute(self, ctx: WorkflowContext, **kwargs) -> VerifierOutput:
+        from app.agentos.schemas import ExecutionMode
         target = ctx.execution_result.get("target_id", "db-cluster.internal")
         probes: List[VerificationProbe] = []
 
         # Define probe configs from desired state / spec
+        min_disk_gb = float(os.environ.get("AGENTOS_VERIFY_MIN_DISK_GB", 50.0))
         probe_configs = [
             ("port_open", {"port": 5432, "protocol": "tcp"}),
             ("service_status", {"service": "postgresql-16"}),
-            ("disk_capacity", {"mount": "/var/lib/pgsql", "min_gb": 500}),
+            ("disk_capacity", {"mount": "/var/lib/pgsql", "min_gb": min_disk_gb}),
             ("db_query", {"query": "SELECT version();"}),
         ]
         if "datadog" in ctx.original_request.lower():
@@ -254,6 +402,7 @@ class VerifierAgent(BaseAgent):
             probes.append(probe)
 
         all_passed = bool(probes) and all(p.passed for p in probes)
+        exec_mode = ExecutionMode.SIMULATED if getattr(self._probe_runner, "is_simulation", False) else ExecutionMode.LIVE
         is_mode_prod = os.environ.get("AGENTOS_MODE", "").lower() == "production"
         if is_mode_prod and getattr(self._probe_runner, "is_simulation", False):
             all_passed = False
@@ -263,6 +412,7 @@ class VerifierAgent(BaseAgent):
                 probes=probes,
                 actual_state_matches_desired=False,
                 proposed_next_state=WorkflowState.VERIFY_FAILED.value,
+                execution_mode=ExecutionMode.SIMULATED,
                 confidence=0.0,
                 rationale="Simulated verification cannot generate a production SUCCESS; real probe runner required.",
             )
@@ -275,6 +425,7 @@ class VerifierAgent(BaseAgent):
             probes=probes,
             actual_state_matches_desired=all_passed,
             proposed_next_state=next_state,
+            execution_mode=exec_mode,
             confidence=1.0 if all_passed else 0.0,
             rationale=f"All {len(probes)} postcondition probes passed{' (SIMULATION)' if self._probe_runner.is_simulation else ''}."
                 if all_passed else "Postcondition probes failed; actual state diverged from desired state.",

@@ -42,7 +42,7 @@ export const api = {
     }
     return job;
   },
-  listJobs: (currentUser?: string, limit: number = 500) => req<Job[]>("GET", `/api/v1/jobs?limit=${limit}${currentUser ? `&current_user=${encodeURIComponent(currentUser)}` : ""}`).then((r) => Array.isArray(r) ? r : (r as any).jobs),
+  listJobs: (limit: number = 500) => req<Job[]>("GET", `/api/v1/jobs?limit=${limit}`).then((r) => Array.isArray(r) ? r : (r as any).jobs),
   approveJob: async (id: string, approver_id: string) => {
     const job = await req<Job>("POST", `/api/v1/jobs/${id}/approve`, { approver_id });
     try { await req("POST", `/api/v1/jobs/${job.correlation_id ?? job.id}/execute`); } catch { /* ignore */ }
@@ -52,8 +52,8 @@ export const api = {
   listRoles: () => req<import("./types").RoleDefinition[]>("GET", "/api/v1/roles"),
   getCatalog: (search?: string) =>
     req<any[]>("GET", `/api/v1/catalog${search ? `?search=${encodeURIComponent(search)}` : ""}`),
-  getTasks: (currentUser?: string, limit: number = 500) =>
-    req<{ tasks: any[] } | any[]>("GET", `/api/v1/tasks?limit=${limit}${currentUser ? `&current_user=${encodeURIComponent(currentUser)}` : ""}`),
+  getTasks: (limit: number = 500) =>
+    req<{ tasks: any[] } | any[]>("GET", `/api/v1/tasks?limit=${limit}`),
   listPolicies: () => req<import("./types").PolicyRule[]>("GET", "/api/v1/policies"),
   togglePolicy: (id: string) => req<{ ok: boolean; message: string }>("POST", `/api/v1/policies/${id}/toggle`),
   evaluatePolicy: (p: import("./types").PolicySimulationRequest) => req<import("./types").PolicyEvaluationResult>("POST", "/api/v1/policies/evaluate", p),

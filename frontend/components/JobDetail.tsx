@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { api } from "@/lib/api";
 import { useJobStream } from "@/hooks/useJobStream";
 import { Terminal } from "./Terminal";
@@ -9,7 +9,7 @@ import { STATUS_STYLE } from "@/lib/types";
 import type { Job } from "@/lib/types";
 import { timeAgo } from "@/lib/util";
 import { useVulcan } from "@/lib/context";
-import { AlertCircle, RefreshCw, ShieldCheck, Database, Radio, FileCode, Globe2, Split, ChevronDown } from "lucide-react";
+import { AlertCircle, RefreshCw, ShieldCheck, Database, Radio, FileCode, Globe2, Split, ChevronDown, ShieldAlert, Loader2 } from "lucide-react";
 import ASTFailurePinpointCard from "./ASTFailurePinpointCard";
 import MerkleAuditModal from "./MerkleAuditModal";
 import S3MultipartSwarmGrid from "./S3MultipartSwarmGrid";
@@ -57,7 +57,21 @@ export function JobDetail({ job, currentUser, onChanged }: {
   const [isDiffModalOpen, setIsDiffModalOpen] = useState<boolean>(false);
   const [isClusterRadarOpen, setIsClusterRadarOpen] = useState<boolean>(false);
   const [isDualReplayOpen, setIsDualReplayOpen] = useState<boolean>(false);
+  const [merkleStatus, setMerkleStatus] = useState<'loading' | 'verified' | 'unverified'>('loading');
   const stream = useJobStream(job ? (job.correlation_id ?? job.id) : null);
+
+  // Fetch real Merkle chain verification status from audit API
+  useEffect(() => {
+    if (!job) return;
+    setMerkleStatus('loading');
+    api.getJobAudit(job.correlation_id ?? job.id)
+      .then((res) => {
+        setMerkleStatus(res.chain_valid ? 'verified' : 'unverified');
+      })
+      .catch(() => {
+        setMerkleStatus('unverified');
+      });
+  }, [job?.correlation_id, job?.id]);
 
   // Live status from the WebSocket beats the 2.5s poll.
   const liveStatus = useMemo(() => {
@@ -109,16 +123,28 @@ export function JobDetail({ job, currentUser, onChanged }: {
           </span>
         )}
 
-        {/* Merkle Audit Chain Verification Pill (UI-15) */}
+        {/* Merkle Audit Chain Verification Pill (UI-15) — derived from actual audit API */}
         <button
           type="button"
           onClick={() => setIsMerkleModalOpen(true)}
           title="Inspect SHA-256 Merkle chain and export WORM receipt"
-          className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-950/50 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-900/50 hover:border-emerald-400 transition-all cursor-pointer"
+          className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold border transition-all cursor-pointer ${
+            merkleStatus === 'verified'
+              ? 'bg-emerald-950/50 text-emerald-300 border-emerald-500/40 hover:bg-emerald-900/50 hover:border-emerald-400'
+              : merkleStatus === 'loading'
+              ? 'bg-slate-900/50 text-slate-400 border-slate-600/40'
+              : 'bg-amber-950/50 text-amber-300 border-amber-500/40 hover:bg-amber-900/50 hover:border-amber-400'
+          }`}
           data-testid="job-detail-merkle-pill"
         >
-          <ShieldCheck size={11} className="text-emerald-400" />
-          <span>MERKLE CHAIN: VERIFIED ✔</span>
+          {merkleStatus === 'verified' && <ShieldCheck size={11} className="text-emerald-400" />}
+          {merkleStatus === 'loading' && <Loader2 size={11} className="text-slate-400 animate-spin" />}
+          {merkleStatus === 'unverified' && <ShieldAlert size={11} className="text-amber-400" />}
+          <span>
+            {merkleStatus === 'verified' && 'MERKLE CHAIN: VERIFIED ✔'}
+            {merkleStatus === 'loading' && 'MERKLE CHAIN: CHECKING…'}
+            {merkleStatus === 'unverified' && 'MERKLE CHAIN: UNVERIFIED'}
+          </span>
         </button>
 
         {/* 10GB S3 Decoupled Swarm Grid Toggle (UI-07) */}

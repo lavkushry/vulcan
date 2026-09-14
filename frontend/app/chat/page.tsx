@@ -32,12 +32,12 @@ function ChatConsoleContent() {
 
   const refreshJobs = useCallback(async () => {
     try {
-      const data = await api.listJobs(currentUser);
+      const data = await api.listJobs();
       setJobs(data);
     } catch {
       /* ignore */
     }
-  }, [currentUser]);
+  }, []);
 
   useEffect(() => {
     refreshJobs();

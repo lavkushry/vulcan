@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { DEMO_USERS } from '@/lib/api';
+import { getApiBaseUrl } from '@/lib/env';
 
 export type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated';
 
@@ -83,25 +84,54 @@ export function VulcanProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    setAuthStatus('authenticated');
+    // Resolve the user identity from the token map (optimistic, for UI display)
+    let resolvedUser: string | null = null;
     if (KNOWN_TOKEN_USERS[effectiveToken]) {
-      const matched = KNOWN_TOKEN_USERS[effectiveToken];
-      setAuthenticatedUser(matched);
-      if (!savedDemoUser) {
-        setCurrentUserState(matched);
-      }
+      resolvedUser = KNOWN_TOKEN_USERS[effectiveToken];
     } else if (!effectiveToken.startsWith('vlc_test_')) {
-      // Real authenticated token exists - treat as authenticated identity
-      setIsDemoMode(false);
-      const parsedUser = window.localStorage.getItem('vulcan_authenticated_user') || 'authenticated.user';
-      setAuthenticatedUser(parsedUser);
+      resolvedUser = window.localStorage.getItem('vulcan_authenticated_user') || 'authenticated.user';
+    }
+
+    // Set optimistic identity for display while validating
+    if (resolvedUser) {
+      setAuthenticatedUser(resolvedUser);
       if (!savedDemoUser) {
-        setCurrentUserState(parsedUser);
+        setCurrentUserState(resolvedUser);
       }
-    } else if (savedDemoUser && DEMO_USERS.some(u => u.id === savedDemoUser)) {
-      // Restore selected demo user
+      if (!effectiveToken.startsWith('vlc_test_') && resolvedUser !== 'authenticated.user') {
+        setIsDemoMode(false);
+      }
+    }
+    if (savedDemoUser && DEMO_USERS.some(u => u.id === savedDemoUser)) {
       setCurrentUserState(savedDemoUser);
     }
+
+    // Validate the token against the server
+    const baseUrl = getApiBaseUrl();
+    fetch(`${baseUrl}/api/v1/tasks?limit=0`, {
+      headers: { 'Authorization': `Bearer ${effectiveToken}` },
+    })
+      .then((res) => {
+        if (res.ok || res.status === 200) {
+          setAuthStatus('authenticated');
+        } else if (res.status === 401 || res.status === 503) {
+          // Token is invalid or auth not configured — clear it
+          setAuthStatus('unauthenticated');
+          setAuthenticatedUser(null);
+          if (realToken) {
+            window.localStorage.removeItem('vulcan_api_token');
+          }
+        } else {
+          // Other errors (network issues, 500s) — treat as authenticated optimistically
+          // since we have a token but can't confirm; the API calls will fail individually
+          setAuthStatus('authenticated');
+        }
+      })
+      .catch(() => {
+        // Network error (server unreachable) — keep token, mark authenticated optimistically
+        // Individual API calls will show their own errors
+        setAuthStatus('authenticated');
+      });
   }, []);
 
   const setCurrentUser = useCallback((id: string) => {

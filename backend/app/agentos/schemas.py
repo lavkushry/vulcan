@@ -41,6 +41,13 @@ class AgentRole(str, enum.Enum):
     EVAL = "eval"
 
 
+class ExecutionMode(str, enum.Enum):
+    LIVE = "live"
+    SIMULATED = "simulated"
+    UNAVAILABLE = "unavailable"
+    FAILED = "failed"
+
+
 class BaseAgentOutput(BaseModel):
     """Base envelope required for every structured agent proposal."""
     schema_version: SchemaVersion = SchemaVersion.V1_0
@@ -51,6 +58,7 @@ class BaseAgentOutput(BaseModel):
     assumptions: List[str] = Field(default_factory=list)
     uncertainties: List[str] = Field(default_factory=list)
     proposed_next_state: str
+    execution_mode: ExecutionMode = ExecutionMode.SIMULATED
     rationale: str = ""
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -132,6 +140,13 @@ class PlannerDecision(str, enum.Enum):
     GENERATE = "GENERATE"
 
 
+class RejectedCandidate(BaseModel):
+    identifier: str
+    reason: str
+    score: float = 0.0
+    trust_state: Optional[str] = None
+
+
 class PlannerOutput(BaseAgentOutput):
     agent: AgentRole = AgentRole.PLANNER
     decision: PlannerDecision = PlannerDecision.COMPOSE
@@ -139,6 +154,8 @@ class PlannerOutput(BaseAgentOutput):
     missing_capabilities: List[str] = Field(default_factory=list)
     execution_strategy: str = ""
     target_engine: str = "ansible"
+    rejected_candidates: List[RejectedCandidate] = Field(default_factory=list)
+    candidate_rankings: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 # 7. Composer Output

@@ -19,7 +19,7 @@ function MatrixContent() {
     setLoading(true);
     try {
       try {
-        const data = await api.getTasks(currentUser);
+        const data = await api.getTasks();
         const rawTasks = (data as any)?.tasks || data;
         if (Array.isArray(rawTasks)) {
           setTasks(rawTasks);
@@ -29,7 +29,7 @@ function MatrixContent() {
         /* fallback to listJobs */
       }
       // Fallback to jobs list mapped to TaskRecord
-      const jobs = await api.listJobs(currentUser);
+      const jobs = await api.listJobs();
       const mapped: TaskRecord[] = jobs.map((j: Job) => ({
         id: j.id,
         correlation_id: j.correlation_id,
@@ -56,7 +56,7 @@ function MatrixContent() {
     } finally {
       setLoading(false);
     }
-  }, [currentUser]);
+  }, []);
 
   useEffect(() => {
     loadTasks();

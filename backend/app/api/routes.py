@@ -331,7 +331,6 @@ def chat_intent(req: ChatIntentRequest):
 @router.get("/tasks")
 def list_tasks_filtered(
     request: Request,
-    current_user: Optional[str] = Query(None),
     engine: Optional[str] = Query("all"),
     status: Optional[str] = Query("all"),
     environment: Optional[str] = Query("all"),
@@ -344,6 +343,7 @@ def list_tasks_filtered(
     High-Filtered Task Window Endpoint:
     Provides multi-dimensional querying across engine, status, environment, category,
     and text search with real-time aggregate telemetry counts.
+    Actor identity is derived exclusively from backend authentication.
     """
     # Authoritative actor strictly from backend authentication
     user = getattr(request.state, "user_id", None)
@@ -364,10 +364,6 @@ def list_tasks_filtered(
         if eng in counts_by_engine:
             counts_by_engine[eng] += 1
         counts_by_category[cat] = counts_by_category.get(cat, 0) + 1
-
-        # Optional filter by requester if requested
-        if current_user and current_user != "all" and job.requester_id != current_user:
-            continue
 
         # Apply multi-dimensional filters
         if engine and engine != "all" and eng != engine:
@@ -942,7 +938,7 @@ async def stream_intent_resolution(
 
 
 @router.get("/jobs")
-def list_jobs(request: Request, current_user: Optional[str] = Query(None), limit: int = Query(500, ge=1, le=1000)):
+def list_jobs(request: Request, limit: int = Query(500, ge=1, le=1000)):
     """List all jobs in the control plane."""
     user = getattr(request.state, "user_id", None)
     all_jobs = container.job_repo.list_jobs(limit=limit)

@@ -81,10 +81,12 @@ def test_evidence_engine_evaluation():
 
 
 def test_calibrated_confidence_engine():
-    # High confidence case
+    from app.agentos.confidence import CalibrationRecord
+    # High confidence case with all evidence signals
     assess_high = ConfidenceEngine.calculate_confidence(
         model_confidence=0.95,
         retrieval_score=0.90,
+        top_candidate_margin=0.20,
         has_catalog_exact_match=True,
         cross_agent_agreement=1.0,
         historical_accuracy=0.98,
@@ -95,6 +97,7 @@ def test_calibrated_confidence_engine():
     assert assess_high.tier == ConfidenceTier.HIGH
     assert assess_high.calibrated_score >= 0.88
     assert assess_high.requires_clarification is False
+    assert len(assess_high.unknown_signals) == 0
 
     # Low confidence when deterministic validation fails
     assess_fail = ConfidenceEngine.calculate_confidence(
@@ -104,3 +107,46 @@ def test_calibrated_confidence_engine():
     )
     assert assess_fail.tier == ConfidenceTier.LOW
     assert assess_fail.requires_clarification is True
+
+    # Failed authorization forces LOW tier regardless of high evidence
+    assess_unauth = ConfidenceEngine.calculate_confidence(
+        model_confidence=0.99,
+        retrieval_score=0.99,
+        top_candidate_margin=0.50,
+        has_catalog_exact_match=True,
+        authorization_passed=False,
+        environment="PROD",
+    )
+    assert assess_unauth.tier == ConfidenceTier.LOW
+    assert "Authorization failed" in assess_unauth.rationale
+
+    # Failed verification forces LOW tier
+    assess_unverified = ConfidenceEngine.calculate_confidence(
+        model_confidence=0.99,
+        verification_passed=False,
+        environment="PROD",
+    )
+    assert assess_unverified.tier == ConfidenceTier.LOW
+    assert "Verification failed" in assess_unverified.rationale
+
+    # Missing signals tracked in unknown_signals and reduce max achievable score
+    assess_partial = ConfidenceEngine.calculate_confidence(
+        model_confidence=0.80,
+        retrieval_score=0.80,
+    )
+    assert len(assess_partial.unknown_signals) > 0
+    assert "top_candidate_margin" in assess_partial.unknown_signals
+    assert assess_partial.max_achievable_score < 1.0
+
+    # CalibrationRecord model validation
+    rec = CalibrationRecord(
+        workflow_id="wf-cal-01",
+        predicted_confidence=assess_high.calibrated_score,
+        predicted_tier=assess_high.tier,
+        actual_outcome="SUCCESS",
+        actual_success=True,
+        unknown_signals=assess_high.unknown_signals,
+        component_scores=assess_high.component_scores,
+    )
+    assert rec.workflow_id == "wf-cal-01"
+    assert rec.actual_success is True
